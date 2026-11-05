@@ -1,0 +1,18 @@
+{
+  "chainId": 8453,
+  "admin": "0x807061DF657A7697c04045dA7d16D941861cAABc",
+  "pilots": "0xA2E9D9773d924f09460Bb427CC959413E7Fc0719",
+  "VoyagerRewards": "0xCa55A59BD2c15D0F11Ae5f7e7E96Bb58eb0B7DE5",
+  "deploymentTxHash": "0x2447a90468b84f9407db37d8b6fe1400c72a318eeb4b246572121dadd3265b00",
+  "bnut": "0x25ACb773159Af5a5c672DEfe31C7Fff6a9A93736",
+  "approvedBNutBudget": "10000000000000000000000",
+  "status": "DEPLOYED_BNUT_AND_NFT_RESERVES_FUNDED",
+  "mintTxHash": "0x19263be090025e5b504e32275e1023bc60e515a0676a2bda8282f045e04bda72",
+  "verifiedAt": "2026-11-05T22:33:45.117Z",
+  "verifiedBlock": 53638248,
+  "nftReserves": {
+    "total": 710,
+    "record": "base-reserves.json",
+    "independentlyVerifiedBlock": 53644409
+  }
+}

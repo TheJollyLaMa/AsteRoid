@@ -8,8 +8,10 @@ const { WEAPONS, applyWeaponPickup, downgradeWeapon, fireWeapon } = require('./w
 const { DIFFICULTY_IDS, isDifficulty, getDifficulty, stepDifficulty } = require('./difficulty');
 const { LevelTracker, createTotals, mergeTotals, buildLevelRecord } = require('./stats');
 const inputLog = require('./inputlog');
+const RULESET = require('./ruleset');
 const { scaleForPlayers, createPlayerStats, awardScore, canEndLevel } = require('./multiplayer');
 const { chooseVaultLevel, createVault, markGuardDestroyed } = require('./vault');
+const { COLLECTION, MARATHON_PRIZE, PERFECT_PRIZES, PILOT_BONUS } = require('./prizes');
 const {
     STORAGE_KEY,
     LEGACY_STORAGE_KEY,
@@ -167,7 +169,7 @@ class Game {
     startCampaign(levelNumber = 1, difficulty = this.selectedDifficulty, seed) {
         getLevel(levelNumber, difficulty);
         const difficultyId = getDifficulty(difficulty).id;
-        if (levelNumber > LEVEL_COUNT && (difficultyId !== 'ace' || !this.pilot.isPilot || !this.save.progress.byDifficulty[difficultyId].sector2Unlocked)) throw new Error('Sector II is locked for this difficulty or pilot.');
+        if (levelNumber > LEVEL_COUNT && (difficultyId === 'cadet' || !this.pilot.isPilot || !this.save.progress.byDifficulty[difficultyId].sector2Unlocked)) throw new Error('Sector II is locked for this difficulty or pilot.');
         this.finishAttempt('abandoned');
         this.difficulty = difficultyId;
         this.selectedDifficulty = this.difficulty;
@@ -213,7 +215,7 @@ class Game {
         this.ships = [this.ship];
         this.playerStats = createPlayerStats(this.playerCount);
         if (this.playerCount > 1) this.setPlayers(this.playerCount, { mode: this.mode });
-        if (this.difficulty === 'ace' && this.pilot.isPilot) {
+        if (this.difficulty !== 'cadet' && this.pilot.isPilot) {
             const spawnRng = createRng((this.seed ^ 0xa53c9e17) >>> 0);
             this.sector2Level = levelNumber <= 10 ? chooseVaultLevel(1, spawnRng) : null;
             this.sector2VaultLevel = chooseVaultLevel(2, spawnRng);
@@ -259,7 +261,7 @@ class Game {
         this.levelStartScore = this.score;
         this.particles = [];
         this.vault = null;
-        if (this.difficulty === 'ace' && this.pilot.isPilot) {
+        if (this.difficulty !== 'cadet' && this.pilot.isPilot) {
             const tier = this.sector2Level === levelNumber ? 1 : this.sector2VaultLevel === levelNumber ? 2 : 0;
             const eligible = tier > 0 && !this.vaultTiersSpawned.includes(tier);
             if (eligible) {
@@ -314,7 +316,7 @@ class Game {
     }
 
     getRunLog() {
-        return { runId: this.runId || `${this.seed.toString(16)}-unstarted`, seed: this.seed, difficulty: this.difficulty, startLevel: this.runStartLevel || 1, players: this.playerCount, mode: this.mode, pilot: { ...this.pilot }, ticket: this.runTicket == null ? null : clone(this.runTicket), frames: inputLog.encode(this.runFrames), startedAt: this.runStartedAt == null ? null : new Date(this.runStartedAt).toISOString(), version: 1 };
+        return { runId: this.runId || `${this.seed.toString(16)}-unstarted`, ruleset: RULESET, seed: this.seed, difficulty: this.difficulty, startLevel: this.runStartLevel || 1, players: this.playerCount, mode: this.mode, pilot: { ...this.pilot }, ticket: this.runTicket == null ? null : clone(this.runTicket), frames: inputLog.encode(this.runFrames), startedAt: this.runStartedAt == null ? null : new Date(this.runStartedAt).toISOString(), version: 1 };
     }
 
     serialize() {
@@ -435,7 +437,8 @@ class Game {
     }
 
     step(inputs = []) {
-        const frame = Array.from({ length: this.playerCount }, (_, index) => inputs[index] || {});
+        const frame = Array.from({ length: this.playerCount }, (_, index) =>
+            inputLog.decodeInput(inputLog.encodeInput(inputs[index] || {})));
         this.runFrames.push(frame.map((input) => ({ ...input })));
         this.time += FIXED_STEP;
         this.simTime += FIXED_STEP;
@@ -508,6 +511,20 @@ class Game {
     }
 
     updatePlayerFire(ship, input, playerIndex, dt) {
+        if (input.weaponNext && !ship.weaponNextWasDown) {
+            ship.weaponTiers = ship.weaponTiers || {};
+            ship.weaponTiers[ship.weapon.type] = ship.weapon.tier;
+            const types = Object.keys(WEAPONS).filter((type) =>
+                this.level.number > LEVEL_COUNT || !['prism', 'singularity'].includes(type));
+            const type = types[(types.indexOf(ship.weapon.type) + 1) % types.length];
+            ship.weapon = { type, tier: ship.weaponTiers[type] || 1 };
+            ship.cooldown = 0;
+            ship.charge = 0;
+            ship.wasFiring = false;
+            ship.suppressChargeUntilRelease = false;
+            this.emit('weaponChanged', { player: playerIndex, weapon: { ...ship.weapon } });
+        }
+        ship.weaponNextWasDown = Boolean(input.weaponNext);
         const charged = ['nova', 'singularity'].includes(ship.weapon.type);
         // B/LT special force-releases an active charge; otherwise it grants a brief shield (8s cooldown).
         const specialPressed = Boolean(input.special && !ship.specialWasDown);
@@ -541,11 +558,6 @@ class Game {
             }
             ship.wasFiring = Boolean(input.fire);
         } else if (input.fire && ship.cooldown <= 0) this.firePlayerWeapon(ship, playerIndex);
-        if (input.weaponNext && !ship.weaponNextWasDown) {
-            const types = Object.keys(WEAPONS);
-            ship.weapon = { type: types[(types.indexOf(ship.weapon.type) + 1) % types.length], tier: 1 };
-        }
-        ship.weaponNextWasDown = Boolean(input.weaponNext);
     }
 
     firePlayerWeapon(ship = this.ship, playerIndex = 0, charge = 0) {
@@ -694,9 +706,9 @@ class Game {
         for (const ship of this.ships) ship.power = ship.maxPower;
         this.emit('supporterCaptured', { ...capture, player: playerIndex });
         if (capture.tier === 1) {
-            this.save.progress.byDifficulty.ace.sector2Unlocked = true;
-            this.save.progress.byDifficulty.ace.unlocked = Math.max(this.save.progress.byDifficulty.ace.unlocked, 11);
-            this.emit('sectorUnlocked', { sector: 2, difficulty: 'ace' });
+            this.save.progress.byDifficulty[this.difficulty].sector2Unlocked = true;
+            this.save.progress.byDifficulty[this.difficulty].unlocked = Math.max(this.save.progress.byDifficulty[this.difficulty].unlocked, 11);
+            this.emit('sectorUnlocked', { sector: 2, difficulty: this.difficulty });
             this.saveProgress();
         }
         return true;
@@ -747,7 +759,11 @@ class Game {
             return;
         }
         ship.power = ship.maxPower;
+        ship.weaponTiers = ship.weaponTiers || {};
+        const previousWeapon = ship.weapon.type;
         ship.weapon = downgradeWeapon(ship.weapon);
+        delete ship.weaponTiers[previousWeapon];
+        ship.weaponTiers[ship.weapon.type] = ship.weapon.tier;
         ship.invulnerable = 2.5;
         ship.x = 400;
         ship.offset = 90;
@@ -765,6 +781,8 @@ class Game {
             ship.shield = this.level.shieldTime ?? 7;
         } else {
             ship.weapon = applyWeaponPickup(ship.weapon, pickup.type);
+            ship.weaponTiers = ship.weaponTiers || {};
+            ship.weaponTiers[ship.weapon.type] = ship.weapon.tier;
         }
         this.tracker.pickup(pickup.type, pickup.x, pickup.y);
         if (this.playerStats[playerIndex]) this.playerStats[playerIndex].pickups = (this.playerStats[playerIndex].pickups || 0) + 1;
@@ -803,6 +821,44 @@ class Game {
             captures: this.runCaptures.filter((capture) => capture.level === this.level.number),
             idFn: this.idFn
         });
+        const marathon = this.playerCount === 1 && this.level.number === TOTAL_LEVEL_COUNT && this.difficulty !== 'cadet' &&
+            this.pilot.isPilot && this.runStartLevel === 1 && this.runRecords.length === TOTAL_LEVEL_COUNT - 1 &&
+            this.runRecords.every((entry, index) => entry.level === index + 1 && entry.difficulty === this.difficulty);
+        if (marathon) {
+            const awards = [];
+            if (this.difficulty === 'ace') awards.push({
+                kind: 'marathon-completion', tier: 2, level: TOTAL_LEVEL_COUNT,
+                at: record.completedAt, prize: { ...MARATHON_PRIZE, nftContract: COLLECTION }
+            });
+            const perfect = this.runStats.livesLost === 0 &&
+                [1, 2].every((tier) => this.runCaptures.some((capture) => capture.tier === tier && !capture.kind));
+            if (perfect) awards.push({
+                kind: `perfect-${this.difficulty}`, tier: 2, level: TOTAL_LEVEL_COUNT,
+                at: record.completedAt, prize: { ...PERFECT_PRIZES[this.difficulty], nftContract: COLLECTION },
+                ...(this.difficulty === 'pilot' ? { bonus: { ...PILOT_BONUS } } : {})
+            });
+            this.runCaptures.push(...awards);
+            record.marathon = {
+                schema: 'voyager-marathon/1', runId: this.runId, seed: this.seed,
+                startLevel: 1, finalLevel: TOTAL_LEVEL_COUNT, difficulty: this.difficulty, perfect,
+                startedAt: new Date(this.runStartedAt).toISOString(), completedAt: record.completedAt,
+                totals: { ...clone(this.runStats), victories: this.runStats.victories + 1 },
+                levels: [...this.runRecords, record].map((entry) => ({
+                    recordId: entry.id, level: entry.level, startedAt: entry.startedAt,
+                    completedAt: entry.completedAt, durationSec: entry.durationSec,
+                    score: clone(entry.score), ship: clone(entry.ship), stats: clone(entry.stats)
+                })),
+                awards: this.runCaptures.map((capture) => ({
+                    kind: capture.kind || 'guarded-pickup', level: capture.level, tier: capture.tier,
+                    earnedAt: capture.at, chainId: 8453, nftContract: COLLECTION,
+                    tokenId: String(capture.prize.tokenId), project: capture.prize.project,
+                    metadataURI: capture.prize.metadataURI, quantity: 1,
+                    ...(capture.bonus ? { bonus: clone(capture.bonus) } : {}),
+                    status: 'earned-awaiting-referee-and-funded-claim'
+                }))
+            };
+            for (const award of awards) this.emit('supporterCaptured', { ...clone(award), player: 0 });
+        }
         this.lastRecord = record;
         this.runRecords.push(clone(record));
         this.save.wins.push(record);
@@ -819,7 +875,7 @@ class Game {
         }
         if (next <= LEVEL_COUNT || progress.sector2Unlocked) progress.unlocked = Math.max(progress.unlocked, next);
         this.saveProgress();
-        if (this.level.number === LEVEL_COUNT && progress.sector2Unlocked && this.difficulty === 'ace' && this.pilot.isPilot) {
+        if (this.level.number === LEVEL_COUNT && progress.sector2Unlocked && this.difficulty !== 'cadet' && this.pilot.isPilot) {
             this.state = 'warping';
             this.stateTimer = WARP_TIME;
             this.emit('warpStart', { from: 10, to: 11 });

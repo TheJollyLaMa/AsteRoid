@@ -205,26 +205,35 @@ function step(realDt, controls = null) {
     fx.update(realDt, game);
 }
 
-// The world stays 800×600; the view widens to the page's aspect and the backing store scales so it stays sharp.
+// Match the contained image to device pixels without changing the logical world.
 const LOGICAL = { width: canvas.width, height: canvas.height };
-let renderScale = 1;
+let renderScaleX = 1;
+let renderScaleY = 1;
+let renderPixelRatio = 0;
 function fitBacking() {
     const rect = canvas.getBoundingClientRect();
     const logicalWidth = setViewWidth(rect.width && rect.height ? LOGICAL.height * rect.width / rect.height : LOGICAL.width);
     const shown = Math.min(rect.width || logicalWidth, (rect.height || LOGICAL.height) * logicalWidth / LOGICAL.height);
-    const scale = Math.min(2, Math.max(1, Math.round((shown * (window.devicePixelRatio || 1) / logicalWidth) * 4) / 4));
-    if (scale === renderScale && canvas.width === Math.round(logicalWidth * scale) && canvas.height === Math.round(LOGICAL.height * scale)) return;
-    renderScale = scale;
-    canvas.width = Math.round(logicalWidth * scale);
-    canvas.height = Math.round(LOGICAL.height * scale);
+    renderPixelRatio = window.devicePixelRatio || 1;
+    const width = Math.max(1, Math.round(shown * renderPixelRatio));
+    const height = Math.max(1, Math.round(shown * LOGICAL.height / logicalWidth * renderPixelRatio));
+    renderScaleX = width / logicalWidth;
+    renderScaleY = height / LOGICAL.height;
+    if (canvas.width === width && canvas.height === height) return;
+    canvas.width = width;
+    canvas.height = height;
 }
 if (typeof ResizeObserver === 'function') new ResizeObserver(fitBacking).observe(canvas);
+window.addEventListener('resize', fitBacking);
 fitBacking();
 
 function draw() {
+    if (renderPixelRatio !== (window.devicePixelRatio || 1)) fitBacking();
     audio.setSector2(Number(game.level && game.level.number) >= 11);
     const shake = fx.shakeOffset();
-    ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+    ctx.setTransform(renderScaleX, 0, 0, renderScaleY, 0, 0);
+    // Resizing resets context state; apply nearest-neighbour sampling every frame.
+    ctx.imageSmoothingEnabled = false;
     ctx.save();
     ctx.translate(shake.x, shake.y);
     renderers[game.view](ctx, game, fx);
@@ -894,8 +903,10 @@ const { WEAPONS, applyWeaponPickup, downgradeWeapon, fireWeapon } = require('./w
 const { DIFFICULTY_IDS, isDifficulty, getDifficulty, stepDifficulty } = require('./difficulty');
 const { LevelTracker, createTotals, mergeTotals, buildLevelRecord } = require('./stats');
 const inputLog = require('./inputlog');
+const RULESET = require('./ruleset');
 const { scaleForPlayers, createPlayerStats, awardScore, canEndLevel } = require('./multiplayer');
 const { chooseVaultLevel, createVault, markGuardDestroyed } = require('./vault');
+const { COLLECTION, MARATHON_PRIZE, PERFECT_PRIZES, PILOT_BONUS } = require('./prizes');
 const {
     STORAGE_KEY,
     LEGACY_STORAGE_KEY,
@@ -1053,7 +1064,7 @@ class Game {
     startCampaign(levelNumber = 1, difficulty = this.selectedDifficulty, seed) {
         getLevel(levelNumber, difficulty);
         const difficultyId = getDifficulty(difficulty).id;
-        if (levelNumber > LEVEL_COUNT && (difficultyId !== 'ace' || !this.pilot.isPilot || !this.save.progress.byDifficulty[difficultyId].sector2Unlocked)) throw new Error('Sector II is locked for this difficulty or pilot.');
+        if (levelNumber > LEVEL_COUNT && (difficultyId === 'cadet' || !this.pilot.isPilot || !this.save.progress.byDifficulty[difficultyId].sector2Unlocked)) throw new Error('Sector II is locked for this difficulty or pilot.');
         this.finishAttempt('abandoned');
         this.difficulty = difficultyId;
         this.selectedDifficulty = this.difficulty;
@@ -1099,7 +1110,7 @@ class Game {
         this.ships = [this.ship];
         this.playerStats = createPlayerStats(this.playerCount);
         if (this.playerCount > 1) this.setPlayers(this.playerCount, { mode: this.mode });
-        if (this.difficulty === 'ace' && this.pilot.isPilot) {
+        if (this.difficulty !== 'cadet' && this.pilot.isPilot) {
             const spawnRng = createRng((this.seed ^ 0xa53c9e17) >>> 0);
             this.sector2Level = levelNumber <= 10 ? chooseVaultLevel(1, spawnRng) : null;
             this.sector2VaultLevel = chooseVaultLevel(2, spawnRng);
@@ -1145,7 +1156,7 @@ class Game {
         this.levelStartScore = this.score;
         this.particles = [];
         this.vault = null;
-        if (this.difficulty === 'ace' && this.pilot.isPilot) {
+        if (this.difficulty !== 'cadet' && this.pilot.isPilot) {
             const tier = this.sector2Level === levelNumber ? 1 : this.sector2VaultLevel === levelNumber ? 2 : 0;
             const eligible = tier > 0 && !this.vaultTiersSpawned.includes(tier);
             if (eligible) {
@@ -1200,7 +1211,7 @@ class Game {
     }
 
     getRunLog() {
-        return { runId: this.runId || `${this.seed.toString(16)}-unstarted`, seed: this.seed, difficulty: this.difficulty, startLevel: this.runStartLevel || 1, players: this.playerCount, mode: this.mode, pilot: { ...this.pilot }, ticket: this.runTicket == null ? null : clone(this.runTicket), frames: inputLog.encode(this.runFrames), startedAt: this.runStartedAt == null ? null : new Date(this.runStartedAt).toISOString(), version: 1 };
+        return { runId: this.runId || `${this.seed.toString(16)}-unstarted`, ruleset: RULESET, seed: this.seed, difficulty: this.difficulty, startLevel: this.runStartLevel || 1, players: this.playerCount, mode: this.mode, pilot: { ...this.pilot }, ticket: this.runTicket == null ? null : clone(this.runTicket), frames: inputLog.encode(this.runFrames), startedAt: this.runStartedAt == null ? null : new Date(this.runStartedAt).toISOString(), version: 1 };
     }
 
     serialize() {
@@ -1321,7 +1332,8 @@ class Game {
     }
 
     step(inputs = []) {
-        const frame = Array.from({ length: this.playerCount }, (_, index) => inputs[index] || {});
+        const frame = Array.from({ length: this.playerCount }, (_, index) =>
+            inputLog.decodeInput(inputLog.encodeInput(inputs[index] || {})));
         this.runFrames.push(frame.map((input) => ({ ...input })));
         this.time += FIXED_STEP;
         this.simTime += FIXED_STEP;
@@ -1394,6 +1406,20 @@ class Game {
     }
 
     updatePlayerFire(ship, input, playerIndex, dt) {
+        if (input.weaponNext && !ship.weaponNextWasDown) {
+            ship.weaponTiers = ship.weaponTiers || {};
+            ship.weaponTiers[ship.weapon.type] = ship.weapon.tier;
+            const types = Object.keys(WEAPONS).filter((type) =>
+                this.level.number > LEVEL_COUNT || !['prism', 'singularity'].includes(type));
+            const type = types[(types.indexOf(ship.weapon.type) + 1) % types.length];
+            ship.weapon = { type, tier: ship.weaponTiers[type] || 1 };
+            ship.cooldown = 0;
+            ship.charge = 0;
+            ship.wasFiring = false;
+            ship.suppressChargeUntilRelease = false;
+            this.emit('weaponChanged', { player: playerIndex, weapon: { ...ship.weapon } });
+        }
+        ship.weaponNextWasDown = Boolean(input.weaponNext);
         const charged = ['nova', 'singularity'].includes(ship.weapon.type);
         // B/LT special force-releases an active charge; otherwise it grants a brief shield (8s cooldown).
         const specialPressed = Boolean(input.special && !ship.specialWasDown);
@@ -1427,11 +1453,6 @@ class Game {
             }
             ship.wasFiring = Boolean(input.fire);
         } else if (input.fire && ship.cooldown <= 0) this.firePlayerWeapon(ship, playerIndex);
-        if (input.weaponNext && !ship.weaponNextWasDown) {
-            const types = Object.keys(WEAPONS);
-            ship.weapon = { type: types[(types.indexOf(ship.weapon.type) + 1) % types.length], tier: 1 };
-        }
-        ship.weaponNextWasDown = Boolean(input.weaponNext);
     }
 
     firePlayerWeapon(ship = this.ship, playerIndex = 0, charge = 0) {
@@ -1580,9 +1601,9 @@ class Game {
         for (const ship of this.ships) ship.power = ship.maxPower;
         this.emit('supporterCaptured', { ...capture, player: playerIndex });
         if (capture.tier === 1) {
-            this.save.progress.byDifficulty.ace.sector2Unlocked = true;
-            this.save.progress.byDifficulty.ace.unlocked = Math.max(this.save.progress.byDifficulty.ace.unlocked, 11);
-            this.emit('sectorUnlocked', { sector: 2, difficulty: 'ace' });
+            this.save.progress.byDifficulty[this.difficulty].sector2Unlocked = true;
+            this.save.progress.byDifficulty[this.difficulty].unlocked = Math.max(this.save.progress.byDifficulty[this.difficulty].unlocked, 11);
+            this.emit('sectorUnlocked', { sector: 2, difficulty: this.difficulty });
             this.saveProgress();
         }
         return true;
@@ -1633,7 +1654,11 @@ class Game {
             return;
         }
         ship.power = ship.maxPower;
+        ship.weaponTiers = ship.weaponTiers || {};
+        const previousWeapon = ship.weapon.type;
         ship.weapon = downgradeWeapon(ship.weapon);
+        delete ship.weaponTiers[previousWeapon];
+        ship.weaponTiers[ship.weapon.type] = ship.weapon.tier;
         ship.invulnerable = 2.5;
         ship.x = 400;
         ship.offset = 90;
@@ -1651,6 +1676,8 @@ class Game {
             ship.shield = this.level.shieldTime ?? 7;
         } else {
             ship.weapon = applyWeaponPickup(ship.weapon, pickup.type);
+            ship.weaponTiers = ship.weaponTiers || {};
+            ship.weaponTiers[ship.weapon.type] = ship.weapon.tier;
         }
         this.tracker.pickup(pickup.type, pickup.x, pickup.y);
         if (this.playerStats[playerIndex]) this.playerStats[playerIndex].pickups = (this.playerStats[playerIndex].pickups || 0) + 1;
@@ -1689,6 +1716,44 @@ class Game {
             captures: this.runCaptures.filter((capture) => capture.level === this.level.number),
             idFn: this.idFn
         });
+        const marathon = this.playerCount === 1 && this.level.number === TOTAL_LEVEL_COUNT && this.difficulty !== 'cadet' &&
+            this.pilot.isPilot && this.runStartLevel === 1 && this.runRecords.length === TOTAL_LEVEL_COUNT - 1 &&
+            this.runRecords.every((entry, index) => entry.level === index + 1 && entry.difficulty === this.difficulty);
+        if (marathon) {
+            const awards = [];
+            if (this.difficulty === 'ace') awards.push({
+                kind: 'marathon-completion', tier: 2, level: TOTAL_LEVEL_COUNT,
+                at: record.completedAt, prize: { ...MARATHON_PRIZE, nftContract: COLLECTION }
+            });
+            const perfect = this.runStats.livesLost === 0 &&
+                [1, 2].every((tier) => this.runCaptures.some((capture) => capture.tier === tier && !capture.kind));
+            if (perfect) awards.push({
+                kind: `perfect-${this.difficulty}`, tier: 2, level: TOTAL_LEVEL_COUNT,
+                at: record.completedAt, prize: { ...PERFECT_PRIZES[this.difficulty], nftContract: COLLECTION },
+                ...(this.difficulty === 'pilot' ? { bonus: { ...PILOT_BONUS } } : {})
+            });
+            this.runCaptures.push(...awards);
+            record.marathon = {
+                schema: 'voyager-marathon/1', runId: this.runId, seed: this.seed,
+                startLevel: 1, finalLevel: TOTAL_LEVEL_COUNT, difficulty: this.difficulty, perfect,
+                startedAt: new Date(this.runStartedAt).toISOString(), completedAt: record.completedAt,
+                totals: { ...clone(this.runStats), victories: this.runStats.victories + 1 },
+                levels: [...this.runRecords, record].map((entry) => ({
+                    recordId: entry.id, level: entry.level, startedAt: entry.startedAt,
+                    completedAt: entry.completedAt, durationSec: entry.durationSec,
+                    score: clone(entry.score), ship: clone(entry.ship), stats: clone(entry.stats)
+                })),
+                awards: this.runCaptures.map((capture) => ({
+                    kind: capture.kind || 'guarded-pickup', level: capture.level, tier: capture.tier,
+                    earnedAt: capture.at, chainId: 8453, nftContract: COLLECTION,
+                    tokenId: String(capture.prize.tokenId), project: capture.prize.project,
+                    metadataURI: capture.prize.metadataURI, quantity: 1,
+                    ...(capture.bonus ? { bonus: clone(capture.bonus) } : {}),
+                    status: 'earned-awaiting-referee-and-funded-claim'
+                }))
+            };
+            for (const award of awards) this.emit('supporterCaptured', { ...clone(award), player: 0 });
+        }
         this.lastRecord = record;
         this.runRecords.push(clone(record));
         this.save.wins.push(record);
@@ -1705,7 +1770,7 @@ class Game {
         }
         if (next <= LEVEL_COUNT || progress.sector2Unlocked) progress.unlocked = Math.max(progress.unlocked, next);
         this.saveProgress();
-        if (this.level.number === LEVEL_COUNT && progress.sector2Unlocked && this.difficulty === 'ace' && this.pilot.isPilot) {
+        if (this.level.number === LEVEL_COUNT && progress.sector2Unlocked && this.difficulty !== 'cadet' && this.pilot.isPilot) {
             this.state = 'warping';
             this.stateTimer = WARP_TIME;
             this.emit('warpStart', { from: 10, to: 11 });
@@ -1832,7 +1897,7 @@ Game.groupPlayers = require('./multiplayer').groupPlayers;
 
 module.exports = Game;
 
-},{"./bullet":4,"./collision":5,"./difficulty":6,"./inputlog":9,"./levelLayout":10,"./levels":11,"./multiplayer":12,"./rng":30,"./save":31,"./spaceship":32,"./stats":33,"./vault":34,"./weapons":35}],8:[function(require,module,exports){
+},{"./bullet":4,"./collision":5,"./difficulty":6,"./inputlog":9,"./levelLayout":10,"./levels":11,"./multiplayer":12,"./prizes":13,"./rng":30,"./ruleset":31,"./save":32,"./spaceship":33,"./stats":34,"./vault":35,"./weapons":36}],8:[function(require,module,exports){
 const ACTIONS = Object.freeze({
     start: 9,
     view: 3,
@@ -1864,6 +1929,8 @@ function createInput({
     maxPlayers = MAX_PLAYERS
 } = {}) {
     const keyState = { left: false, right: false, up: false, down: false, fire: false, special: false, weaponNext: false, view: false };
+    const heldKeys = new Map();
+    const virtualSources = new Map();
     const gamepads = new Map();
     const connected = new Map();
     const previousButtons = new Map();
@@ -1878,7 +1945,8 @@ function createInput({
         ArrowUp: 'up', w: 'up', W: 'up',
         ArrowDown: 'down', s: 'down', S: 'down',
         ' ': 'fire',
-        b: 'special', B: 'special', Shift: 'special'
+        b: 'special', B: 'special', Shift: 'special',
+        e: 'weaponNext', E: 'weaponNext'
     };
 
     function updatePlayers() {
@@ -1971,6 +2039,17 @@ function createInput({
         const count = Math.max(1, keyboardSlot + 1, ...Array.from(slots.values(), (slot) => slot + 1));
         const inputs = Array.from({ length: Math.min(cap, count) }, () => ({ left: false, right: false, up: false, down: false, fire: false, special: false, weaponNext: false, view: false, ax: 0, ay: 0 }));
         if (inputs[keyboardSlot]) Object.assign(inputs[keyboardSlot], keyState);
+        for (const [source, entry] of virtualSources) {
+            const controls = inputs[keyboardSlot];
+            if (!controls) continue;
+            for (const action of Object.keys(keyState)) {
+                controls[action] = controls[action] || Boolean(entry.state[action]) || entry.pending.has(action);
+            }
+            controls.ax = Math.max(-1, Math.min(1, controls.ax + entry.state.ax));
+            controls.ay = Math.max(-1, Math.min(1, controls.ay + entry.state.ay));
+            entry.pending.clear();
+            if (!Object.values(entry.state).some(Boolean)) virtualSources.delete(source);
+        }
 
         for (const [index, slot] of slots) {
             if (!inputs[slot]) continue;
@@ -2000,19 +2079,44 @@ function createInput({
         if (!event || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
         if (shouldIgnoreKeyboard(event)) return;
         const action = keyActions[event.key];
-        if (action) keyState[action] = true;
+        if (action) {
+            heldKeys.set(event.code || String(event.key).toLowerCase(), action);
+            keyState[action] = true;
+        }
     }
     function keyup(event) {
         const action = event && keyActions[event.key];
-        if (action) keyState[action] = false;
+        const token = event && (event.code || String(event.key).toLowerCase());
+        const heldAction = heldKeys.get(token) || action;
+        heldKeys.delete(token);
+        if (heldAction) keyState[heldAction] = Array.from(heldKeys.values()).includes(heldAction);
+    }
+    function setVirtualState(source, state) {
+        if (!state) { virtualSources.delete(source); return; }
+        const previous = virtualSources.get(source);
+        const pending = previous ? previous.pending : new Set();
+        const next = { ax: 0, ay: 0 };
+        for (const action of Object.keys(keyState)) {
+            next[action] = Boolean(state[action]);
+            // Preserve a tap shorter than one animation frame, but never latch steering.
+            if (['fire', 'special', 'weaponNext'].includes(action) && next[action] && !previous?.state[action]) pending.add(action);
+        }
+        for (const axis of ['ax', 'ay']) next[axis] = Number.isFinite(state[axis]) ? Math.max(-1, Math.min(1, state[axis])) : 0;
+        virtualSources.set(source, { state: next, pending });
     }
     function clear() {
+        heldKeys.clear();
+        virtualSources.clear();
         Object.keys(keyState).forEach((key) => { keyState[key] = false; });
     }
+    const visibilityChanged = () => { if (documentObject.hidden) clear(); };
+    const focusChanged = (event) => { if (shouldIgnoreKeyboard(event)) clear(); };
 
     if (documentObject && documentObject.addEventListener) {
         documentObject.addEventListener('keydown', keydown);
         documentObject.addEventListener('keyup', keyup);
+        documentObject.addEventListener('visibilitychange', visibilityChanged);
+        documentObject.addEventListener('focusin', focusChanged);
     }
     const handleConnect = (event) => {
         const pad = event && event.gamepad;
@@ -2031,14 +2135,18 @@ function createInput({
     return {
         poll: pollGamepads,
         getInputs: () => lastInputs,
+        setVirtualState,
         clear,
         get players() { return Math.min(cap, Math.max(1, slots.size + 1)); },
         get keyboardSlot() { return keyboardSlot; },
         get assignments() { return new Map(slots); },
         destroy() {
+            clear();
             if (documentObject && documentObject.removeEventListener) {
                 documentObject.removeEventListener('keydown', keydown);
                 documentObject.removeEventListener('keyup', keyup);
+                documentObject.removeEventListener('visibilitychange', visibilityChanged);
+                documentObject.removeEventListener('focusin', focusChanged);
             }
             if (windowObject && windowObject.removeEventListener) {
                 windowObject.removeEventListener('blur', clear);
@@ -2332,13 +2440,22 @@ const PRIZES = {
         { project: 'DecentMarket', version: '0.3.1', tokenId: 71, label: 'DecentMarket v0.3.1 #71', metadataURI: 'ipfs://QmUR29d2NeRH94ceLDxHqDvDi4eNdSRTNM1wZ6UPDsvWqi' }
     ],
     2: [
-        { project: 'DecentBusking', version: '1.0.0', tokenId: 75, label: 'DecentBusking v1.0.0 #75', metadataURI: 'ipfs://QmZroFCEhaKoctVqW682Uzv5i6WWiQtuWvTAYkQBYfH6TD' },
-        { project: 'BigNuten_Vanilla', version: '3.3.0', tokenId: 76, label: 'BigNuten_Vanilla v3.3.0 #76', metadataURI: 'ipfs://QmSrAwCU5p1ga3RzpuDHZxezsNjob76ZSFpRzCuG15yYqU' },
+        { project: 'DecentCalendar', version: '0.1.0', tokenId: 77, label: 'DecentCalendar v0.1.0 #77', metadataURI: 'ipfs://QmPqCy2g53t4BaffprtfjfM4L5imACB1nWZK63HyN9o3Tj' },
         { project: 'DecentPilgrimages', version: '0.1.1', tokenId: 78, label: 'DecentPilgrimages v0.1.1 #78', metadataURI: 'ipfs://QmNe9SYSyrZYV66X29Wp4hBLbCDpQDjnJsAJLDdAytALEN' },
         { project: 'DecentCanopy', version: '0.1.0', tokenId: 79, label: 'DecentCanopy v0.1.0 #79', metadataURI: 'ipfs://QmQqQtuSeab78F3pdBcMbvSopYZLa51zJ4JxcodQ2ugy9d' }
     ]
 };
-module.exports = { COLLECTION, ESCROW, PRIZES };
+const MARATHON_PRIZE = {
+    project: 'DecentVoyager', version: '1.0.0', tokenId: 80,
+    label: 'DecentVoyager v1.0.0 #80',
+    metadataURI: 'ipfs://QmacnQSJCxmqjWnMxDqhkLXCJv1zqp1EKoeF7nY782rGpe'
+};
+const PERFECT_PRIZES = {
+    ace: { project: 'DecentBusking', version: '1.0.0', tokenId: 75, label: 'DecentBusking v1.0.0 #75', metadataURI: 'ipfs://QmZroFCEhaKoctVqW682Uzv5i6WWiQtuWvTAYkQBYfH6TD' },
+    pilot: { project: 'BigNuten_Vanilla', version: '3.3.0', tokenId: 76, label: 'BigNuten_Vanilla v3.3.0 #76', metadataURI: 'ipfs://QmSrAwCU5p1ga3RzpuDHZxezsNjob76ZSFpRzCuG15yYqU' }
+};
+const PILOT_BONUS = { chainId: 8453, token: '0x25ACb773159Af5a5c672DEfe31C7Fff6a9A93736', symbol: 'BNUT', decimals: 18, amount: '100000000000000000000' };
+module.exports = { COLLECTION, ESCROW, PRIZES, MARATHON_PRIZE, PERFECT_PRIZES, PILOT_BONUS };
 
 },{}],14:[function(require,module,exports){
 // Image preloader. Renderers ask for images by key and fall back to vector
@@ -4086,7 +4203,7 @@ function createHud() {
 
 module.exports = { createHud, rollUp, litSegments, difficultyColor, difficultyName, panelBox, POWER_SEGMENTS, DIFFICULTY_COLORS };
 
-},{"../levels":11,"../weapons":35,"./font":19,"./players":23,"./projection":26,"./shapes":28}],22:[function(require,module,exports){
+},{"../levels":11,"../weapons":36,"./font":19,"./players":23,"./projection":26,"./shapes":28}],22:[function(require,module,exports){
 const { VIEW, projectOverview } = require('./projection');
 const { drawAsteroid, drawPickup, drawShipTop, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { createOverviewBackground } = require('./background');
@@ -5481,7 +5598,7 @@ module.exports = {
     drawEnemyBullet
 };
 
-},{"../weapons":35,"./assets":14,"./font":19}],29:[function(require,module,exports){
+},{"../weapons":36,"./assets":14,"./font":19}],29:[function(require,module,exports){
 const { drawGlow, drawAsteroid } = require('./shapes');
 const { getImage, supporterImageKey } = require('./assets');
 const { pixelText } = require('./font');
@@ -5630,6 +5747,9 @@ function pick(rng, items) {
 module.exports = { createRng, range, pick };
 
 },{}],31:[function(require,module,exports){
+module.exports = 'voyager-1.1-handling-rewards';
+
+},{}],32:[function(require,module,exports){
 // Save format, validation, legacy migration and quota-tolerant persistence.
 const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('./levels');
 const { DIFFICULTY_IDS, isDifficulty, difficultyLabel } = require('./difficulty');
@@ -5841,6 +5961,7 @@ function validateLevelRecord(record, where = 'Level record') {
         game: str(record.game, `${where} game`),
         gameVersion: str(record.gameVersion, `${where} gameVersion`, 20),
         level,
+        ...(record.marathon === undefined ? {} : { marathon: validateMarathon(record, where) }),
         captures: validateCaptures(record.captures ?? [], `${where} captures`),
         levelName: str(record.levelName, `${where} levelName`, 60),
         difficulty: record.difficulty,
@@ -5898,6 +6019,47 @@ function validateLevelRecord(record, where = 'Level record') {
             misses: tuples(log.misses, `${where} misses`, BATTLE_LOG_CAPS.misses, ['n', 'n'])
         }
     };
+}
+
+function validateMarathon(record, where) {
+    const marathon = record.marathon;
+    if (!isPlainObject(marathon) || marathon.schema !== 'voyager-marathon/1' ||
+        record.level !== 20 || record.difficulty === 'cadet' || marathon.difficulty !== record.difficulty ||
+        marathon.startLevel !== 1 || marathon.finalLevel !== 20 || typeof marathon.perfect !== 'boolean' ||
+        !Array.isArray(marathon.levels) || marathon.levels.length !== 20 ||
+        !Array.isArray(marathon.awards) || marathon.awards.length > 4) fail(`${where} has an invalid marathon receipt.`);
+    const levels = marathon.levels.map((entry, index) => {
+        if (!isPlainObject(entry) || entry.level !== index + 1) fail(`${where} marathon levels must be ordered 1–20.`);
+        const checked = validateLevelRecord({
+            ...record, ...entry, id: entry.recordId, marathon: undefined, captures: [],
+            battleLog: { levelLength: 1, worldWidth: 800, path: [], kills: [], hitsTaken: [], pickups: [], misses: [] }
+        }, `${where} marathon level ${index + 1}`);
+        return { recordId: checked.id, level: checked.level, startedAt: checked.startedAt, completedAt: checked.completedAt,
+            durationSec: checked.durationSec, score: checked.score, ship: checked.ship, stats: checked.stats };
+    });
+    const awards = marathon.awards.map((award) => {
+        if (!isPlainObject(award) || !['guarded-pickup', 'marathon-completion', 'perfect-ace', 'perfect-pilot'].includes(award.kind) ||
+            award.chainId !== 8453 || !/^0x[0-9a-f]{40}$/i.test(award.nftContract || '') ||
+            !/^\d+$/.test(award.tokenId) || award.quantity !== 1) fail(`${where} has an invalid marathon award.`);
+        let bonus;
+        if (award.bonus !== undefined) {
+            const { PILOT_BONUS } = require('./prizes');
+            if (award.kind !== 'perfect-pilot' || !isPlainObject(award.bonus) ||
+                Object.entries(PILOT_BONUS).some(([key, value]) => award.bonus[key] !== value)) fail(`${where} has an invalid Pilot bonus.`);
+            bonus = { ...PILOT_BONUS };
+        }
+        return { kind: award.kind, level: num(award.level, 'Award level', { min: 1, max: 20, integer: true }),
+            tier: num(award.tier, 'Award tier', { min: 1, max: 2, integer: true }),
+            earnedAt: isoDate(award.earnedAt, 'Award earned date'), chainId: 8453, nftContract: award.nftContract,
+            tokenId: award.tokenId, project: str(award.project, 'Award project', 100),
+            metadataURI: str(award.metadataURI, 'Award metadata', 300), quantity: 1,
+            ...(bonus ? { bonus } : {}), status: str(award.status, 'Award status', 100) };
+    });
+    return { schema: marathon.schema, runId: str(marathon.runId, 'Marathon run ID', 200),
+        seed: num(marathon.seed, 'Marathon seed', { max: 4294967295, integer: true }),
+        startLevel: 1, finalLevel: 20, difficulty: record.difficulty, perfect: marathon.perfect,
+        startedAt: isoDate(marathon.startedAt, 'Marathon start'), completedAt: isoDate(marathon.completedAt, 'Marathon end'),
+        totals: validateLifetime(marathon.totals), levels, awards };
 }
 
 function assertJsonData(value, depth = 0, ancestors = new Set()) {
@@ -6085,7 +6247,7 @@ module.exports = {
     persistSave
 };
 
-},{"./difficulty":6,"./levels":11,"./stats":33}],32:[function(require,module,exports){
+},{"./difficulty":6,"./levels":11,"./prizes":13,"./stats":34}],33:[function(require,module,exports){
 const { createWeapon } = require('./weapons');
 
 const MIN_X = 20;
@@ -6107,6 +6269,7 @@ class Spaceship {
         this.maxPower = 100;
         this.lives = 3;
         this.weapon = createWeapon();
+        this.weaponTiers = { blaster: 1 };
         this.reset();
     }
 
@@ -6124,7 +6287,7 @@ class Spaceship {
         this.invulnerable = 0;
         this.shield = 0;
         this.bank = 0;
-        this.lateralSpeed = 280;
+        this.lateralSpeed = 360;
         this.forwardSpeed = 190;
     }
 
@@ -6136,7 +6299,7 @@ class Spaceship {
         this.offset += forward * this.forwardSpeed * dt;
         this.offset = Math.min(MAX_OFFSET, Math.max(MIN_OFFSET, this.offset));
         this.y = scrollY + this.offset;
-        this.bank += (steer - this.bank) * Math.min(1, dt * 8);
+        this.bank += (steer - this.bank) * Math.min(1, dt * 24);
         this.cooldown = Math.max(0, this.cooldown - dt);
         this.invulnerable = Math.max(0, this.invulnerable - dt);
         this.shield = Math.max(0, this.shield - dt);
@@ -6149,7 +6312,7 @@ class Spaceship {
 
 module.exports = Spaceship;
 
-},{"./weapons":35}],33:[function(require,module,exports){
+},{"./weapons":36}],34:[function(require,module,exports){
 // Per-level stats, combo tracking, battle log sampling and LevelRecord building.
 //
 // Definitions:
@@ -6449,7 +6612,7 @@ module.exports = {
     buildLevelRecord
 };
 
-},{}],34:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 const { pick, range } = require('./rng');
 const { PRIZES } = require('./prizes');
 const Asteroid = require('./asteroid');
@@ -6481,7 +6644,7 @@ function markGuardDestroyed(vault, guard) {
 }
 module.exports = { chooseVaultLevel, createVault, markGuardDestroyed };
 
-},{"./asteroid":2,"./prizes":13,"./rng":30}],35:[function(require,module,exports){
+},{"./asteroid":2,"./prizes":13,"./rng":30}],36:[function(require,module,exports){
 const Bullet = require('./bullet');
 
 const MAX_TIER = 3;
@@ -6491,9 +6654,9 @@ const WEAPONS = {
     blaster: {
         name: 'Blaster',
         color: '#9ff3ff',
-        cooldown: [0.26, 0.22, 0.18],
-        speed: 540,
-        damage: [1, 1, 1],
+        cooldown: [0.14, 0.12, 0.1],
+        speed: 700,
+        damage: [2, 2, 2],
         size: [3, 3, 3],
         pierce: false,
         pattern: [[[0, 0]], [[-0.05, -6], [0.05, 6]], [[-0.09, -8], [0, 0], [0.09, 8]]]
@@ -6501,8 +6664,8 @@ const WEAPONS = {
     spread: {
         name: 'Spread Cannon',
         color: '#5fffd0',
-        cooldown: [0.34, 0.3, 0.27],
-        speed: 480,
+        cooldown: [0.18, 0.15, 0.13],
+        speed: 660,
         damage: [1, 1, 1],
         size: [3, 3, 3],
         pierce: false,
@@ -6523,14 +6686,14 @@ const WEAPONS = {
         pattern: [[[0, 0]], [[0, -7], [0, 7]], [[-0.03, -10], [0, 0], [0.03, 10]]]
     },
     nova: { name: 'Nova Charger', color: '#fff36a', cooldown: [0.8, 0.72, 0.64], speed: 310, damage: [3, 5, 7], size: [10, 14, 18], pierce: false, pattern: [[[0, 0]], [[0, 0]], [[0, 0]]] },
-    prism: { name: 'Prism Splitter', color: '#67faff', cooldown: [0.42, 0.36, 0.3], speed: 520, damage: [2, 2, 3], size: [5, 6, 7], pierce: false, pattern: [[[0, 0]], [[-0.18, 0], [0, 0], [0.18, 0]], [[-0.28, 0], [-0.14, 0], [0, 0], [0.14, 0], [0.28, 0]]] },
+    prism: { name: 'Prism Splitter', color: '#67faff', cooldown: [0.22, 0.19, 0.16], speed: 740, damage: [3, 3, 4], size: [5, 6, 7], pierce: false, pattern: [[[0, 0]], [[-0.18, 0], [0, 0], [0.18, 0]], [[-0.28, 0], [-0.14, 0], [0, 0], [0.14, 0], [0.28, 0]]] },
     singularity: { name: 'Singularity', color: '#1c3f8a', cooldown: [0.9, 0.82, 0.74], speed: 270, damage: [4, 6, 8], size: [12, 16, 20], pierce: false, pattern: [[[0, 0]], [[0, 0]], [[0, 0]]] },
     plasma: {
         name: 'Plasma Lance',
         color: '#d8e4ef',
-        cooldown: [0.55, 0.48, 0.42],
-        speed: 400,
-        damage: [3, 4, 5],
+        cooldown: [0.24, 0.2, 0.17],
+        speed: 680,
+        damage: [4, 5, 6],
         size: [7, 9, 11],
         pierce: true,
         pattern: [[[0, 0]], [[0, 0]], [[-0.06, -10], [0.06, 10]]]

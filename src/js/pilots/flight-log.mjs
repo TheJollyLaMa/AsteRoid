@@ -58,7 +58,7 @@ export function mountFlightLog({ getGame = () => window.voyager?.game || window.
     const runHash = logHash(runLog, ethers);
     const signature = await signer.signMessage(runHash);
     const result = await outbox.enqueue({ address: pilot.address, run: runLog, runHash, signature });
-    notify(result.length ? 'Flight log saved locally; referee retry is queued.' : 'Flight log signed and sent to the referee.');
+    notify(result.length ? `Flight log saved locally; referee retry is queued. ${result[0].lastError || ''}` : 'Flight log signed and sent to the referee.');
     refreshOutbox();
     return result;
   }

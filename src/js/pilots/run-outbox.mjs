@@ -9,8 +9,11 @@ export function createRunOutbox({ storage = browserStorage(), fetchImpl = global
     const url = baseUrl();
     if (!url) throw new Error('Referee server is not configured');
     const response = await fetchImpl(`${url.replace(/\/$/, '')}/runs`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(item) });
-    if (!response.ok) throw new Error(`Referee rejected run (${response.status})`);
-    return response.json().catch(() => ({}));
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || `Referee rejected run (${response.status})`);
+    }
+    return response.json();
   }
   async function enqueue(item) {
     const items = read();
@@ -21,7 +24,10 @@ export function createRunOutbox({ storage = browserStorage(), fetchImpl = global
   }
   async function retry() {
     const remaining = [];
-    for (const item of read()) { try { await submit(item); } catch { remaining.push(item); } }
+    for (const item of read()) {
+      try { await submit(item); }
+      catch (error) { remaining.push({ ...item, lastError: error.message }); }
+    }
     write(remaining);
     return { sent: read().length === 0, pending: remaining.length };
   }

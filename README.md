@@ -9,7 +9,9 @@ unlock **Sector II** (levels 11–20), win Supporter DNFTs, earn on-chain victor
 
 - Play: https://thejollylama.github.io/DecentVoyager/ (GitHub Pages, from `src/` via `.github/workflows/pages.yml`) · ENS: `voyager.decentagency.eth`.
 - Referee: https://decent-voyager-referee.onrender.com (Render Starter, `render.yaml`; signer `0x3197DDde77b859A8177607ca82E88938B31C02f4`)
-- Base contracts: see `contracts/deployments/base.json`. Supporter DNFT v1.0.0: token 80 on `0xe63E…439B`, DecentMarket escrow listing 10 (1,000 × 10 USDC).
+- Base contracts: see `contracts/deployments/base.json` and `contracts/deployments/base-rewards.json`.
+  Supporter DNFT v1.0.0: token 80 on `0xe63E…439B`, replacement DecentMarket escrow listing 18
+  (900 × 10 USDC at reserve cutover; 100 held for game rewards). Frozen mint evidence records original listing 10.
 - Current ENS snapshot after the repo rename: `bafybeihtlxezj7l5i36bb6qxnbvag4pgbubmi2rdkgreztml33vi6iurlm` (frontend from commit `df2d08d`). The on-chain contenthash is verified; the `eth.limo` gateway currently fails during TLS setup, so use the Pages link above.
 
 The repository was renamed from `AsteRoid` to `DecentVoyager`. Frozen v1.0.0 Supporter metadata and source archives retain their original repository identity; GitHub redirects the old repository links. Historical payroll references, save keys and record schemas remain compatible. New issue links and payroll entries use `DecentVoyager`.
@@ -29,6 +31,7 @@ python3 -m http.server 8907 --directory src   # then open http://127.0.0.1:8907/
 | ←/→ or A/D | Steer |
 | ↑/↓ or W/S | Throttle forward/back within the flight lane |
 | Space (hold) | Fire |
+| E | Cycle weapons immediately (upgrades retained while switching) |
 | V | Switch between **Overview** (top-down map) and **POV** (chase cam with radar) |
 | P / Esc | Pause |
 | M | Mute |
@@ -41,6 +44,22 @@ python3 -m http.server 8907 --directory src   # then open http://127.0.0.1:8907/
 **Gamepads** (standard mapping) hot-plug automatically: press **A** to join (up to 5 ships). Left stick or D-pad
 steers, A/RT fire (hold to charge), B/LT special, X cycles mode on the title, Y/Back toggles the view and Start
 launches or pauses.
+
+Touch devices get a movement pad, Fire/charge, weapon, view and pause buttons.
+Optional calibrated tilt steering requests sensor permission only on demand.
+Fullscreen/landscape is best-effort; portrait controls remain available when a
+wallet browser declines it. See [mobile controls](docs/MOBILE-CONTROLS.md).
+MetaMask Mobile and other browsers exposing an injected Ethereum provider use
+the existing connector; WalletConnect is not bundled.
+
+Steering has no acceleration delay: at 60 Hz a digital input moves 6 world units
+on its first simulation tick, reverses on the next tick, and stops on release.
+Blaster, Spread and Plasma now fire faster; Rapid retains its fast projectile
+role while Plasma pierces. Cycling clears the old cooldown and cannot carry a
+charged Nova shot into another weapon. Future weapons remain gated to Sector II.
+Phone/gamepad axes are quantized before simulation so signed replay matches the
+live flight exactly. The referee rejects old-ruleset flights explicitly after
+the cutover; previously issued claim vouchers are unaffected.
 
 On the title screen, ←/→ picks any unlocked level and ↑/↓ picks the difficulty. Progress, high scores, lifetime
 stats and win records are saved per difficulty in `localStorage`, and can be backed up to IPFS from the header.
@@ -65,10 +84,18 @@ stats and win records are saved per difficulty in `localStorage`, and can be bac
   weapon again to upgrade it up to tier 3. The breathing ENS/ETH orb restores power and **◎** grants a temporary shield.
 - **Charge weapons**: the **Nova Charger** (and, in Sector II, the **Prism Lance** and **Singularity**) charge while
   fire is held and release a bigger blast. The HUD shows the charge meter.
-- **Supporter vaults (Ace + Decent Pilot only)**: once per run a heavily guarded vault appears on level 9 or 10. Destroy
+- **Guarded Supporter pickups (whitelisted Pilot or Ace)**: a heavily guarded pickup appears on level 9 or 10. Destroy
   its guards and fly into it to capture a Supporter DNFT (DecentHead or DecentMarket), refill power and unlock
-  **Sector II**. A second vault on level 19 or 20 holds DecentBusking, BigNuten, DecentCanopy or Decent Pilgrimages.
-  Captures are queued for payout automatically once the referee verifies the run.
+  **Sector II** for that difficulty. A second pickup on level 19 or 20 holds DecentCalendar, DecentCanopy or DecentPilgrimages.
+  Captures become independently claimable only after referee verification and a funded-stock reservation.
+- **Solo marathon receipts**: a single uninterrupted level-1-to-20 Pilot or Ace run records every level's stats,
+  full-run totals and ordered award references in its level-20 receipt. Starting at a later unlocked level is
+  not a marathon. An Ace completion earns Voyager token 80.
+- **Perfect Ace / Perfect Pilot**: finish the full solo marathon with zero lives lost and both guarded pickups.
+  Perfect Ace earns Busking token 75; Perfect Pilot earns BigNuten token 76 plus 100 BNut
+  in one atomic claim. Those two NFTs no longer appear in the random pool. Restoring final lives does not erase
+  lives lost. Award references are earned eligibility, not proof of an on-chain transfer.
+- **Cadet** is practice only: local stats, confidence and progression, without new victory-stamp or prize claims.
 - **Sector II · Far Future** (levels 11–20): a warp transition, new backgrounds, future rocks and wilder weapons.
 - **Start screen**: **Solo voyage** or **Multiplayer battle**. Multiplayer opens a form: same screen (free, 2–5 ships,
   ships shrink as the group grows) or an online round with random pairing, invited wallets (0x… or name.eth) or a
@@ -100,6 +127,43 @@ stats and win records are saved per difficulty in `localStorage`, and can be bac
 - **Payroll bot**: bounty/whitelist workflows and ledgers. See [docs/PAYROLL.md](docs/PAYROLL.md).
 - Reuse and licence decisions are recorded in [docs/REUSE.md](docs/REUSE.md). Art credits are in
   [src/assets/game/CREDITS.md](src/assets/game/CREDITS.md).
+
+### Reward rollout boundary
+
+The funded reserve is 710 NFTs: Head 100, Market 100, Calendar 100, Canopy 100,
+Pilgrimages 100, Voyager 100, Busking 10 and BigNuten 100. Perfect Pilot's matching
+budget is 10,000 BNut (Base token `0x25ACb773159Af5a5c672DEfe31C7Fff6a9A93736`,
+18 decimals). **All 710 NFTs are held in VoyagerRewards.** The 10,000 BNut has been
+minted into `VoyagerRewards` at `0xCa55A59BD2c15D0F11Ae5f7e7E96Bb58eb0B7DE5`
+on Base: [mint receipt](https://basescan.org/tx/0x19263be090025e5b504e32275e1023bc60e515a0676a2bda8282f045e04bda72).
+The public execution records are `contracts/deployments/base-rewards.json` and
+`contracts/deployments/base-reserves.json`. Reserve custody and reduced sale
+quantities were independently checked at Base block 53644409.
+The original NFT claim contract does not transfer ERC-20 tokens; new `VoyagerRewards`
+bundles transfer ERC-1155, ERC-20 and/or native ETH atomically, tied to the win-record ID.
+Perfect Pilot claims must use that escrow, never an NFT-only voucher plus a promise
+of a later BNut transfer. Do not advertise rewards as paid or claimable before custody
+funding and the new deployment are verified.
+
+Delisting/relisting escrow stock changes listing IDs. Coordinate all storefronts
+and release-evidence consumers; preserve each original price, including Busking's
+100 USDC price. Replacement listings are 11/12/13/14/15/16/17/18 for
+Head/Market/Busking/BigNuten/Calendar/Pilgrimages/Canopy/Voyager respectively.
+Each original release has supplemental `supporter-current-listing.json` evidence;
+frozen mint assets remain unchanged. The shared Head buyer also resolves retired
+links only to a unique same-token, same-price active replacement.
+Deploy the matching frontend/referee ruleset together; old flight tickets are
+rejected explicitly rather than replayed under changed seeded prize tables.
+Custody is not a guarantee of eligibility, remaining stock or a successful claim.
+
+Reuse: adapt the existing `Game.completeLevel`, `LevelTracker` totals, `buildMetadata`,
+referee tier-scoped vouchers and `createQueueWriter` rather than introduce another
+receipt pipeline. The new multi-asset escrow adapts the existing pilots, signing and
+custody patterns because the deployed NFT-only contract cannot transfer fungible assets.
+Calendar evidence comes from its public v0.1.0 `supporter-minted.json`,
+token 77; BNut identity follows BigNuten's Base `js/contracts.js` configuration.
+The receiving-game marathon and reservation tests verify the integration; a real
+production winning-flight queue append and funded claim remain an acceptance gate.
 
 ## Code layout
 

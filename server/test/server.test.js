@@ -18,12 +18,13 @@ const REFEREE_CONTRACTS = {
   arenaAddress: '0x0000000000000000000000000000000000000001',
   stampsAddress: '0x0000000000000000000000000000000000000002',
   prizesAddress: '0x0000000000000000000000000000000000000003',
+  rewardsAddress: '0x0000000000000000000000000000000000000004',
   nftAddress: '0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B'
 };
 
 function sampleRun(overrides = {}) {
   return {
-    runId: 'test-run-1', seed: 777, difficulty: 'cadet', startLevel: 1,
+    runId: 'test-run-1', ruleset: require('../../src/js/ruleset'), seed: 777, difficulty: 'cadet', startLevel: 1,
     players: 1, pilot: { address: '0x0000000000000000000000000000000000000001', isPilot: true },
     frames: [[{}]], ...overrides
   };
@@ -83,18 +84,19 @@ test('runId is idempotent and non-pilots are rejected by HTTP', async (t) => {
     env: { CHAIN_ID: '84532', ...REFEREE_CONTRACTS, CORS_ORIGINS: 'http://localhost:8907' },
     pilotRegistry: { isPilot: async (address) => address.toLowerCase() === player.address.toLowerCase(), isAdmin: async () => false },
     vouchers,
+    rewardInventory: { async read() { return { stock: 100, claimed: false }; } },
     queues: {
       async append(kind, item) { queued.push({ kind, item }); return { status: 'queued' }; },
       async read() { return { pending: [] }; }
     },
     pinata: { async pinRecord() { return { status: 'skipped', reason: 'test', metadataURI: '', imageURI: '' }; } },
-    replay: async () => { replayCalls += 1; return { ...sampleResult(), captures: [{ tier: 1, prize: { project: 'DecentHead', tokenId: 70, label: 'DecentHead v2.0.0 #70' } }, { tier: 2, prize: { project: 'DecentCanopy', tokenId: 79, label: 'DecentCanopy v0.1.0 #79' } }] }; }
+    replay: async () => { replayCalls += 1; return { ...sampleResult(), captures: [{ tier: 1, level: 1, prize: { project: 'DecentHead', tokenId: 70, label: 'DecentHead v2.0.0 #70' } }, { tier: 2, level: 1, prize: { project: 'DecentCanopy', tokenId: 79, label: 'DecentCanopy v0.1.0 #79' } }] }; }
   });
   await new Promise((resolve) => service.server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve) => service.server.close(resolve)));
   const url = `http://127.0.0.1:${service.server.address().port}`;
   const ticket = service.ticketService.issue(player.address);
-  const run = sampleRun({ pilot: { address: player.address, isPilot: true }, seed: ticket.ticket.seed, ticket });
+  const run = sampleRun({ difficulty: 'pilot', pilot: { address: player.address, isPilot: true }, seed: ticket.ticket.seed, ticket });
   const signature = await player.signMessage(runHash(run));
   const request = () => fetch(`${url}/runs`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -111,7 +113,7 @@ test('runId is idempotent and non-pilots are rejected by HTTP', async (t) => {
   assert.equal(queued.length, 3);
   assert.deepEqual(queued.map((entry) => entry.kind).sort(), ['prizes', 'prizes', 'stamps']);
   assert.equal(firstBody.vouchers.length, 3);
-  const prizeRunIds = firstBody.vouchers.filter((v) => v.kind === 'prize').map((v) => v.voucher.runId);
+  const prizeRunIds = firstBody.vouchers.filter((v) => v.kind === 'prize').map((v) => v.voucher.claimId);
   assert.equal(new Set(prizeRunIds).size, 2, 'each capture is independently claimable on VoyagerPrizes');
   assert.equal(firstBody.pinning[0].status, 'skipped');
   const fetchedVouchers = await fetch(`${url}/vouchers/${player.address}`);
@@ -162,6 +164,11 @@ test('flight tickets are pilot-only, signed, seed-bound, expiring, and single us
   assert.ok(Number.isInteger(firstTicket.body.ticket.seed) && firstTicket.body.ticket.seed >= 0 && firstTicket.body.ticket.seed <= 0xffffffff);
   assert.equal(Date.parse(firstTicket.body.ticket.expiresAt) - Date.parse(firstTicket.body.ticket.issuedAt), 6 * 60 * 60 * 1000);
   assert.match(firstTicket.body.mac, /^0x[\da-f]{64}$/i);
+  const oldBuild = await playerRunRequest(pilot, sampleRun({
+    runId: 'old-build', ruleset: 'older-build', seed: firstTicket.body.ticket.seed, ticket: firstTicket.body
+  }));
+  assert.equal(oldBuild.status, 422);
+  assert.match((await oldBuild.json()).error, /older game ruleset/);
 
   const badMacRun = sampleRun({ runId: 'ticket-bad-mac', seed: firstTicket.body.ticket.seed, pilot: { address: pilot.address, isPilot: true }, ticket: { ...firstTicket.body, mac: `0x${'0'.repeat(64)}` } });
   const badMac = await playerRunRequest(pilot, badMacRun);

@@ -7,10 +7,46 @@ The Hardhat project is isolated in `contracts/`; it compiles Solidity 0.8.26 (co
 - **VoyagerPilots** is the shared permission and game registry. `PILOT_MANAGER_ROLE` controls `setPilots(address[] accounts, bool enabled)` (maximum five addresses per transaction); `GAME_MANAGER_ROLE` controls `registerGame(bytes32 gameId, address referee)`. `isPilot(address)` is the entry gate. The default admin grants/revokes roles and pauses the registry.
 - **VoyagerArena** is reusable for any registered game. `createRound(gameId, mode, entryFee, maxPlayers, joinDeadline)` snapshots the current referee; `mode` is 0 (co-op) or 1 (versus), and `maxPlayers` is 1–5. `join(roundId)` transfers the pilot's USDC entry fee. `settle(roundId, survivors, nonce, deadline, signature)` validates the round referee's typed signature. Winners receive equal pull credits; integer remainder and the configurable (default 0, maximum 10%) fee accrue to `treasuryAccrued`. An empty survivor list gives every joined player their full fee back. `claim(roundId)` withdraws a winner/refund credit. `cancelExpiredRound(roundId)` credits full refunds after the join deadline plus seven days. Treasury withdrawal is separately gated by `TREASURY_ROLE`.
 - **VoyagerPrizes** holds ERC-1155 awards transferred in by an owner. `claim(gameId, voucher, signature)` verifies a referee voucher and sends one edition to the named player. A run ID and `(player, tokenId)` can each be used only once. `adminRelease(to, nftContract, tokenId, amount)` is restricted to `PRIZE_MANAGER_ROLE`.
+- **VoyagerRewards** is the multi-asset successor for new claims. A signed `RewardBundle`
+  can contain one ERC-1155 token/quantity, one ERC-20 token/amount, native ETH, or a
+  combination. `claim(bundle, signature)` transfers the full bundle to its signed
+  recipient or reverts everything. The signature binds the game, assets and amounts,
+  award/claim IDs, level receipt record ID and deadline. Registered pilots only;
+  claims, awards per player/game and NFT types per player are replay-protected.
+  Recovery of custody requires `REWARD_MANAGER_ROLE` and a paused contract.
+  Managers can still invalidate outstanding rewards through custody recovery;
+  pause, reconcile unexpired vouchers and communicate before recovering funds.
 - **VoyagerStamps** issues ERC-1155 level-pass DNFTs with ERC-2981 royalties. `mintWithVoucher(gameId, voucher, signature)` is player-paid and caller-bound. `mintBatch(to, recordIds, levels, difficulties, metadataURIs)` is a `MINTER_ROLE` admin path limited to five records per transaction. Record IDs mint only once; each token keeps its own metadata URI.
 - **MockUSDC** (six decimals) and **MockERC1155** are test/local-demo fixtures only.
 
 All voucher domains are `{ name: "DecentVoyager", version: "1", chainId, verifyingContract }`; EIP-712 type strings are exported in `src/js/chain/eip712.json`. For settlement, `survivorsHash` is `keccak256(abi.encodePacked(sortedAddresses))`, where addresses are sorted ascending by numeric address. `VoyagerArena.settlementHash()` and `settlementDigest()` expose the canonical encoding/digest for integrations. The record ID for stamps is `keccak256(utf8(LevelRecord.id))`.
+
+## Multi-asset reserve rollout
+
+`scripts/deploy-rewards.js` is an explicit Base-only deploy/funding operation, guarded
+by `EXECUTE_REWARDS_FUNDING=yes`. It verifies the creator signer, BNut minter role,
+18 decimals and supply headroom; deploys `VoyagerRewards` against the existing
+pilot registry; then mints exactly 10,000 BNut directly to its custody. Transaction
+hashes are persisted before waiting, so a failed confirmation step resumes the
+same transactions instead of deploying/minting again. The recorded deployment
+calldata must match the compiled source and expected constructor.
+
+The public execution record is `deployments/base-rewards.json`. The original
+`deployments/base.json` and NFT-only claim address remain intact for old vouchers.
+The new deployment does not by itself activate the new game rules or fund DNFTs.
+The 710-NFT reserve was funded through the coordinated escrow listing cutover
+recorded in `deployments/base-reserves.json`; original sale listings were
+delisted before each withdrawal and reduced quantities relisted at unchanged prices.
+Native ETH is supported but no native-ETH reward budget has been approved or funded.
+Only standard non-rebasing, non-fee-on-transfer ERC-20 assets such as BNut are
+supported by the exact-amount reservation model.
+
+Base deployment: `0xCa55A59BD2c15D0F11Ae5f7e7E96Bb58eb0B7DE5`;
+deployment transaction `0x2447a90468b84f9407db37d8b6fe1400c72a318eeb4b246572121dadd3265b00`.
+Exactly 10,000 BNut was minted directly to its custody in transaction
+`0x19263be090025e5b504e32275e1023bc60e515a0676a2bda8282f045e04bda72`.
+All 710 approved NFT units are also in custody, independently verified at Base
+block 53644409. No ETH reward budget was transferred.
 
 ## Plugging in another dapp/game
 
@@ -30,13 +66,13 @@ npx hardhat test
 npx hardhat run scripts/local-e2e.js
 ```
 
-The local demo deploys fixtures only and demonstrates registration, pilot setup, a three-player round, a referee-signed two-survivor settlement and payout, prize funding/claim, and stamp voucher mint. `scripts/deploy.js` deploys the suite for the selected Hardhat network, writes `contracts/deployments/<network>.json`, exports contract ABIs to `src/js/chain/abi/`, and updates `src/js/chain/addresses.json`. Hardhat uses a local six-decimal mock USDC; Base and Base Sepolia use the configured Circle addresses. Only run deployment commands on a network when an owner has explicitly approved it and supplied secrets locally; no deployment has been run against a real network for this task.
+The local demo deploys fixtures only and demonstrates registration, pilot setup, a three-player round, a referee-signed two-survivor settlement and payout, prize funding/claim, and stamp voucher mint. `scripts/deploy.js` deploys the suite for the selected Hardhat network, writes `contracts/deployments/<network>.json`, exports contract ABIs to `src/js/chain/abi/`, and updates `src/js/chain/addresses.json`. Hardhat uses a local six-decimal mock USDC; Base and Base Sepolia use the configured Circle addresses. Only run deployment commands on a network when an owner has explicitly approved it and supplied secrets locally. The Base deployment records above document the approved live executions.
 
-## Owner key-in checklist — not executed
+## Original suite deployment checklist
 
 - Keep `DEPLOYER_PRIVATE_KEY`, `BASE_RPC_URL`, and `BASE_SEPOLIA_RPC_URL` in the operator's secret store or local ignored `contracts/.env`. Deploy to Base Sepolia first; verify the constructor parameters and grant operational roles from the intended owner/multisig. No keys belong in this repository.
 - Register the Decent Voyager `gameId` and referee address using `VoyagerPilots.registerGame`; grant `PILOT_MANAGER_ROLE` and `GAME_MANAGER_ROLE` only to the appropriate administrators. Set the intended treasury and, only if approved, a nonzero protocol fee.
-- The Base Supporter collection is `0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B`; its described holder is DecentMarket escrow `0x31b07b83e99A9bdF379bf40225b8A80d3804C89d`. After independently confirming the collection, escrow, ownership, quantities, and recipient, the escrow owner must fund `VoyagerPrizes` by calling `DecentEscrow.withdrawNFT(0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B, tokenId, amount, VoyagerPrizes)` for token IDs **70, 71, 75, 76, 78, and 79**. This is a checklist only; no escrow call or transfer was made.
+- The Base Supporter collection is `0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B`; its sale holder is DecentMarket escrow `0x31b07b83e99A9bdF379bf40225b8A80d3804C89d`. New awards use the separately recorded `VoyagerRewards` custodian, not the original NFT-only `VoyagerPrizes`. Funded token IDs **70, 71, 75, 76, 77, 78, 79 and 80** total 710 units. Replacement sale listing IDs are **11–18** in that order; original mint evidence remains historical.
 - Verify each deployment on BaseScan (or Base Sepolia Basescan) using the recorded constructor arguments and matching Solidity 0.8.26, optimizer 200, IR, and Cancun settings. For example, after deploying and storing constructor values locally:
   ```sh
   npx hardhat verify --network base "$VOYAGER_PILOTS" "$ADMIN"

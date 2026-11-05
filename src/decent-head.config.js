@@ -33,9 +33,9 @@ window.DECENT_CONFIG = {
     contract: '0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B',
     tokenId: '80',
     escrowAddress: '0x31b07b83e99A9bdF379bf40225b8A80d3804C89d',
-    listingId: '10',
+    listingId: '18',
     chain: { chainId: 8453, chainName: 'Base', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://mainnet.base.org'], blockExplorerUrls: ['https://basescan.org'] },
-    marketUrl: 'https://thejollylama.github.io/DecentHead/supporter/buy.html?chainId=8453&escrow=0x31b07b83e99A9bdF379bf40225b8A80d3804C89d&listingId=10',
+    marketUrl: 'https://thejollylama.github.io/DecentHead/supporter/buy.html?chainId=8453&escrow=0x31b07b83e99A9bdF379bf40225b8A80d3804C89d&listingId=18&priceUSDC=10000000',
     paymentToken: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
     expectedPriceAmount: '10000000'
   }

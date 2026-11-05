@@ -98,3 +98,72 @@ test('gamepad A does not join outside the title screen and max players is capped
     assert.equal(input.players, 2);
     assert.equal(input.assignments.size, 1);
 });
+
+test('keyboard responds immediately and does not release another held alias', () => {
+    const doc = eventTarget();
+    const input = createInput({ documentObject: doc, windowObject: eventTarget(), navigatorObject: {} });
+    doc.emit('keydown', { key: 'a', code: 'KeyA', repeat: false });
+    assert.equal(input.poll()[0].left, true);
+    doc.emit('keydown', { key: 'ArrowLeft', code: 'ArrowLeft' });
+    doc.emit('keyup', { key: 'A', code: 'KeyA' });
+    assert.equal(input.poll()[0].left, true);
+    doc.emit('keyup', { key: 'ArrowLeft', code: 'ArrowLeft' });
+    assert.equal(input.poll()[0].left, false);
+    doc.emit('keydown', { key: 'e', code: 'KeyE' });
+    assert.equal(input.poll()[0].weaponNext, true);
+    doc.emit('keyup', { key: 'E', code: 'KeyE' });
+    assert.equal(input.poll()[0].weaponNext, false);
+});
+
+test('virtual sources combine with keyboard and bound analog values without taking gamepad slots', () => {
+    const doc = eventTarget();
+    const input = createInput({ documentObject: doc, windowObject: eventTarget(), navigatorObject: {} });
+    doc.emit('keydown', { key: 'a' });
+    input.setVirtualState('tilt', { ax: 100, ay: -100 });
+    input.setVirtualState('finger', { fire: true });
+    let controls = input.poll()[0];
+    assert.equal(input.players, 1);
+    assert.equal(controls.ax, 1);
+    assert.equal(controls.ay, -1);
+    assert.equal(controls.left, true);
+    assert.equal(controls.fire, true);
+    input.setVirtualState('finger', {});
+    controls = input.poll()[0];
+    assert.equal(controls.fire, false);
+    assert.equal(controls.ax, 1);
+    input.setVirtualState('tilt', { ax: Infinity, ay: NaN });
+    assert.equal(input.poll()[0].ax, 0);
+    assert.equal(input.poll()[0].ay, 0);
+});
+
+test('sub-frame taps survive exactly one poll while cancelled taps do not fire', () => {
+    const input = createInput({ documentObject: eventTarget(), windowObject: eventTarget(), navigatorObject: {} });
+    for (const action of ['fire', 'special', 'weaponNext']) {
+        input.setVirtualState('touch', { [action]: true });
+        input.setVirtualState('touch', {});
+        assert.equal(input.poll()[0][action], true);
+        assert.equal(input.poll()[0][action], false);
+        input.setVirtualState('touch', { [action]: true });
+        input.setVirtualState('touch', null);
+        assert.equal(input.poll()[0][action], false);
+    }
+});
+
+test('visibility, blur and typing focus clear all held inputs', () => {
+    const doc = eventTarget(), win = eventTarget();
+    const input = createInput({ documentObject: doc, windowObject: win, navigatorObject: {}, shouldIgnoreKeyboard: e => e.typing });
+    for (const leave of [
+        () => { doc.hidden = true; doc.emit('visibilitychange'); },
+        () => win.emit('blur'),
+        () => doc.emit('focusin', { typing: true })
+    ]) {
+        doc.emit('keydown', { key: 'd' });
+        input.setVirtualState('touch', { fire: true, ax: 1 });
+        leave();
+        const controls = input.poll()[0];
+        assert.equal(controls.right, false);
+        assert.equal(controls.fire, false);
+        assert.equal(controls.ax, 0);
+    }
+    input.destroy();
+});

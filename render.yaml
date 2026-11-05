@@ -37,6 +37,8 @@ services:
         sync: false
       - key: VOYAGER_PRIZES_ADDRESS
         sync: false
+      - key: VOYAGER_REWARDS_ADDRESS
+        sync: false
       - key: SUPPORTER_NFT_ADDRESS
         value: 0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B
       - key: BASE_RPC_URL
