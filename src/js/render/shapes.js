@@ -1,5 +1,5 @@
 const { WEAPONS } = require('../weapons');
-const { getImage, getTinted, rockKeyFor, makeCanvas, BREATHE_FRAMES } = require('./assets');
+const { getImage, getTinted, rockKeyFor, futureRockKeyFor, makeCanvas, BREATHE_FRAMES } = require('./assets');
 const { pixelText } = require('./font');
 
 const PICKUP_STYLE = {
@@ -17,6 +17,7 @@ const COLOR_TO_WEAPON = Object.keys(WEAPONS).reduce((map, type) => {
 
 function bulletWeaponType(bullet) {
     if (bullet.weapon && WEAPONS[bullet.weapon]) return bullet.weapon;
+    if (bullet.ownerWeapon && WEAPONS[bullet.ownerWeapon]) return bullet.ownerWeapon;
     return COLOR_TO_WEAPON[String(bullet.color || '').toLowerCase()] || 'blaster';
 }
 
@@ -76,8 +77,8 @@ function drawGlowDot(ctx, x, y, radius, color, alpha = 1) {
 
 // ---------------------------------------------------------------- pixel art
 const SHIP_PALETTE = {
-    W: '#ffffff', C: '#7fd7ff', H: '#ff6cf5', B: '#13284a', D: '#0a1428',
-    M: '#ffe65c', A: '#ff3c8a', P: '#4a1d8a', F: '#ffb347'
+    W: '#ffffff', C: '#7fd7ff', H: '#d8e4ef', B: '#13284a', D: '#0a1428',
+    M: '#ffe65c', A: '#3fb8ff', P: '#1d4a6a', F: '#ffb347'
 };
 
 const SHIP_TOP = [
@@ -147,9 +148,9 @@ function asteroidPath(ctx, asteroid, radius) {
     ctx.closePath();
 }
 
-function drawAsteroid(ctx, asteroid, x, y, radius, alpha = 1, time = 0) {
+function drawAsteroid(ctx, asteroid, x, y, radius, alpha = 1, time = 0, sector2 = false) {
     if (!(radius >= 0.5)) return;
-    const key = rockKeyFor(asteroid.id);
+    const key = sector2 ? futureRockKeyFor(asteroid.id) : rockKeyFor(asteroid.id);
     const img = getImage(key);
     const pulse = 0.6 + 0.4 * Math.sin(time * 7 + asteroid.id);
     const flash = asteroid.flash > 0 ? Math.min(1, asteroid.flash / 0.12) : 0;
@@ -305,7 +306,7 @@ function drawShipTop(ctx, ship, x, y, time = 0, ripples = []) {
             ctx.stroke();
         }
         ctx.restore();
-        drawGlow(ctx, x, y - 8, 9, '#ff6cf5', 0.35);
+        drawGlow(ctx, x, y - 8, 9, '#d8e4ef', 0.35);
     }
     drawShield(ctx, ship, x, y, 30, time, ripples);
 }
@@ -326,8 +327,8 @@ function drawShipChase(ctx, ship, x, y, time = 0, ripples = []) {
             drawGlow(ctx, ex, 7, 18 * flick, '#ff8a2c', 0.9);
             drawGlow(ctx, ex, 7, 7 * flick, '#fff4c8', 0.9);
         }
-        drawGlow(ctx, -36, 0, 7, '#ff3c8a', 0.5 + 0.5 * Math.sin(time * 6));
-        drawGlow(ctx, 36, 0, 7, '#ff3c8a', 0.5 + 0.5 * Math.sin(time * 6 + Math.PI));
+        drawGlow(ctx, -36, 0, 7, '#3fb8ff', 0.5 + 0.5 * Math.sin(time * 6));
+        drawGlow(ctx, 36, 0, 7, '#3fb8ff', 0.5 + 0.5 * Math.sin(time * 6 + Math.PI));
         ctx.restore();
     }
     drawShield(ctx, ship, x, y, 62, time, ripples);
@@ -427,7 +428,33 @@ function drawPlayerBullet(ctx, bullet, x, y, dx, dy, scale = 1, alpha = 1, time 
     const uy = dy / len;
     ctx.save();
     ctx.globalAlpha *= alpha;
-    if (type === 'plasma') {
+    if (type === 'singularity') {
+        const r = Math.max(4, (bullet.size || 10) * scale * 1.5);
+        const pulse = 0.82 + 0.18 * Math.sin(time * 16);
+        drawGlow(ctx, x, y, r * 9 * pulse, '#5fd9ff', 0.95);
+        drawGlow(ctx, x, y, r * 5, '#251044', 1);
+        ctx.fillStyle = '#020106';
+        ctx.beginPath(); ctx.arc(x, y, r * 1.45, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#d7a4ff'; ctx.lineWidth = Math.max(2, r * 0.22);
+        ctx.beginPath(); ctx.ellipse(x, y, r * 2.2, r * 0.8, time * 2, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, r * 0.08);
+        ctx.beginPath(); ctx.ellipse(x, y, r * 2.6, r * 0.95, -time * 1.5, 0, Math.PI * 1.35); ctx.stroke();
+    } else if (type === 'prism') {
+        const r = Math.max(3, (bullet.size || 6) * scale);
+        drawGlow(ctx, x, y, r * 8, '#5ffeff', 1);
+        drawGlow(ctx, x, y, r * 4, '#fa74ff', 0.9);
+        ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(uy, ux) + time * 0.15);
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(r * 2.4, 0); ctx.lineTo(-r, r); ctx.lineTo(-r * 0.5, 0); ctx.lineTo(-r, -r); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#65ffff'; ctx.lineWidth = Math.max(1, r * 0.3); ctx.stroke(); ctx.restore();
+        for (let i = 0; i < 3; i++) { ctx.strokeStyle = ['#d8e4ef', '#71ffff', '#fff36a'][i]; ctx.globalAlpha *= 0.65; ctx.lineWidth = Math.max(1, r * 0.16); ctx.beginPath(); ctx.moveTo(x - ux * r * (i + 1), y - uy * r * (i + 1)); ctx.lineTo(x - ux * r * (i + 5), y - uy * r * (i + 5) + (i - 1) * r * 1.5); ctx.stroke(); }
+    } else if (type === 'nova') {
+        const r = Math.max(3, (bullet.radius || bullet.size || 8) * scale);
+        drawGlow(ctx, x, y, r * 6, '#d6a1ff', 0.95);
+        drawGlow(ctx, x, y, r * 2.4, '#fff5ff', 0.95);
+        ctx.strokeStyle = '#d9a0ff'; ctx.lineWidth = Math.max(2, r * 0.18);
+        ctx.beginPath(); ctx.arc(x, y, r * (1.1 + 0.1 * Math.sin(time * 10)), 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, r * 0.52, 0, Math.PI * 2); ctx.fill();
+    } else if (type === 'plasma') {
         const r = Math.max(2, bullet.size * scale);
         for (let i = 4; i >= 1; i--) {
             drawGlow(ctx, x - ux * r * i * 0.9, y - uy * r * i * 0.9, r * (2.2 - i * 0.3), color, 0.3 * (1 - i / 5));

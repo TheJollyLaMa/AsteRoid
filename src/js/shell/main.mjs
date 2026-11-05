@@ -5,20 +5,58 @@ window.DECENT_CONFIG.ipfsAdapter = installProgressPanel();
 // Configuration and host controls must exist before DecentHead snapshots them.
 await import('../../vendor/decent-head/2.0.0/js/main.js');
 
-const aboutRoot = document.querySelector('decent-header').shadowRoot.querySelector('about-modal').shadowRoot;
-const aboutArt = document.createElement('img');
-aboutArt.src = new URL('../../assets/brand/mandelblum-gate.png', import.meta.url).href;
-aboutArt.alt = 'Mandelblum portal art by TheJollyLaMa';
-aboutArt.width = 96; aboutArt.height = 96;
-aboutArt.style.cssText = 'display:block;object-fit:contain;margin:20px auto;filter:drop-shadow(0 0 16px #ff58ce45)';
-aboutRoot.querySelector('dialog > p').after(aboutArt);
+// Keep the header orbs clean: the fox itself connects, so drop the helper text and the duplicate MetaMask link.
+const header = document.querySelector('decent-header').shadowRoot;
+const quiet = (selector, css) => {
+  const root = header.querySelector(selector)?.shadowRoot;
+  if (!root || root.querySelector('style[data-voyager]')) return;
+  const style = document.createElement('style'); style.dataset.voyager = ''; style.textContent = css; root.append(style);
+};
+// Slim header so the flight deck gets the page: smaller orbs, no tall vendor min-height.
+if (!header.querySelector('style[data-voyager]')) {
+  const slim = document.createElement('style'); slim.dataset.voyager = '';
+  slim.textContent = `header{min-height:0!important;padding:6px clamp(10px,2vw,28px) 40px!important;align-items:center!important}
+app-title{padding-top:0!important}
+@media(max-width:600px){header{padding:6px 6px 8px!important}}`;
+  header.append(slim);
+}
+quiet('wallet-connect', '#mobile,#status,.identity-note{display:none!important}');
+quiet('ipfs-status', '#label{display:none!important}');
+
+// Put the Mandelblum disc between "Decent" and "Voyager" instead of before the whole name.
+const centreDisc = () => {
+  const root = header.querySelector('app-title')?.shadowRoot, name = root?.querySelector('.name'), disc = root?.querySelector('button > img');
+  if (!name || !disc || name.dataset.voyager) return;
+  const [first, ...rest] = name.textContent.trim().split(/\s+/);
+  if (!rest.length) return;
+  name.dataset.voyager = '';
+  name.replaceChildren(first, disc, rest.join(' '));
+  disc.classList.add('voyager-disc');
+};
+centreDisc();
+quiet('app-title', `p{display:none!important}
+.name{display:inline-flex;align-items:center;gap:.28em;white-space:nowrap}
+button{font-size:clamp(18px,5.2cqi,34px)}
+.voyager-disc{width:.95em;height:.95em;animation:voyager-spin 18s linear infinite}
+@keyframes voyager-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.voyager-disc{animation:none}}`);
 
 let radio;
+const slimRadio = () => {
+  const root = document.getElementById('dbusk-radio')?.shadowRoot;
+  if (!root || root.querySelector('style[data-voyager]')) return;
+  const style = document.createElement('style'); style.dataset.voyager = '';
+  style.textContent = `.radio{display:flex;align-items:center;gap:8px;min-width:0}.controls{flex-wrap:nowrap;flex:none}
+button,select{padding:1px 6px}.now{flex:1;min-width:0;padding:0;font-size:11px;opacity:.8;text-overflow:ellipsis;overflow:hidden}
+.status:empty{display:none}.status{font-size:10px;white-space:nowrap}`;
+  root.append(style);
+};
 const mountRadio = () => {
   radio = mount(document.getElementById('dbusk-radio'), {
-    workerUrl: 'https://decentbusking.onrender.com', compact: true, theme: 'auto', volume: 0.08,
+    workerUrl: 'https://decentbusking.onrender.com', compact: true, theme: 'dark', volume: 0.08,
     stations: [{ id: 'wqxr', label: 'WQXR', url: 'https://stream.wqxr.org/wqxr-web' }]
   });
+  slimRadio();
 };
 mountRadio();
 window.addEventListener('pagehide', () => radio?.destroy());

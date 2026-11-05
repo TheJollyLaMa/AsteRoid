@@ -5,13 +5,15 @@ const { drawGlow } = require('./shapes');
 const { pixelText } = require('./font');
 const { VIEW } = require('./projection');
 const { normalizeEvent } = require('./events');
+const { getImage } = require('./assets');
+const { drawSupporterToken } = require('./vault');
 
 const MAX_WORLD_PARTICLES = 650;
 const MAX_SCREEN_PARTICLES = 700;
 const ROCK_COLORS = ['#7fffe0', '#ff8ae6', '#b9a8ff', '#ffffff', '#9ff3ff', '#ffe18a'];
 const SHOOTER_COLORS = ['#ff5a1c', '#ff8a5c', '#ffd25c', '#ffffff', '#ff3a1c'];
-const FIREWORK_COLORS = ['#ff3c8a', '#7fd7ff', '#7dff8c', '#ffe65c', '#ff6cf5', '#ffffff', '#ffb347'];
-const PICKUP_COLORS = { spread: '#5fffd0', rapid: '#ffe65c', plasma: '#ff6cf5', power: '#7dff8c', shield: '#6fa8ff' };
+const FIREWORK_COLORS = ['#3fb8ff', '#7fd7ff', '#7dff8c', '#ffe65c', '#d8e4ef', '#ffffff', '#ffb347'];
+const PICKUP_COLORS = { spread: '#5fffd0', rapid: '#ffe65c', plasma: '#d8e4ef', power: '#7dff8c', shield: '#6fa8ff' };
 
 const rand = (min, max) => min + Math.random() * (max - min);
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
@@ -39,7 +41,14 @@ function createFx() {
         thrustTimer: 0,
         time: 0,
         latestRecord: null,
-        kills: 0
+        kills: 0,
+        captureTime: -1,
+        captureTokenId: null,
+        warpTime: -1,
+        warpFrom: null,
+        vaultAlarm: 0,
+        charging: false,
+        charge: 0
     };
 
     function addWorld(p) {
@@ -94,6 +103,7 @@ function createFx() {
         const drift = game.level && game.level.scrollSpeed ? game.level.scrollSpeed * 0.6 : 0;
         for (const raw of events) {
             const e = normalizeEvent(raw);
+            const eventShip = Array.isArray(game.ships) && game.ships[e.player] ? game.ships[e.player] : ship;
             switch (e.type) {
                 case 'explode': {
                     const size = Number(e.size) || 20;
@@ -148,7 +158,7 @@ function createFx() {
                         state.flashColor = '#7dff8c';
                         for (let i = 0; i < 18; i++) {
                             const a = (i / 18) * Math.PI * 2;
-                            addWorld({ kind: 'debris', x: ship.x, y: ship.y, vx: Math.cos(a) * 120, vy: Math.sin(a) * 120 + drift, life: 0.6, maxLife: 0.6, size: 3, color: i % 2 ? '#7dff8c' : '#ff6cf5', drag: 2 });
+                            addWorld({ kind: 'debris', x: ship.x, y: ship.y, vx: Math.cos(a) * 120, vy: Math.sin(a) * 120 + drift, life: 0.6, maxLife: 0.6, size: 3, color: i % 2 ? '#7dff8c' : '#d8e4ef', drag: 2 });
                         }
                     }
                     break;
@@ -156,8 +166,57 @@ function createFx() {
                 case 'asteroidMissed':
                     if (e.x !== undefined) floatText(e.x, e.y + 20, 'MISS', '#8a93a6', 0.8, 11);
                     break;
+                case 'vaultSpawned':
+                    state.vaultAlarm = 1.8;
+                    state.flash = Math.max(state.flash, 0.18);
+                    state.flashColor = '#ff4fa6';
+                    floatText(e.x || ship.x, e.y || ship.y + 70, 'SUPPORTER VAULT', '#ff8ac4', 2, 15);
+                    break;
+                case 'guardDestroyed':
+                    explosion(e.x || ship.x, e.y || ship.y, Number(e.size) || 24, true, drift);
+                    break;
+                case 'chargeStart':
+                    state.charging = true;
+                    state.charge = 0;
+                    addWorld({ kind: 'ring', x: eventShip.x, y: eventShip.y, vx: 0, vy: drift, life: 1.2, maxLife: 1.2, radius: 24, grow: 80, color: '#b67aff' });
+                    break;
+                case 'chargeRelease':
+                    state.charging = false;
+                    state.charge = Math.max(0, Math.min(1, Number(e.charge) || 0));
+                    state.flash = Math.max(state.flash, 0.18 + state.charge * 0.3);
+                    state.flashColor = '#d6a1ff';
+                    addWorld({ kind: 'ring', x: e.x ?? eventShip.x, y: e.y ?? eventShip.y, vx: 0, vy: drift, life: 0.85, maxLife: 0.85, radius: 18, grow: 220 + state.charge * 180, color: '#d6a1ff' });
+                    break;
+                case 'novaBlast':
+                    addWorld({ kind: 'ring', x: e.x ?? eventShip.x, y: e.y ?? eventShip.y, vx: 0, vy: drift, life: 0.8, maxLife: 0.8, radius: 20, grow: Number(e.radius) || 260, color: '#f3bdff' });
+                    addWorld({ kind: 'flash', x: e.x ?? eventShip.x, y: e.y ?? eventShip.y, vx: 0, vy: drift, life: 0.42, maxLife: 0.42, radius: 180, color: '#f3bdff' });
+                    state.shake = Math.max(state.shake, 16);
+                    break;
+                case 'supporterCaptured':
+                    state.captureTime = 0;
+                    state.captureTokenId = e.prize && e.prize.tokenId !== undefined ? e.prize.tokenId : e.tokenId;
+                    state.flash = 0.8;
+                    state.flashColor = '#fff4c8';
+                    state.celebrateTime = 0;
+                    state.celebrateKind = 'supporter';
+                    for (let i = 0; i < 10; i++) firework(VIEW.width / 2 + rand(-180, 180), VIEW.height / 2 + rand(-120, 120), FIREWORK_COLORS[i % FIREWORK_COLORS.length], 52);
+                    break;
+                case 'warpStart':
+                    state.warpTime = 0;
+                    state.warpFrom = e.from || null;
+                    state.flash = Math.max(state.flash, 0.45);
+                    state.flashColor = '#67faff';
+                    break;
+                case 'warpEnd':
+                    state.warpTime = state.warpTime < 0 ? 1.7 : state.warpTime;
+                    state.flash = Math.max(state.flash, 0.4);
+                    state.flashColor = '#bafcff';
+                    break;
+                case 'sectorUnlocked':
+                    floatText(ship.x, ship.y + 72, 'SECTOR II UNLOCKED', '#67faff', 2.4, 17);
+                    break;
                 case 'shot':
-                    addWorld({ kind: 'flash', x: ship.x, y: ship.y + 16, vx: 0, vy: drift, life: 0.06, maxLife: 0.06, radius: 16, color: '#bff6ff' });
+                    addWorld({ kind: 'flash', x: eventShip.x, y: eventShip.y + 16, vx: 0, vy: drift, life: 0.06, maxLife: 0.06, radius: 16, color: '#bff6ff' });
                     break;
                 case 'levelComplete':
                     state.hitStop = Math.max(state.hitStop, 0.15);
@@ -201,6 +260,14 @@ function createFx() {
         state.slowMo = Math.max(0, state.slowMo - dt);
         state.flash = Math.max(0, state.flash - dt * 1.6);
         state.shake = Math.max(0, state.shake - dt * 30);
+        state.vaultAlarm = Math.max(0, state.vaultAlarm - dt);
+        if (state.captureTime >= 0) { state.captureTime += dt; if (state.captureTime > 4.2) state.captureTime = -1; }
+        if (state.warpTime >= 0) { state.warpTime += dt; if (state.warpTime > 2.5) state.warpTime = -1; }
+        if (game && game.ship) {
+            const charge = game.charge ?? game.ship.charge ?? game.ship.chargeAmount ?? 0;
+            state.charge = Math.max(0, Math.min(1, Number(charge) || 0));
+            state.charging = Boolean(game.charging || game.ship.charging || state.charge > 0);
+        }
         const fxDt = dt * (state.hitStop > 0 ? 0.1 : state.slowMo > 0 ? 0.35 : 1);
         for (const p of world) {
             p.life -= fxDt;
@@ -262,7 +329,7 @@ function createFx() {
                 case 'thrust': {
                     const size = Math.max(1, Math.round(p.size * scale * (p.kind === 'thrust' ? 0.5 + t * 0.7 : 1)));
                     ctx.globalAlpha = t * fade;
-                    ctx.fillStyle = p.kind === 'thrust' ? (t > 0.6 ? '#fff4c8' : t > 0.3 ? '#ffb347' : '#ff3c8a') : p.color;
+                    ctx.fillStyle = p.kind === 'thrust' ? (t > 0.6 ? '#fff4c8' : t > 0.3 ? '#ffb347' : '#3fb8ff') : p.color;
                     ctx.fillRect(Math.round(s.x - size / 2), Math.round(s.y - size / 2), size, size);
                     break;
                 }
@@ -302,7 +369,7 @@ function createFx() {
         ctx.globalAlpha = 1;
     }
 
-    function drawScreen(ctx) {
+    function drawScreen(ctx, game = null) {
         for (const p of screen) {
             const t = Math.max(0, p.life / p.maxLife);
             if (p.kind === 'flash') {
@@ -319,6 +386,59 @@ function createFx() {
             }
         }
         ctx.globalAlpha = 1;
+        if (state.warpTime >= 0) {
+            const t = Math.min(1, state.warpTime / 2.5);
+            const cx = VIEW.width / 2; const cy = VIEW.height / 2;
+            const pulse = 0.5 + 0.5 * Math.sin(t * Math.PI * 10);
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.fillStyle = `rgba(3, 5, 28, ${0.38 + pulse * 0.16})`;
+            ctx.fillRect(0, 0, VIEW.width, VIEW.height);
+            for (let i = 0; i < 54; i++) {
+                const angle = (i / 54) * Math.PI * 2 + t * 1.3;
+                const inner = 20 + ((i * 47 + t * 840) % 320);
+                const outer = inner + 50 + t * 430;
+                ctx.strokeStyle = i % 3 === 0 ? '#fff4c8' : i % 2 ? '#67faff' : '#c16cff';
+                ctx.globalAlpha = Math.max(0.1, 0.75 - inner / 850);
+                ctx.lineWidth = i % 5 === 0 ? 3 : 1;
+                ctx.beginPath(); ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
+                ctx.lineTo(cx + Math.cos(angle) * outer, cy + Math.sin(angle) * outer); ctx.stroke();
+            }
+            const image = getImage('bg-sector2-lotus');
+            if (image) {
+                const size = 180 + t * 550 + pulse * 90;
+                ctx.globalAlpha = 0.2 + t * 0.38;
+                ctx.translate(cx, cy); ctx.rotate(t * 3); ctx.drawImage(image, -size / 2, -size / 2, size, size);
+            }
+            ctx.restore();
+            pixelText(ctx, t < 0.8 ? 'WARPING TO SECTOR II' : 'FAR FUTURE · ARRIVAL', cx, VIEW.height - 70, { size: 20, align: 'center', color: '#bafcff' });
+        }
+        if (state.captureTime >= 0) {
+            const t = state.captureTime;
+            const cx = VIEW.width / 2; const cy = VIEW.height / 2;
+            ctx.save(); ctx.globalCompositeOperation = 'lighter';
+            for (let i = 0; i < 40; i++) {
+                const angle = (i / 40) * Math.PI * 2 + t * (i % 2 ? 0.2 : -0.15);
+                const inner = 45 + 15 * Math.sin(t * 11 + i);
+                const reach = 200 + 260 * Math.min(1, t / 1.6) + 35 * Math.sin(t * 8 + i * 0.5);
+                ctx.strokeStyle = i % 4 === 0 ? '#fff4c8' : i % 3 === 0 ? '#d8e4ef' : '#67faff';
+                ctx.globalAlpha = Math.max(0, 0.75 - Math.max(0, t - 2.4) * 0.38);
+                ctx.lineWidth = i % 5 === 0 ? 4 : 2;
+                ctx.beginPath(); ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
+                ctx.lineTo(cx + Math.cos(angle) * reach, cy + Math.sin(angle) * reach); ctx.stroke();
+            }
+            ctx.restore();
+            const size = 88 + 14 * Math.sin(t * 7);
+            drawSupporterToken(ctx, state.captureTokenId, cx, cy - 20, size);
+            ctx.fillStyle = 'rgba(2, 3, 12, 0.72)'; ctx.fillRect(cx - 220, cy + 56, 440, 42);
+            pixelText(ctx, `SUPPORTER TOKEN CAPTURED${state.captureTokenId ? ` · #${state.captureTokenId}` : ''}`, cx, cy + 82, { size: 15, align: 'center', color: '#fff4c8' });
+            if (game && game.level && game.level.number >= 10) pixelText(ctx, 'SECTOR II UNLOCKED', cx, cy + 124, { size: 12, align: 'center', color: '#67faff' });
+        }
+        if (state.vaultAlarm > 0) {
+            ctx.save(); ctx.globalAlpha = (0.25 + 0.18 * Math.sin(state.time * 18)) * Math.min(1, state.vaultAlarm);
+            ctx.fillStyle = '#ff174f'; ctx.fillRect(0, 0, VIEW.width, 8); ctx.fillRect(0, VIEW.height - 8, VIEW.width, 8);
+            ctx.restore();
+        }
         if (state.flash > 0) {
             ctx.globalAlpha = Math.min(0.55, state.flash);
             ctx.fillStyle = state.flashColor;

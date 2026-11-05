@@ -64,19 +64,28 @@ function queueBounty({ queue, accounts, issue, pr, slug = 'TheJollyLaMa/AsteRoid
 }
 function validatePayroll(queue, accounts) {
   if (!Array.isArray(queue?.pending) || !Array.isArray(queue?.settled) || !Array.isArray(accounts?.contributors)) throw new Error('Invalid payroll ledger arrays');
-  const identities = new Set(), semanticIds = new Set(), handles = new Set(), pendingTotals = new Map();
+  const identities = new Set(), semanticIds = new Set(), supporterIds = new Set(), handles = new Set(), pendingTotals = new Map();
   for (const account of accounts.contributors) {
     const key = loginKey(account.github);
-    if (!/^[-\w]{1,39}$/.test(account.github || '') || handles.has(key) || !walletOK(account.walletAddress) || typeof account.whitelisted !== 'boolean') throw new Error('Invalid or duplicate contributor');
+    const retainedWithoutWallet = account.payoutMode === 'retain-in-fund' && account.whitelisted === true && !account.walletAddress;
+    if (!/^[-\w]{1,39}$/.test(account.github || '') || handles.has(key) || (!walletOK(account.walletAddress) && !retainedWithoutWallet) || typeof account.whitelisted !== 'boolean') throw new Error('Invalid or duplicate contributor');
     handles.add(key);
     if (!Array.isArray(account.issuesClosed)) throw new Error('Missing issuesClosed');
     for (const field of ['totalEarnedByCurrency', 'pendingBalanceByCurrency']) for (const [currency, amount] of Object.entries(account[field] || {})) amountToUnits(amount, currency);
   }
   for (const entry of [...queue.pending, ...queue.settled]) {
+    if (entry.kind === 'supporter-prize') {
+      const player = typeof entry.player === 'string' && entry.player.toLowerCase();
+      const key = `${player}:${entry.tokenId}`;
+      if (!walletOK(entry.player) || supporterIds.has(key) || !/^\d+$/.test(String(entry.tokenId)) || ![1, 2].includes(Number(entry.tier)) || typeof entry.runId !== 'string' || !/^0x[\da-f]{64}$/i.test(entry.runHash || '') || !Number.isFinite(Date.parse(entry.queuedAt)) || typeof entry.label !== 'string' || typeof entry.project !== 'string' || !entry.voucher || !walletOK(entry.voucher.player) || entry.voucher.player.toLowerCase() !== player || !walletOK(entry.voucher.nftContract) || !/^0x[\da-f]{64}$/i.test(entry.voucher.runId || '') || String(entry.voucher.tokenId) !== String(entry.tokenId) || Number(entry.voucher.tier) !== Number(entry.tier) || !/^0x[\da-f]{130}$/i.test(entry.signature || '') || !/^0x[\da-f]{64}$/i.test(entry.digest || '')) throw new Error('Invalid or duplicate supporter prize queue entry');
+      supporterIds.add(key);
+      continue;
+    }
+    if (entry.kind != null && entry.kind !== 'implementer') throw new Error('Unsupported payroll entry kind');
     if (typeof entry.id !== 'string' || identities.has(entry.id)) throw new Error('Duplicate/invalid payroll entry ID');
     identities.add(entry.id);
     const account = accounts.contributors.find(item => loginKey(item.github) === loginKey(entry.contributorGithub));
-    if (!account?.whitelisted || !walletOK(entry.walletAddress) || entry.walletAddress.toLowerCase() !== account.walletAddress.toLowerCase()) throw new Error('Payroll recipient is not whitelisted or wallet mismatches');
+    if (!account?.whitelisted || !walletOK(account.walletAddress) || !walletOK(entry.walletAddress) || entry.walletAddress.toLowerCase() !== account.walletAddress.toLowerCase()) throw new Error('Payroll recipient is not whitelisted or wallet mismatches');
     if (entry.chainId !== 8453 || entry.role !== 'implementer' || !Number.isSafeInteger(entry.issueNumber) || entry.issueNumber <= 0 || !Number.isSafeInteger(entry.prNumber) || entry.prNumber <= 0 || !Number.isFinite(Date.parse(entry.queuedAt))) throw new Error('Invalid payroll entry fields');
     const semanticId = `${entry.issueRef}:${entry.currency}:${entry.role}`;
     if (entry.id !== semanticId || semanticIds.has(semanticId)) throw new Error('Duplicate or mismatched issue/currency payroll identity');

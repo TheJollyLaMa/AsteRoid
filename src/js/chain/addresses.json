@@ -1,0 +1,26 @@
+{
+  "hardhat": {
+    "chainId": 31337,
+    "USDC": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "VoyagerPilots": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+    "VoyagerArena": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+    "VoyagerPrizes": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+    "VoyagerStamps": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"
+  },
+  "baseSepolia": {
+    "chainId": 84532,
+    "USDC": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "VoyagerPilots": null,
+    "VoyagerArena": null,
+    "VoyagerPrizes": null,
+    "VoyagerStamps": null
+  },
+  "base": {
+    "chainId": 8453,
+    "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "VoyagerPilots": "0xA2E9D9773d924f09460Bb427CC959413E7Fc0719",
+    "VoyagerArena": "0xd7CBF782B95E05b24eb7D90a5Ff3dd02B10f4b45",
+    "VoyagerPrizes": "0x4584c9D9b7C2bFc13b2c762d3ECD2a068d2bEd1a",
+    "VoyagerStamps": "0x66E8DB66F074D2eb8910160f374D74958436cE4f"
+  }
+}

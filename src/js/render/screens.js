@@ -1,7 +1,7 @@
 // Full-screen overlays: title, intro, pause, level clear celebration,
 // victory finale and game over.
 const { VIEW } = require('./projection');
-const { LEVEL_COUNT, getLevel } = require('../levels');
+const { LEVEL_COUNT, TOTAL_LEVEL_COUNT, getLevel } = require('../levels');
 const { getImage, ROCK_KEYS } = require('./assets');
 const { pixelText } = require('./font');
 const { drawGlow, drawBreathe, pixelSprite, SHIP_TOP, SHIP_PALETTE } = require('./shapes');
@@ -12,7 +12,7 @@ const DIFFICULTY_OPTIONS = [
     { id: 'pilot', label: 'PILOT', tagline: 'FASTER + MEANER' },
     { id: 'ace', label: 'ACE', tagline: 'NEAR IMPOSSIBLE' }
 ];
-const RAINBOW = ['#ff3c8a', '#ffb347', '#ffe65c', '#7dff8c', '#7fd7ff', '#b98aff'];
+const RAINBOW = ['#7fd7ff', '#bfeaff', '#e8eef5', '#9ff3ff', '#7dff8c'];
 
 function drawCover(ctx, img, alpha = 1, zoom = 1, ox = 0, oy = 0) {
     if (!img) return false;
@@ -82,15 +82,15 @@ function drawTitle(ctx, game) {
     drawFloatingRocks(ctx, time);
     const cx = VIEW.width / 2;
 
-    drawGlow(ctx, cx, 92, 260, '#ff3c8a', 0.18 + 0.06 * Math.sin(time * 2));
-    waveText(ctx, 'ASTEROID', cx, 112, { size: 64, time, amp: 5 });
+    drawGlow(ctx, cx, 92, 260, '#3fb8ff', 0.18 + 0.06 * Math.sin(time * 2));
+    waveText(ctx, 'DECENT VOYAGER', cx, 110, { size: 49, time, amp: 5 });
     const shine = (time * 160) % 900 - 50;
-    pixelText(ctx, 'GALACTIC  GAUNTLET', cx, 148, { size: 18, align: 'center', color: '#ffb347' });
+    pixelText(ctx, 'GALACTIC  GAUNTLET', cx, 145, { size: 18, align: 'center', color: '#ffe65c' });
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.25;
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(shine, 130, 24, 22);
+    ctx.fillRect(shine, 126, 24, 22);
     ctx.restore();
 
     // Difficulty cards.
@@ -127,15 +127,17 @@ function drawTitle(ctx, game) {
     if (canLeft) pixelText(ctx, '<', cx - 270 - bob, 284, { size: 22, color: '#7fd7ff' });
     if (canRight) pixelText(ctx, '>', cx + 256 + bob, 284, { size: 22, color: '#7fd7ff' });
     pixelText(ctx, `LEVEL ${level.number}: ${level.name.toUpperCase()}`, cx, 284, { size: 20, align: 'center' });
-    pixelText(ctx, `${difficultyName(game, true).toUpperCase()} UNLOCKED ${progress.unlocked}/${LEVEL_COUNT}   HI ${progress.highScore || 0}`, cx, 306, {
+    pixelText(ctx, `${difficultyName(game, true).toUpperCase()} UNLOCKED ${progress.unlocked}/${progress.sector2Unlocked ? TOTAL_LEVEL_COUNT : LEVEL_COUNT}   HI ${progress.highScore || 0}`, cx, 306, {
         size: 11, align: 'center', color: '#9fb4c8'
     });
     if (Math.floor(time * 2.5) % 2 === 0) {
         pixelText(ctx, 'PRESS ENTER TO LAUNCH', cx, 344, { size: 20, align: 'center', color: '#7dff8c' });
     }
     drawGlow(ctx, cx, 337, 160, '#7dff8c', 0.12);
+    pixelText(ctx, `TAB / X  MODE: ${(game.mode || game.multiplayerMode || 'COOP').toUpperCase()}  ·  CONTROLLER: PRESS A TO JOIN UP TO 5 DECENT PILOTS`, cx, 362, { size: 10, align: 'center', color: '#7fd7ff' });
 
-    panelBox(ctx, 90, 368, 620, 214);
+    const ox = VIEW.offsetX || 0;
+    panelBox(ctx, ox + 90, 372, 620, 150);
     const controls = [
         ['LEFT/RIGHT A/D', 'STEER  (TITLE: LEVEL)'],
         ['UP/DOWN W/S', 'THROTTLE (TITLE: DIFFICULTY)'],
@@ -145,16 +147,16 @@ function drawTitle(ctx, game) {
         ['M', 'MUTE     C  CRT FILTER']
     ];
     controls.forEach(([key, action], i) => {
-        pixelText(ctx, key, 270, 392 + i * 20, { size: 12, color: '#ffe65c', align: 'right' });
-        pixelText(ctx, action, 290, 392 + i * 20, { size: 12, color: '#c9d6e3' });
+        pixelText(ctx, key, ox + 270, 390 + i * 16, { size: 11, color: '#ffe65c', align: 'right' });
+        pixelText(ctx, action, ox + 290, 390 + i * 16, { size: 11, color: '#c9d6e3' });
     });
-    drawBreathe(ctx, 128, 530, 12, time);
-    pixelText(ctx, 'ENS ETH = POWER RE-UP', 152, 535, { size: 11, color: '#7dff8c' });
-    pixelText(ctx, 'S/R/P WEAPONS  O SHIELD', 152, 553, { size: 11, color: '#c9d6e3' });
-    drawGlow(ctx, 470, 538, 22, '#ff3a1c', 0.7 + 0.3 * Math.sin(time * 7));
+    drawBreathe(ctx, ox + 128, 494, 12, time);
+    pixelText(ctx, 'ENS ETH = POWER RE-UP', ox + 152, 499, { size: 11, color: '#7dff8c' });
+    pixelText(ctx, 'S/R/P WEAPONS  O SHIELD', ox + 152, 513, { size: 11, color: '#c9d6e3' });
+    drawGlow(ctx, ox + 470, 502, 22, '#ff3a1c', 0.7 + 0.3 * Math.sin(time * 7));
     ctx.fillStyle = '#fff1c2';
-    ctx.fillRect(467, 535, 6, 6);
-    pixelText(ctx, 'ORANGE CORES SHOOT BACK!', 494, 543, { size: 11, color: '#ff8a5c' });
+    ctx.fillRect(ox + 467, 499, 6, 6);
+    pixelText(ctx, 'ORANGE CORES SHOOT BACK!', ox + 494, 507, { size: 11, color: '#ff8a5c' });
 }
 
 function drawIntro(ctx, game) {
@@ -164,11 +166,11 @@ function drawIntro(ctx, game) {
     const slide = (1 - easeOutBack(t)) * VIEW.width;
     ctx.fillStyle = 'rgba(2, 3, 12, 0.55)';
     ctx.fillRect(0, cy - 70, VIEW.width, 110);
-    ctx.fillStyle = '#ff3c8a';
+    ctx.fillStyle = '#3fb8ff';
     ctx.fillRect(0, cy - 72, VIEW.width, 2);
     ctx.fillRect(0, cy + 40, VIEW.width, 2);
-    pixelText(ctx, `LEVEL ${game.level.number}`, cx - slide, cy - 20, { size: 44, align: 'center', color: '#7fd7ff' });
-    pixelText(ctx, game.level.name.toUpperCase(), cx + slide, cy + 14, { size: 20, align: 'center', color: '#ffb347' });
+    pixelText(ctx, `${game.level.number >= 11 ? 'SECTOR II · FAR FUTURE' : 'LEVEL ' + game.level.number}`, cx - slide, cy - 20, { size: 44, align: 'center', color: '#7fd7ff' });
+    pixelText(ctx, game.level.number >= 11 ? `LEVEL ${game.level.number}: ${game.level.name}`.toUpperCase() : game.level.name.toUpperCase(), cx + slide, cy + 14, { size: 20, align: 'center', color: '#ffb347' });
     if (game.difficulty) {
         pixelText(ctx, `${difficultyName(game).toUpperCase()} MODE  GET READY`, cx, cy + 34, { size: 11, align: 'center', color: difficultyColor(game.difficulty) });
     }
@@ -259,7 +261,7 @@ function drawVictory(ctx, game, fx) {
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 16; i++) {
         ctx.rotate((Math.PI * 2) / 16);
-        ctx.fillStyle = i % 2 ? 'rgba(255, 230, 92, 0.06)' : 'rgba(255, 60, 138, 0.06)';
+        ctx.fillStyle = i % 2 ? 'rgba(255, 230, 92, 0.06)' : 'rgba(63, 184, 255, 0.06)';
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.lineTo(-40, -700);
@@ -306,7 +308,7 @@ function drawVictory(ctx, game, fx) {
         });
     }
     const pulse = 0.6 + 0.4 * Math.sin(time * 5);
-    pixelText(ctx, `ALL ${LEVEL_COUNT} SECTORS CLEARED`, cx, 470, { size: 16, align: 'center', color: '#7dff8c', alpha: pulse });
+    pixelText(ctx, `ALL ${game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT} LEVELS CLEARED`, cx, 470, { size: 16, align: 'center', color: '#7dff8c', alpha: pulse });
     pixelText(ctx, 'CLAIM YOUR VICTORY STAMPS IN THE VAULT', cx, 492, { size: 11, align: 'center', color: '#c9d6e3' });
     pixelText(ctx, 'ENTER  MENU', cx, VIEW.height - 30, { size: 12, align: 'center', color: '#9fb4c8' });
 }

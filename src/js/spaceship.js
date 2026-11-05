@@ -8,7 +8,14 @@ const MAX_OFFSET = 280;
 // The ship flies at the scroll position plus a player-controlled forward offset.
 class Spaceship {
     constructor() {
-        this.size = 12;
+        this.baseSize = 12;
+        this.size = this.baseSize;
+        this.scale = 1;
+        this.charge = 0;
+        this.wasFiring = false;
+        this.specialWasDown = false;
+        this.specialCooldown = 0;
+        this.suppressChargeUntilRelease = false;
         this.maxPower = 100;
         this.lives = 3;
         this.weapon = createWeapon();
@@ -21,6 +28,11 @@ class Spaceship {
         this.y = 0;
         this.power = this.maxPower;
         this.cooldown = 0;
+        this.charge = 0;
+        this.wasFiring = false;
+        this.specialWasDown = false;
+        this.specialCooldown = 0;
+        this.suppressChargeUntilRelease = false;
         this.invulnerable = 0;
         this.shield = 0;
         this.bank = 0;
@@ -30,11 +42,10 @@ class Spaceship {
 
     update(dt, input, scrollY) {
         let steer = 0;
-        if (input.left) steer -= 1;
-        if (input.right) steer += 1;
+        steer = Math.max(-1, Math.min(1, (input.ax || 0) + (input.left ? -1 : 0) + (input.right ? 1 : 0)));
         this.x = Math.min(MAX_X, Math.max(MIN_X, this.x + steer * this.lateralSpeed * dt));
-        if (input.up) this.offset += this.forwardSpeed * dt;
-        if (input.down) this.offset -= this.forwardSpeed * dt;
+        const forward = Math.max(-1, Math.min(1, (input.ay || 0) + (input.up ? 1 : 0) - (input.down ? 1 : 0)));
+        this.offset += forward * this.forwardSpeed * dt;
         this.offset = Math.min(MAX_OFFSET, Math.max(MIN_OFFSET, this.offset));
         this.y = scrollY + this.offset;
         this.bank += (steer - this.bank) * Math.min(1, dt * 8);

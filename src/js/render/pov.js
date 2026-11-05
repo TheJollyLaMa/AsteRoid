@@ -1,13 +1,15 @@
-const { VIEW, POV, povCamera, projectPov, povFade } = require('./projection');
+const { VIEW, MAX_VIEW_WIDTH, POV, povCamera, projectPov, povFade } = require('./projection');
 const { drawAsteroid, drawPickup, drawShipChase, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { levelTint, createStarfield, drawNebula } = require('./background');
 const { getImage } = require('./assets');
+const { getPlayers, playerScale } = require('./players');
+const { drawVaultPov } = require('./vault');
 
 const FLOOR_HEIGHT = -40;
 const GRID_STEP = 100;
 
 function createPovRenderer() {
-    const stars = createStarfield(170, VIEW.width * 2, POV.horizon, 23);
+    const stars = createStarfield(340, MAX_VIEW_WIDTH * 2, POV.horizon, 23);
 
     function drawBackdrop(ctx, game, camera) {
         const time = game.time || 0;
@@ -26,7 +28,9 @@ function createPovRenderer() {
 
         const shift = camera.x * 0.15;
         for (const star of stars) {
-            const x = (((star.x - shift) % (VIEW.width * 2)) + VIEW.width * 2) % (VIEW.width * 2) - VIEW.width / 2;
+            const span = MAX_VIEW_WIDTH * 2;
+            const x = (((star.x - shift) % span) + span) % span - MAX_VIEW_WIDTH / 2;
+            if (x < -2 || x > VIEW.width + 2) continue;
             ctx.globalAlpha = 0.35 + 0.55 * star.depth * (0.6 + 0.4 * Math.sin(time * 3 + star.twinkle));
             ctx.fillStyle = star.color;
             const s = star.depth > 0.8 ? 2 : 1;
@@ -44,9 +48,9 @@ function createPovRenderer() {
 
         // Horizon glow line.
         const hz = ctx.createLinearGradient(0, POV.horizon - 18, 0, POV.horizon + 18);
-        hz.addColorStop(0, 'rgba(255, 60, 138, 0)');
-        hz.addColorStop(0.5, 'rgba(255, 60, 138, 0.45)');
-        hz.addColorStop(1, 'rgba(255, 60, 138, 0)');
+        hz.addColorStop(0, 'rgba(63, 184, 255, 0)');
+        hz.addColorStop(0.5, 'rgba(63, 184, 255, 0.45)');
+        hz.addColorStop(1, 'rgba(63, 184, 255, 0)');
         ctx.fillStyle = hz;
         ctx.fillRect(0, POV.horizon - 18, VIEW.width, 36);
 
@@ -55,7 +59,7 @@ function createPovRenderer() {
         const nearY = camera.y + POV.near + 4;
         const farY = camera.y + POV.far;
         ctx.globalCompositeOperation = 'lighter';
-        for (let x = -800; x <= 1600; x += GRID_STEP) {
+        for (let x = -1600; x <= 2400; x += GRID_STEP) {
             const a = projectPov({ x, y: nearY }, camera, FLOOR_HEIGHT);
             const b = projectPov({ x, y: farY }, camera, FLOOR_HEIGHT);
             const edge = x === 0 || x === 800;
@@ -68,9 +72,9 @@ function createPovRenderer() {
         }
         ctx.lineWidth = 1;
         for (let y = Math.ceil(nearY / GRID_STEP) * GRID_STEP; y < farY; y += GRID_STEP) {
-            const a = projectPov({ x: -800, y }, camera, FLOOR_HEIGHT);
-            const b = projectPov({ x: 1600, y }, camera, FLOOR_HEIGHT);
-            ctx.strokeStyle = `rgba(255, 60, 200, ${0.4 * povFade(a.depth)})`;
+            const a = projectPov({ x: -1600, y }, camera, FLOOR_HEIGHT);
+            const b = projectPov({ x: 2400, y }, camera, FLOOR_HEIGHT);
+            ctx.strokeStyle = `rgba(127, 215, 255, ${0.4 * povFade(a.depth)})`;
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
@@ -82,7 +86,7 @@ function createPovRenderer() {
         if (gate && gate.depth < POV.far * 1.3) {
             const alpha = Math.max(0.25, povFade(gate.depth));
             const size = Math.min(2000, 900 * gate.scale);
-            const img = getImage('gate');
+            const img = getImage(game.level.number >= 11 ? 'gate-sector2' : 'gate') || getImage('gate');
             if (img) {
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
@@ -90,7 +94,7 @@ function createPovRenderer() {
                 ctx.drawImage(img, gate.x - size / 2, gate.y - size / 2, size, size);
                 ctx.restore();
             }
-            drawGlow(ctx, gate.x, gate.y, size * 0.6, '#7dff8c', alpha * 0.35);
+            drawGlow(ctx, gate.x, gate.y, size * 0.6, game.level.number >= 11 ? '#67faff' : '#7dff8c', alpha * 0.45);
             const left = projectPov({ x: 0, y: game.level.length }, camera, 160);
             const right = projectPov({ x: 800, y: game.level.length }, camera, FLOOR_HEIGHT);
             if (left && right) {
@@ -112,11 +116,11 @@ function createPovRenderer() {
             const p = projectPov(obj, camera, height);
             if (p && p.depth < POV.far) items.push({ kind, obj, p });
         };
-        game.asteroids.forEach((a) => add('asteroid', a));
-        game.pickups.forEach((pk) => add('pickup', pk));
-        game.enemyBullets.forEach((b) => add('enemyBullet', b));
-        game.playerBullets.forEach((b) => add('playerBullet', b));
-        game.particles.forEach((pt) => add('particle', pt));
+        (game.asteroids || []).forEach((a) => add('asteroid', a));
+        (game.pickups || []).forEach((pk) => add('pickup', pk));
+        (game.enemyBullets || []).forEach((b) => add('enemyBullet', b));
+        (game.playerBullets || []).forEach((b) => add('playerBullet', b));
+        (game.particles || []).forEach((pt) => add('particle', pt));
         items.sort((a, b) => b.p.depth - a.p.depth);
         return items;
     }
@@ -128,7 +132,7 @@ function createPovRenderer() {
         if (kind === 'asteroid') {
             const radius = obj.size * p.scale;
             if (radius > 1400 || p.x + radius < 0 || p.x - radius > VIEW.width) return;
-            drawAsteroid(ctx, obj, p.x, p.y, radius, alpha, time);
+            drawAsteroid(ctx, obj, p.x, p.y, radius, alpha, time, game.level.number >= 11);
         } else if (kind === 'pickup') {
             drawPickup(ctx, obj, p.x, p.y, Math.min(120, obj.size * p.scale), time, alpha);
         } else if (kind === 'enemyBullet') {
@@ -163,7 +167,7 @@ function createPovRenderer() {
             ctx.lineTo(r, 6);
             ctx.stroke();
         }
-        ctx.fillStyle = '#ff3c8a';
+        ctx.fillStyle = '#3fb8ff';
         ctx.fillRect(-1, -1, 3, 3);
         ctx.restore();
     }
@@ -180,10 +184,20 @@ function createPovRenderer() {
                 return { x: p.x, y: p.y, scale: Math.min(1.8, p.scale), alpha: povFade(p.depth) * (p.scale > 1.4 ? 0.7 : 1) };
             });
         }
+        drawVaultPov(ctx, game, camera, projectPov, time);
         if (game.state === 'playing' || game.state === 'paused' || game.state === 'levelComplete') {
-            drawReticle(ctx, camera, game.ship, time);
-            const shipPoint = projectPov(game.ship, camera, 0);
-            if (shipPoint) drawShipChase(ctx, game.ship, shipPoint.x, shipPoint.y, time, fx ? fx.ripples : []);
+            const players = getPlayers(game);
+            players.forEach(({ ship, index, color }) => {
+                const shipPoint = projectPov(ship, camera, 0);
+                if (!shipPoint) return;
+                const size = playerScale(players.length, ship);
+                drawGlow(ctx, shipPoint.x, shipPoint.y, 52 * size, color, 0.35);
+                if (index === 0) drawReticle(ctx, camera, ship, time);
+                ctx.save(); ctx.translate(shipPoint.x, shipPoint.y); ctx.scale(size, size);
+                drawShipChase(ctx, ship, 0, 0, time, fx ? fx.ripples : []);
+                ctx.fillStyle = color; ctx.fillRect(-8, 3, 16, 5);
+                ctx.restore();
+            });
         }
     };
 }

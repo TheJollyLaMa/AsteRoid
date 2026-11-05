@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, statSync } from 'node:fs';
 import vm from 'node:vm';
 import { createSaveService, CID_KEY, validCID, validateSnapshot } from '../src/js/shell/ipfs-save.mjs';
+import { ABOUT } from '../src/js/shell/about-modal.mjs';
+import { parseInvites } from '../src/js/arena/lobby.mjs';
 
 const cid = 'bafybeiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const fixture = (overrides = {}) => {
@@ -75,17 +77,38 @@ test('header config is public Base-only with HTTPS project links and small local
   const source=readFileSync(new URL('../src/decent-head.config.js',import.meta.url),'utf8');
   const context={ window:{} }; vm.runInNewContext(source,context);
   const config=context.window.DECENT_CONFIG;
-  assert.equal(config.appName,'AsteRoid'); assert.equal(config.chain.chainId,8453);
+  assert.equal(config.appName,'Decent Voyager'); assert.equal(config.chain.chainId,8453); assert.equal(config.voyager.chainId,8453); assert.equal(config.voyager.testnetChainId,84532);
   assert.equal(config.providers.default,'pinata'); assert.equal(config.ens.enabled,true); assert.equal(config.supporterDnft,null);
   for (const link of [...config.links,...config.relatedDapps]) assert.match(link.url,/^https:\/\//);
-  for (const section of ['How to play','Difficulties','Victory stamps','Save to IPFS','Mandelblum art','Open source']) assert.ok(config.about.sections.some(entry => entry.title===section));
+  assert.equal(config.about.sections,undefined);
+  assert.equal(config.art.titleIcon,'./assets/brand/voyager-disc.png');
   assert.doesNotMatch(source,/\b(jwt|apiKey|apiSecret|privateKey)\s*:/);
-  assert.ok(statSync(new URL('../src/assets/brand/mandelblum-gate.png',import.meta.url)).size<=100000);
+  assert.ok(statSync(new URL('../src/assets/brand/voyager-disc.png',import.meta.url)).size<=100000);
 });
 test('static shell preserves bundle/canvas and host-module ordering for relative deployment', () => {
   const html=readFileSync(new URL('../src/index.html',import.meta.url),'utf8');
   assert.match(html,/<canvas id="gameCanvas" width="800" height="600"/);
   assert.ok(html.indexOf('decent-head.config.js')<html.indexOf('js/shell/main.mjs'));
   for (const path of ['js/dnft/claims.mjs','js/admin/admin-panel.mjs']) assert.ok(html.indexOf('bundle.js')<html.indexOf(path));
+  assert.match(html, /Decent Voyager/);
+  for (const path of ['js/pilots/whitelist.mjs','js/pilots/flight-log.mjs','js/arena/lobby.mjs']) assert.ok(html.includes(path));
   assert.doesNotMatch(html,/(?:src|href)="\/(?!\/)/);
+});
+
+test('about content covers rewards, tutorials and the multiplayer walkthrough without dropdowns', () => {
+  const source=readFileSync(new URL('../src/js/shell/about-modal.mjs',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/<details/);
+  for (const title of ['Level-pass DNFT','Supporter Vaults','Sector II · Far Future','Arena pot']) assert.ok(ABOUT.rewards.some(item => item.title===title));
+  assert.ok(ABOUT.couch.length>=3); assert.ok(ABOUT.online.length>=5);
+  assert.match(source,/Coming soon/); assert.match(source,/purchaseWithToken/);
+  const html=readFileSync(new URL('../src/index.html',import.meta.url),'utf8');
+  assert.ok(html.indexOf('about-modal.mjs')<html.indexOf('js/shell/main.mjs'));
+  assert.doesNotMatch(html,/flight-note|pilot-rewards|No wallet needed to fly/);
+  assert.match(html,/class="site-header"[\s\S]*id="dbusk-radio"[\s\S]*<main/);
+});
+test('arena invites accept up to four addresses or ENS names', () => {
+  const a='0x'+'a'.repeat(40);
+  assert.deepEqual(parseInvites(`${a}\nfriend.eth, ${a.toUpperCase().replace('0X','0x')}`),[a,'friend.eth']);
+  assert.throws(() => parseInvites('not-a-wallet'),/not a wallet/);
+  assert.throws(() => parseInvites(['a','b','c','d','e'].map(x => `${x}.eth`).join(' ')),/up to four/);
 });

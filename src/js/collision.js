@@ -6,7 +6,7 @@ function checkCollision(obj1, obj2) {
     const distance = Math.sqrt(dx * dx + dy * dy);
 
     // Use the size of both objects for accurate detection
-    return distance < obj1.size + obj2.size;
+    return distance < (obj1.size || 0) + (obj1.radius || 0) + (obj2.size || 0);
 }
 
 module.exports = checkCollision;

@@ -1,8 +1,9 @@
 const { VIEW } = require('./projection');
 const { WEAPONS, MAX_TIER } = require('../weapons');
-const { LEVEL_COUNT } = require('../levels');
+const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('../levels');
 const { PICKUP_STYLE, SHIP_TOP, SHIP_PALETTE, pixelSprite, drawBreathe, drawGlow } = require('./shapes');
 const { pixelText } = require('./font');
+const { getPlayers, versusMode } = require('./players');
 
 const DIFFICULTY_COLORS = { cadet: '#7dff8c', pilot: '#ffd25c', ace: '#ff3c5a' };
 const POWER_SEGMENTS = 16;
@@ -41,8 +42,8 @@ function rollUp(displayed, target, dt) {
     return diff > 0 ? Math.min(target, next) : Math.max(target, next);
 }
 
-function panelBox(ctx, x, y, w, h, color = 'rgba(127, 215, 255, 0.55)') {
-    ctx.fillStyle = 'rgba(4, 6, 20, 0.72)';
+function panelBox(ctx, x, y, w, h, color = 'rgba(127, 215, 255, 0.55)', fill = 0.72) {
+    ctx.fillStyle = `rgba(4, 6, 20, ${fill})`;
     ctx.fillRect(x, y, w, h);
     ctx.fillStyle = color;
     // 8-bit corner brackets.
@@ -58,133 +59,140 @@ function panelBox(ctx, x, y, w, h, color = 'rgba(127, 215, 255, 0.55)') {
 }
 
 function createHud() {
-    const view = { score: 0, lastTime: null, combo: 0, comboPop: 0, power: 1, lastLevelKey: '' };
+    const view = { score: 0, lastTime: null, combo: 0, comboPop: 0, power: 1, lastLevelKey: '', toast: '', toastUntil: 0 };
 
-    function drawPower(ctx, game) {
-        const ship = game.ship;
+    function drawPlayers(ctx, game) {
+        const players = getPlayers(game);
+        if (players.length <= 1) return;
+        players.forEach(({ player, ship, index, color, score }, i) => {
+            const y = 14 + i * 29;
+            const x = VIEW.width - 188;
+            panelBox(ctx, x, y, 176, 27, color, 0.38);
+            pixelText(ctx, `P${index + 1}`, x + 8, y + 15, { size: 11, color });
+            const power = Math.max(0, Math.min(1, Number(ship.power) / Math.max(1, Number(ship.maxPower) || 100)));
+            ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(x + 37, y + 8, 74, 7);
+            ctx.fillStyle = color; ctx.fillRect(x + 37, y + 8, 74 * power, 7);
+            pixelText(ctx, `♥${Math.max(0, Number(ship.lives) || 0)}`, x + 120, y + 15, { size: 10, color: '#ffffff' });
+            const playerScore = Number(player && player.score) || score || Number(game.playerStats && game.playerStats[index] && game.playerStats[index].score) || (index === 0 ? game.score : 0);
+            const charge = Math.max(0, Math.min(1, Number(ship.charge) || 0));
+            if (charge > 0) { ctx.fillStyle = color; ctx.fillRect(x + 37, y + 20, 74 * charge, 2); }
+            if (versusMode(game)) pixelText(ctx, String(playerScore), x + 168, y + 15, { size: 11, color: '#ffe65c', align: 'right' });
+        });
+        if (versusMode(game)) pixelText(ctx, 'VERSUS · INDIVIDUAL SCORE', VIEW.width - 12, 14 + players.length * 29 + 10, { size: 9, color: '#d8e4ef', align: 'right' });
+    }
+
+    function drawToast(ctx) {
+        if (!view.toast || Date.now() >= view.toastUntil) return;
+        const alpha = Math.min(1, (view.toastUntil - Date.now()) / 300);
+        panelBox(ctx, VIEW.width / 2 - 150, 14, 300, 26, '#7fd7ff', 0.45);
+        pixelText(ctx, view.toast, VIEW.width / 2, 32, { size: 12, align: 'center', color: '#ffffff', alpha });
+    }
+
+    // One slim, see-through strip along the bottom edge keeps the play field clear.
+    const STRIP_H = 24;
+
+    function drawStrip(ctx, game, dt, opts) {
+        const ship = game.ship || {};
         const time = game.time || 0;
-        const x = 14;
-        const y = VIEW.height - 64;
-        panelBox(ctx, x, y, 286, 52);
-        const fraction = ship.power / ship.maxPower;
+        const y0 = VIEW.height - STRIP_H;
+        const base = y0 + 16;
+        ctx.save();
+        const bg = ctx.createLinearGradient(0, y0 - 10, 0, VIEW.height);
+        bg.addColorStop(0, 'rgba(4, 8, 22, 0)');
+        bg.addColorStop(0.35, 'rgba(4, 8, 22, 0.34)');
+        bg.addColorStop(1, 'rgba(4, 8, 22, 0.5)');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, y0 - 10, VIEW.width, STRIP_H + 10);
+        ctx.fillStyle = 'rgba(86, 237, 255, 0.18)';
+        ctx.fillRect(0, y0, VIEW.width, 1);
+        ctx.globalAlpha = 0.9;
+
+        // Power (Breathe = re-up) with the drain ghost, then shield.
+        let x = 10;
+        const fraction = (Number(ship.power) || 0) / Math.max(1, Number(ship.maxPower) || 100);
         view.power += (fraction - view.power) * 0.15;
-        drawBreathe(ctx, x + 24, y + 26, 13, time, 1);
-        pixelText(ctx, 'POWER', x + 46, y + 16, { size: 12, color: '#9fb4c8' });
-        pixelText(ctx, `${Math.round(ship.power)}`, x + 272, y + 16, { size: 12, color: powerColor(fraction), align: 'right' });
+        drawBreathe(ctx, x + 8, y0 + 12, 7, time, 0.9);
+        x += 20;
         const lit = litSegments(fraction);
         const ghost = litSegments(view.power);
         const low = fraction <= 0.3 && Math.floor(time * 5) % 2 === 0;
         const color = low ? '#ffffff' : powerColor(fraction);
-        const segW = 12;
         for (let i = 0; i < POWER_SEGMENTS; i++) {
-            const sx = x + 46 + i * (segW + 2);
-            const sy = y + 24;
-            if (i < lit) {
-                ctx.fillStyle = color;
-                ctx.fillRect(sx, sy, segW, 16);
-                ctx.fillStyle = 'rgba(255,255,255,0.45)';
-                ctx.fillRect(sx, sy, segW, 3);
-            } else if (i < ghost) {
-                ctx.fillStyle = 'rgba(255, 90, 60, 0.6)';
-                ctx.fillRect(sx, sy, segW, 16);
-            } else {
-                ctx.fillStyle = 'rgba(255,255,255,0.08)';
-                ctx.fillRect(sx, sy, segW, 16);
-            }
+            ctx.fillStyle = i < lit ? color : i < ghost ? 'rgba(255, 90, 60, 0.55)' : 'rgba(255,255,255,0.1)';
+            ctx.fillRect(x + i * 7, y0 + 8, 5, 9);
         }
-        drawGlow(ctx, x + 46 + lit * 14 - 6, y + 32, 26, color, 0.35);
+        x += POWER_SEGMENTS * 7 + 4;
+        x += pixelText(ctx, String(Math.round(Number(ship.power) || 0)), x, base, { size: 10, color: powerColor(fraction) }) + 10;
         if (ship.shield > 0) {
-            const sx = x + 46;
-            const sw = 222 * Math.min(1, ship.shield / 7);
             ctx.fillStyle = PICKUP_STYLE.shield.color;
-            ctx.fillRect(sx, y + 44, sw, 3);
-            pixelText(ctx, `SHIELD ${ship.shield.toFixed(1)}`, x + 290, y + 48, { size: 11, color: PICKUP_STYLE.shield.color });
+            ctx.fillRect(30, y0 + 19, (POWER_SEGMENTS * 7 - 2) * Math.min(1, ship.shield / 7), 2);
+            x += pixelText(ctx, `◇${ship.shield.toFixed(1)}`, x, base, { size: 10, color: PICKUP_STYLE.shield.color }) + 10;
         }
-    }
 
-    function drawWeapon(ctx, game) {
-        const ship = game.ship;
-        const spec = WEAPONS[ship.weapon.type] || WEAPONS.blaster;
-        const x = 14;
-        const y = VIEW.height - 92;
-        panelBox(ctx, x, y, 286, 24, spec.color);
-        pixelText(ctx, spec.name.toUpperCase(), x + 10, y + 17, { size: 12, color: spec.color });
+        // Weapon, tier pips and the charge meter for Nova-class weapons.
+        const weapon = ship.weapon || { type: 'blaster', tier: 1 };
+        const spec = WEAPONS[weapon.type] || WEAPONS.blaster;
+        ctx.fillStyle = 'rgba(255,255,255,0.12)';
+        ctx.fillRect(x - 6, y0 + 6, 1, 12);
+        x += pixelText(ctx, spec.name.toUpperCase(), x, base, { size: 10, color: spec.color }) + 6;
         for (let i = 0; i < MAX_TIER; i++) {
-            const px = x + 200 + i * 26;
-            ctx.fillStyle = i < ship.weapon.tier ? spec.color : 'rgba(255,255,255,0.12)';
-            ctx.fillRect(px, y + 7, 20, 10);
-            if (i < ship.weapon.tier) drawGlow(ctx, px + 10, y + 12, 14, spec.color, 0.3);
+            ctx.fillStyle = i < (weapon.tier || 1) ? spec.color : 'rgba(255,255,255,0.12)';
+            ctx.fillRect(x + i * 9, y0 + 9, 7, 7);
         }
-    }
+        x += MAX_TIER * 9 + 6;
+        const charge = Math.max(0, Math.min(1, Number(game.charge ?? ship.charge ?? 0) || 0));
+        if (charge > 0 || game.charging || ship.charging) {
+            ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(x, y0 + 10, 64, 5);
+            ctx.fillStyle = spec.color; ctx.fillRect(x, y0 + 10, 64 * charge, 5);
+            drawGlow(ctx, x + 64 * charge, y0 + 12, 10 + charge * 16, spec.color, 0.25 + charge * 0.5);
+            x += 70;
+            x += pixelText(ctx, `${Math.round(charge * 100)}%`, x, base, { size: 9, color: '#ffffff' }) + 6;
+        }
 
-    function drawLives(ctx, game) {
-        const sprite = pixelSprite('lives', SHIP_TOP, SHIP_PALETTE, 2);
-        const lives = Math.max(0, game.ship.lives);
+        // Centre: level, progress and difficulty.
+        const sector = game.level.number >= 11 ? 'II · ' : '';
+        const label = `${sector}LV ${game.level.number}/${game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT} ${game.level.name.toUpperCase()}`;
+        const cx = Math.max(x + 150, VIEW.width / 2);
+        pixelText(ctx, label, cx - 4, base, { size: 10, align: 'right', color: '#c9d6e3' });
+        const pw = 110;
+        ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(cx + 4, y0 + 10, pw, 4);
+        ctx.fillStyle = '#7dff8c'; ctx.fillRect(cx + 4, y0 + 10, pw * Math.max(0, Math.min(1, game.levelProgress || 0)), 4);
+        if (game.difficulty) pixelText(ctx, difficultyName(game).toUpperCase(), cx + pw + 10, base, { size: 9, color: difficultyColor(game.difficulty) });
+
+        // Right: view flags, lives, combo, score.
+        let rx = VIEW.width - 10;
+        const flags = `${opts.muted ? 'M:OFF ' : ''}${opts.crt ? 'CRT ' : ''}[V] ${game.view === 'pov' ? 'POV' : 'MAP'}`;
+        rx -= pixelText(ctx, flags, rx, base, { size: 9, color: '#9fb4c8', align: 'right' }) + 10;
+        const sprite = pixelSprite('lives', SHIP_TOP, SHIP_PALETTE, 1);
+        const lives = Math.max(0, Number(ship.lives) || 0);
         for (let i = 0; i < lives; i++) {
-            const x = VIEW.width - 36 - i * 30;
-            if (sprite) {
-                ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(sprite, x, 8);
-            }
+            rx -= 15;
+            if (sprite) { ctx.imageSmoothingEnabled = false; ctx.drawImage(sprite, rx, y0 + 4, 13, sprite.height * 13 / sprite.width); }
         }
-    }
-
-    function drawProgress(ctx, game) {
-        const width = 300;
-        const x = (VIEW.width - width) / 2;
-        const diff = game.difficulty;
-        const label = `LV ${game.level.number}/${LEVEL_COUNT}  ${game.level.name.toUpperCase()}`;
-        pixelText(ctx, label, VIEW.width / 2, 20, { size: 13, align: 'center' });
-        const segments = 30;
-        const lit = Math.floor(game.levelProgress * segments);
-        for (let i = 0; i < segments; i++) {
-            ctx.fillStyle = i < lit ? (i === lit - 1 ? '#ffffff' : '#7dff8c') : 'rgba(255,255,255,0.1)';
-            ctx.fillRect(x + i * (width / segments), 28, width / segments - 2, 6);
-        }
-        ctx.fillStyle = '#7fd7ff';
-        const mx = x + game.levelProgress * width;
-        ctx.fillRect(mx - 2, 25, 4, 12);
-        if (diff) {
-            const name = difficultyName(game).toUpperCase();
-            const color = difficultyColor(diff);
-            pixelText(ctx, name, VIEW.width / 2, 52, { size: 11, align: 'center', color });
-        }
-    }
-
-    function drawScore(ctx, game, dt) {
-        view.score = rollUp(view.score, game.score, dt);
-        pixelText(ctx, 'SCORE', 16, 16, { size: 10, color: '#9fb4c8' });
-        const rolling = Math.round(view.score) !== game.score;
-        pixelText(ctx, String(Math.round(view.score)).padStart(7, '0'), 16, 38, { size: 20, color: rolling ? '#ffe65c' : '#e8f6ff' });
-        const progress = game.progress || { highScore: 0 };
-        pixelText(ctx, `HI ${String(Math.max(progress.highScore || 0, game.score)).padStart(7, '0')}`, 16, 54, { size: 10, color: '#9fb4c8' });
-    }
-
-    function drawCombo(ctx, game, dt) {
+        rx -= 10;
         const combo = Number(game.combo) || 0;
         if (combo > view.combo) view.comboPop = 1;
         view.combo = combo;
         view.comboPop = Math.max(0, view.comboPop - dt * 3);
-        if (combo < 2) return;
-        const x = VIEW.width - 20;
-        const y = VIEW.height - 70;
-        const scale = 1 + view.comboPop * 0.5;
-        const hue = (game.time * 240) % 360;
-        drawGlow(ctx, x - 50, y - 8, 60 * scale, `hsl(${hue}, 100%, 60%)`, 0.25);
-        pixelText(ctx, `x${combo}`, x, y, { size: Math.round(26 * scale), color: `hsl(${hue}, 100%, 70%)`, align: 'right' });
-        pixelText(ctx, 'COMBO', x, y + 16, { size: 11, color: '#ffffff', align: 'right' });
-        const timer = Number(game.comboTimer);
-        if (Number.isFinite(timer) && timer > 0) {
-            ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
-            ctx.fillRect(x - 80 * Math.min(1, timer / 2), y + 22, 80 * Math.min(1, timer / 2), 3);
+        if (combo >= 2) {
+            const hue = 150 + 45 * Math.sin(time * 4);
+            const scale = 1 + view.comboPop * 0.4;
+            drawGlow(ctx, rx - 20, y0 + 12, 22 * scale, `hsl(${hue}, 100%, 60%)`, 0.2);
+            rx -= pixelText(ctx, `x${combo}`, rx, base, { size: Math.round(12 * scale), color: `hsl(${hue}, 100%, 70%)`, align: 'right' }) + 10;
         }
+        view.score = rollUp(view.score, game.score, dt);
+        const rolling = Math.round(view.score) !== game.score;
+        rx -= pixelText(ctx, String(Math.round(view.score)).padStart(7, '0'), rx, base, { size: 12, color: rolling ? '#ffe65c' : '#e8f6ff', align: 'right' }) + 6;
+        pixelText(ctx, 'SCORE', rx, base, { size: 9, color: '#9fb4c8', align: 'right' });
+        ctx.restore();
     }
 
     function drawRadar(ctx, game) {
         const width = 120;
         const height = 150;
         const x = VIEW.width - width - 12;
-        const y = 46;
+        const crew = getPlayers(game).length;
+        const y = crew > 1 ? 14 + crew * 29 + 18 : 14;
         const rangeAhead = 900;
         const rangeBehind = 100;
         const scaleX = width / 800;
@@ -196,7 +204,8 @@ function createHud() {
         const inside = (p) => p.y >= y && p.y <= y + height;
 
         ctx.save();
-        panelBox(ctx, x, y, width, height);
+        ctx.globalAlpha = 0.75;
+        panelBox(ctx, x, y, width, height, 'rgba(127, 215, 255, 0.4)', 0.3);
         ctx.strokeStyle = 'rgba(127, 215, 255, 0.12)';
         for (let gy = y + 15; gy < y + height; gy += 15) {
             ctx.beginPath();
@@ -240,23 +249,17 @@ function createHud() {
         const now = game.time || 0;
         const dt = view.lastTime === null ? 0 : Math.max(0, Math.min(0.1, now - view.lastTime));
         view.lastTime = now;
+        drawToast(ctx);
         if (game.state === 'title') {
             view.score = 0;
             return;
         }
-        drawScore(ctx, game, dt);
-        drawProgress(ctx, game);
-        drawLives(ctx, game);
-        drawWeapon(ctx, game);
-        drawPower(ctx, game);
-        drawCombo(ctx, game, dt);
-        const viewLabel = game.view === 'pov' ? 'POV' : 'MAP';
-        const flags = `${opts.muted ? 'M:OFF ' : ''}${opts.crt ? 'CRT ' : ''}[V] ${viewLabel}`;
-        pixelText(ctx, flags, VIEW.width - 16, VIEW.height - 14, { size: 11, color: '#9fb4c8', align: 'right' });
+        drawStrip(ctx, game, dt, opts);
+        drawPlayers(ctx, game);
         if (game.view === 'pov') drawRadar(ctx, game);
     }
 
-    return { drawHud, view };
+    return { drawHud, view, setToast(message, duration = 2200) { view.toast = String(message); view.toastUntil = Date.now() + duration; } };
 }
 
 module.exports = { createHud, rollUp, litSegments, difficultyColor, difficultyName, panelBox, POWER_SEGMENTS, DIFFICULTY_COLORS };
