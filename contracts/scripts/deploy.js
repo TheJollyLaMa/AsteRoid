@@ -4,7 +4,7 @@ const { ethers, network, artifacts } = require("hardhat");
 
 const ROOT = path.resolve(__dirname, "../..");
 const USDC_BY_NETWORK = {
-  base: "0x833589fCD6eDb6E08f4c7C32D4F71b54bdA02913",
+  base: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
   baseSepolia: "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
 };
 const CONTRACTS = ["VoyagerPilots", "VoyagerArena", "VoyagerPrizes", "VoyagerStamps", "MockUSDC"];
@@ -34,14 +34,38 @@ async function main() {
   const usdcAddress = networkName === "hardhat"
     ? (await deployContract("MockUSDC", [deployer.address])).target
     : USDC_BY_NETWORK[networkName];
+  // ADMIN_ADDRESS (the admin-panel wallet) receives every role plus treasury/royalties; the deployer keeps its roles.
+  const admin = process.env.ADMIN_ADDRESS ? ethers.getAddress(process.env.ADMIN_ADDRESS) : deployer.address;
+  const referee = process.env.REFEREE_ADDRESS ? ethers.getAddress(process.env.REFEREE_ADDRESS) : null;
   const pilots = await deployContract("VoyagerPilots", [deployer.address]);
-  const arena = await deployContract("VoyagerArena", [deployer.address, pilots.target, usdcAddress, deployer.address]);
+  const arena = await deployContract("VoyagerArena", [deployer.address, pilots.target, usdcAddress, admin]);
   const prizes = await deployContract("VoyagerPrizes", [deployer.address, pilots.target]);
-  const stamps = await deployContract("VoyagerStamps", [deployer.address, deployer.address, 500, pilots.target]);
+  const stamps = await deployContract("VoyagerStamps", [deployer.address, admin, 500, pilots.target]);
+
+  const send = async (label, txPromise) => { const tx = await txPromise; await tx.wait(); console.log(`${label}: ${tx.hash}`); };
+  if (referee) await send(`registerGame(decent-voyager -> ${referee})`, pilots.registerGame(ethers.id("decent-voyager"), referee));
+  const roster = JSON.parse(fs.readFileSync(path.join(ROOT, "contributor-accounts.json"), "utf8")).contributors
+    .filter((entry) => entry && entry.whitelisted !== false && /^0x[\da-fA-F]{40}$/.test(entry.walletAddress || ""))
+    .map((entry) => ethers.getAddress(entry.walletAddress));
+  if (roster.length) await send(`setPilots(${roster.length})`, pilots.setPilots(roster, true));
+  if (admin !== deployer.address) {
+    const grants = [
+      [pilots, ["DEFAULT_ADMIN_ROLE", "PILOT_MANAGER_ROLE", "GAME_MANAGER_ROLE"]],
+      [arena, ["DEFAULT_ADMIN_ROLE", "TREASURY_ROLE"]],
+      [prizes, ["DEFAULT_ADMIN_ROLE", "PRIZE_MANAGER_ROLE"]],
+      [stamps, ["DEFAULT_ADMIN_ROLE", "MINTER_ROLE"]]
+    ];
+    for (const [contract, roles] of grants) {
+      for (const role of roles) await send(`grant ${role} on ${contract.target}`, contract.grantRole(await contract[role](), admin));
+    }
+  }
   const deployment = {
     network: networkName,
     chainId,
     deployer: deployer.address,
+    admin,
+    referee,
+    pilots: roster,
     usdc: usdcAddress,
     VoyagerPilots: pilots.target,
     VoyagerArena: arena.target,

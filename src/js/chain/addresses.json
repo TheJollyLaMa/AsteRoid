@@ -17,10 +17,10 @@
   },
   "base": {
     "chainId": 8453,
-    "USDC": "0x833589fCD6eDb6E08f4c7C32D4F71b54bdA02913",
-    "VoyagerPilots": null,
-    "VoyagerArena": null,
-    "VoyagerPrizes": null,
-    "VoyagerStamps": null
+    "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "VoyagerPilots": "0xA2E9D9773d924f09460Bb427CC959413E7Fc0719",
+    "VoyagerArena": "0xd7CBF782B95E05b24eb7D90a5Ff3dd02B10f4b45",
+    "VoyagerPrizes": "0x4584c9D9b7C2bFc13b2c762d3ECD2a068d2bEd1a",
+    "VoyagerStamps": "0x66E8DB66F074D2eb8910160f374D74958436cE4f"
   }
 }
