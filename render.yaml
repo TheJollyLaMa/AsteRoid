@@ -26,7 +26,7 @@ services:
       - key: PINATA_JWT
         sync: false
       - key: CORS_ORIGINS
-        value: https://thejollylama.github.io
+        value: https://thejollylama.github.io,https://voyager.decentagency.eth.limo,https://voyager.decentagency.eth.link
       - key: ADMIN_ADDRESS
         sync: false
       - key: CHAIN_ID

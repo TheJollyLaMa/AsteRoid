@@ -5,7 +5,7 @@ window.DECENT_CONFIG = {
   art: { titleIcon: './assets/brand/voyager-disc.png', ipfsIcon: null, walletIcon: null, titleEnds: ['[', ']'] },
   theme: { 'bg-1': '#080d20', 'bg-2': '#101b32', 'bg-3': '#0e2a36', accent: '#56edff', 'accent-2': '#7dff8c', title: '#f4faff', text: '#e8f2ff', muted: '#adbdd7', 'title-font': 'ui-monospace, Menlo, monospace' },
   chain: { chainId: 8453, chainName: 'Base', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://mainnet.base.org'], blockExplorerUrls: ['https://basescan.org'] },
-  voyager: { refereeUrl: '', chainId: 8453, testnetChainId: 84532, contracts: { addressesUrl: './js/chain/addresses.json' } },
+  voyager: { refereeUrl: 'https://decent-voyager-referee.onrender.com', chainId: 8453, testnetChainId: 84532, contracts: { addressesUrl: './js/chain/addresses.json' } },
   providers: { default: 'pinata', pinata: { uploadUrl: 'https://api.pinata.cloud/pinning/pinFileToIPFS' }, local: { apiUrl: 'http://127.0.0.1:5001' }, gateway: 'https://ipfs.io/ipfs/', ucanAuth: null },
   about: {
     title: 'Decent Voyager · Galactic Gauntlet',
