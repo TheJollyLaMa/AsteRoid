@@ -28,7 +28,7 @@ The Node 20 service in `server/` verifies signed run logs by replaying them thro
 | `VOYAGER_PRIZES_ADDRESS` | Prize vouchers | EIP-712 verifying contract for `PrizeVoucher`. |
 | `SUPPORTER_NFT_ADDRESS` | No | Prize NFT contract; defaults to the Base collection address. |
 | `GITHUB_TOKEN` | Production queue | GitHub Contents API read/write token; without it the service uses local queue files. |
-| `GITHUB_REPO` | With token | Queue/pilot source, e.g. `TheJollyLaMa/AsteRoid`. |
+| `GITHUB_REPO` | With token | Queue/pilot source, e.g. `TheJollyLaMa/DecentVoyager`. |
 | `GITHUB_REF` | No | Branch for Contents API (defaults to `main`). |
 | `PILOTS_FILE` | No | Local contributor registry override for development. |
 | `PINATA_JWT` | No | Pinata JWT; absence skips pinning and is reported in each run response. |
@@ -46,10 +46,10 @@ The referee runs as its own Render service (`decent-voyager-referee`) in the sam
 
 1. **Referee wallet.** Create a fresh wallet used only for signing. It never needs funds. Keep its private key for step 4 and its address for the contract deploy (it is the `referee` on `VoyagerStamps`, `VoyagerPrizes` and `VoyagerArena`).
 2. **Deploy contracts** on Base (see [CONTRACTS.md](CONTRACTS.md)) and note the three addresses.
-3. **Create the service.** Render dashboard → **New → Blueprint** → pick `TheJollyLaMa/AsteRoid` (branch `main` once PR #3 is merged). Render reads `render.yaml`: `rootDir: server`, Node 20, Starter plan (always on), `/health`, `CHAIN_ID=8453`, `CORS_ORIGINS=https://thejollylama.github.io`, and a generated `TICKET_SECRET`.
+3. **Create the service.** Render dashboard → **New → Blueprint** → pick `TheJollyLaMa/DecentVoyager` (branch `main`). Render reads `render.yaml`: `rootDir: server`, Node 20, Starter plan (always on), `/health`, `CHAIN_ID=8453`, `CORS_ORIGINS=https://thejollylama.github.io`, and a generated `TICKET_SECRET`.
 4. **Paste the secrets** Render asks for:
    - `REFEREE_PRIVATE_KEY`: the step 1 key.
-   - `GITHUB_TOKEN`: fine-grained token for `TheJollyLaMa/AsteRoid` only, Contents read/write + Metadata read.
+   - `GITHUB_TOKEN`: fine-grained token for `TheJollyLaMa/DecentVoyager` only, Contents read/write + Metadata read.
    - `VOYAGER_ARENA_ADDRESS`, `VOYAGER_STAMPS_ADDRESS`, `VOYAGER_PRIZES_ADDRESS`: from step 2.
    - `BASE_RPC_URL`: a Base mainnet RPC (e.g. Alchemy/Infura; `https://mainnet.base.org` works for light traffic).
    - `ADMIN_ADDRESS`: the admin wallet.

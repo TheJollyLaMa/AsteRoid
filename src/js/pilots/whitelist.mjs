@@ -1,4 +1,4 @@
-const RAW = 'https://raw.githubusercontent.com/TheJollyLaMa/AsteRoid/main/contributor-accounts.json';
+const RAW = 'https://raw.githubusercontent.com/TheJollyLaMa/DecentVoyager/main/contributor-accounts.json';
 const LOCAL = new URL('../../../contributor-accounts.json', import.meta.url);
 const ADDRESS = /^0x[\da-f]{40}$/i;
 

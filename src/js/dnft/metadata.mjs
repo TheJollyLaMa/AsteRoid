@@ -5,7 +5,7 @@ function attributesOf(value, prefix, output) {
     for (const [key, item] of Object.entries(value)) attributesOf(item, prefix ? `${prefix}.${key}` : key, output);
   } else output.push({ trait_type: prefix, value: value === null ? 'Unavailable' : value });
 }
-export function buildMetadata(record, { image, claimant, externalUrl = 'https://thejollylama.github.io/AsteRoid/' } = {}) {
+export function buildMetadata(record, { image, claimant, externalUrl = 'https://thejollylama.github.io/DecentVoyager/' } = {}) {
   validateRecord(record);
   if (!validAddress(claimant)) throw new Error('Connect your wallet with the header fox before stamping');
   if (!validIpfs(image)) throw new Error('Pin the battle card before metadata');
@@ -15,8 +15,8 @@ export function buildMetadata(record, { image, claimant, externalUrl = 'https://
   attributes.push({ trait_type: 'completedAt', display_type: 'date', value: Math.floor(Date.parse(record.completedAt) / 1000) });
   const label = record.difficultyLabel || `${record.difficulty[0].toUpperCase()}${record.difficulty.slice(1)}`;
   return {
-    name: `AsteRoid Victory · L${record.level} ${record.levelName} · ${label}`,
-    description: `Victory stamp for level ${record.level} of AsteRoid: Galactic Gauntlet on ${record.completedAt}. Player-submitted game telemetry; reviewed and batch minted by the administrator on Base.`,
+    name: `Decent Voyager Victory · L${record.level} ${record.levelName} · ${label}`,
+    description: `Victory stamp for level ${record.level} of Decent Voyager: Galactic Gauntlet on ${record.completedAt}. Player-submitted game telemetry; reviewed and batch minted by the administrator on Base.`,
     image, external_url: externalUrl, attributes,
     properties: { record: JSON.parse(JSON.stringify(record)), schema: METADATA_SCHEMA, game: record.game, gameVersion: record.gameVersion, claimant, chain: 'base' },
   };

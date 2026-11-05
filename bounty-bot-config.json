@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "repository": "TheJollyLaMa/AsteRoid",
+  "repository": "TheJollyLaMa/DecentVoyager",
   "maintainer": "TheJollyLaMa",
   "requireWhitelistedWallet": true,
   "settlementEnabled": false

@@ -1,5 +1,6 @@
 const assets = require('../payroll-assets.json').assets;
 const loginKey = value => String(value || '').toLowerCase();
+const canonicalReference = value => loginKey(value).replace(/^thejollylama\/asteroid(?=#|$)/, 'thejollylama/decentvoyager');
 const walletOK = value => /^0x[\da-f]{40}$/i.test(value || '') && !/^0x0{40}$/i.test(value);
 function amountToUnits(value, currency) {
   const decimals = assets[currency]?.ledgerDecimals;
@@ -31,15 +32,15 @@ function parseBounties(labels = []) {
   }
   return result;
 }
-function extractIssueNumbers(text = '', slug = 'TheJollyLaMa/AsteRoid') {
+function extractIssueNumbers(text = '', slug = 'TheJollyLaMa/DecentVoyager') {
   const numbers = [];
   for (const match of text.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:([\w.-]+\/[\w.-]+))?#(\d+)\b/gi)) {
-    if (match[1] && loginKey(match[1]) !== loginKey(slug)) continue;
+    if (match[1] && canonicalReference(match[1]) !== canonicalReference(slug)) continue;
     const number = Number(match[2]); if (Number.isSafeInteger(number) && number > 0) numbers.push(number);
   }
   return [...new Set(numbers)];
 }
-function queueBounty({ queue, accounts, issue, pr, slug = 'TheJollyLaMa/AsteRoid', now = new Date().toISOString() }) {
+function queueBounty({ queue, accounts, issue, pr, slug = 'TheJollyLaMa/DecentVoyager', now = new Date().toISOString() }) {
   if (pr.merged !== true || !Number.isSafeInteger(pr.number) || !Number.isSafeInteger(issue.number)) throw new Error('Merged PR and issue numbers required');
   const bounties = parseBounties(issue.labels);
   if (!bounties.length) return { entries: [], queue, accounts };
@@ -50,7 +51,7 @@ function queueBounty({ queue, accounts, issue, pr, slug = 'TheJollyLaMa/AsteRoid
   const entries = [];
   for (const bounty of bounties) {
     const identity = `${slug}#${issue.number}:${bounty.currency}:implementer`;
-    if ([...nextQueue.pending, ...nextQueue.settled].some(entry => entry.id === identity)) continue;
+    if ([...nextQueue.pending, ...nextQueue.settled].some(entry => canonicalReference(entry.id) === canonicalReference(identity))) continue;
     const entry = { id: identity, contributorGithub: account.github, walletAddress: account.walletAddress, role: 'implementer', amount: bounty.amount, currency: bounty.currency, chainId: 8453, issueNumber: issue.number, issueRef: `${slug}#${issue.number}`, prNumber: pr.number, queuedAt: now };
     entries.push(entry); nextQueue.pending.push(entry);
     for (const field of ['totalEarnedByCurrency', 'pendingBalanceByCurrency']) {

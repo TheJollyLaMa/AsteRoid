@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 function repositoryCoordinates() {
-  const slug = process.env.GITHUB_REPOSITORY || 'TheJollyLaMa/AsteRoid';
+  const slug = process.env.GITHUB_REPOSITORY || 'TheJollyLaMa/DecentVoyager';
   if (!/^[\w.-]+\/[\w.-]+$/.test(slug)) throw new Error('Invalid repository slug');
   const [owner, repo] = slug.split('/'); return { owner, repo, slug };
 }

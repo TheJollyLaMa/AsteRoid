@@ -13,7 +13,8 @@ function record() { return { schema: 'asteroid-level-record/1', id: '2026-11-05-
 function claim() { return buildClaim(record(), { tokenURI, image, claimant: wallet, requestedAt: '2026-11-05T18:00:01.000Z' }); }
 test('metadata flattens every stat, ship and score, preserves raw JSON and date', () => {
   const input = record(), metadata = buildMetadata(input, { image, claimant: wallet });
-  assert.equal(metadata.name, 'AsteRoid Victory · L3 Pebble Lanes · Ace');
+  assert.equal(metadata.name, 'Decent Voyager Victory · L3 Pebble Lanes · Ace');
+  assert.equal(metadata.external_url, 'https://thejollylama.github.io/DecentVoyager/');
   const attrs = new Map(metadata.attributes.map(item => [item.trait_type, item]));
   function check(value, prefix) { for (const [key, item] of Object.entries(value)) { const path = `${prefix}.${key}`; if (item !== null && typeof item === 'object') check(item, path); else assert.equal(attrs.get(path)?.value, item === null ? 'Unavailable' : item); } }
   for (const key of ['stats', 'ship', 'score']) check(input[key], key);
@@ -38,7 +39,7 @@ test('issue parser accepts form/plain/fence and rejects ambiguous or executable 
   for (const body of [json, `### Claim JSON\n\n\`\`\`json\n${json}\n\`\`\``, `### Claim JSON\n\n${json}`]) assert.deepEqual(parseClaimBody(body), claim());
   assert.throws(() => parseClaimBody('console.log("bad")'));
   assert.throws(() => parseClaimBody(`\`\`\`json\n${json}\n\`\`\`\n\`\`\`json\n${JSON.stringify({ ...claim(), recordId: 'other' })}\n\`\`\``));
-  const url = new URL(issueUrl(claim())); assert.equal(url.searchParams.get('claim'), JSON.stringify(claim(), null, 2)); assert.equal(url.searchParams.get('template'), 'victory-stamp.yml');
+  const url = new URL(issueUrl(claim())); assert.equal(url.pathname, '/TheJollyLaMa/DecentVoyager/issues/new'); assert.equal(url.searchParams.get('claim'), JSON.stringify(claim(), null, 2)); assert.equal(url.searchParams.get('template'), 'victory-stamp.yml');
 });
 test('queue append dedupes record and token URI across pending/minted', () => {
   const initial = { pending: [], minted: [] }, first = appendClaim(initial, claim(), { number: 12, url: 'https://github.com/TheJollyLaMa/AsteRoid/issues/12' });

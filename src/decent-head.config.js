@@ -12,8 +12,8 @@ window.DECENT_CONFIG = {
     summary: 'Fly the Galactic Gauntlet: Sector I is the free ten-level voyage; Decent Pilots can unlock Sector II, guarded Supporter Vaults, victory stamps, and online arena rounds. Couch multiplayer is free. No wallet is needed to play levels 1–10.'
   },
   links: [
-    { label: 'GitHub · Decent Voyager', url: 'https://github.com/TheJollyLaMa/AsteRoid' },
-    { label: 'Issues / flight reports', url: 'https://github.com/TheJollyLaMa/AsteRoid/issues' },
+    { label: 'GitHub · Decent Voyager', url: 'https://github.com/TheJollyLaMa/DecentVoyager' },
+    { label: 'Issues / flight reports', url: 'https://github.com/TheJollyLaMa/DecentVoyager/issues' },
     { label: 'DecentAgency', url: 'https://github.com/TheJollyLaMa/DecentAgency' },
     { label: 'Ask to join · DecentAgency Discord', url: 'https://discord.gg/tkBfwT3YMN' },
     { label: 'DecentMarket · supporter listings', url: 'https://decentmarket.io' },

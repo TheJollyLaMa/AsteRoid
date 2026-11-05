@@ -20,7 +20,7 @@ services:
       - key: GITHUB_TOKEN
         sync: false
       - key: GITHUB_REPO
-        value: TheJollyLaMa/AsteRoid
+        value: TheJollyLaMa/DecentVoyager
       - key: GITHUB_REF
         value: main
       - key: PINATA_JWT

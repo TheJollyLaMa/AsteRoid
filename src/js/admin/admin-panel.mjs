@@ -5,7 +5,7 @@ import { gatewayUrl } from '../dnft/pin.mjs';
 import { node, button, link, createDialog, openDialog } from '../dnft/ui.mjs';
 import { pendingCounts, waitingTotal } from './pending.mjs';
 import { mainnetEnsCache } from './ens-cache.mjs';
-const RAW = 'https://raw.githubusercontent.com/TheJollyLaMa/AsteRoid/main/';
+const RAW = 'https://raw.githubusercontent.com/TheJollyLaMa/DecentVoyager/main/';
 const JOURNAL = 'asteroid-mint-journal/1';
 const SUPPORTER_NFT = '0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B';
 const SUPPORTER_PRIZES = {
@@ -221,7 +221,7 @@ export function mountAdmin() {
       const image = node('img', '', { src: gatewayUrl(claim.image, config.gateway), alt: `Battle card for L${claim.level} ${claim.difficulty}`, loading: 'lazy', referrerpolicy: 'no-referrer' });
       image.addEventListener('error', () => { image.replaceWith(node('p', 'Battle thumbnail unavailable — use the metadata gateway link.')); }, { once: true });
       card.append(select, image, node('h3', `L${claim.level} · ${claim.difficulty} · Score ${claim.score.total}`), node('p', `${claim.completedAt} · Claimant ${claim.claimant}`), link('Metadata on IPFS', gatewayUrl(claim.tokenURI, config.gateway)));
-      if (claim.issueNumber) card.append(link(`Review GitHub issue #${claim.issueNumber}`, `https://github.com/TheJollyLaMa/AsteRoid/issues/${claim.issueNumber}`));
+      if (claim.issueNumber) card.append(link(`Review GitHub issue #${claim.issueNumber}`, `https://github.com/TheJollyLaMa/DecentVoyager/issues/${claim.issueNumber}`));
       if (metadata.has(claim.recordId)) { card.append(node('pre', JSON.stringify(metadata.get(claim.recordId).properties.record.stats, null, 2))); }
       else card.append(button('Load & review every stat', async () => {
         try {
@@ -249,8 +249,8 @@ export function mountAdmin() {
       for (const worker of parseWorkers(accounts)) {
         const pending = payroll.pending.filter(entry => entry.contributorGithub?.toLowerCase() === worker.github.toLowerCase());
         const card = node('article'); card.append(node('h3', worker.displayName || worker.github), link(`@${worker.github}`, `https://github.com/${worker.github}`), node('p', `${worker.role || 'Contributor'} · ${worker.walletAddress || 'No wallet — not eligible for wallet actions'}`), node('p', `Earned: ${JSON.stringify(worker.totalEarnedByCurrency || {})} · Pending: ${JSON.stringify(worker.pendingBalanceByCurrency || {})}`), node('p', `Issues closed: ${(worker.issuesClosed || []).length}`));
-        for (const reference of worker.issuesClosed || []) { const match = /^TheJollyLaMa\/AsteRoid#(\d+)$/.exec(reference); if (match) card.append(link(`Closed issue #${match[1]}`, `https://github.com/TheJollyLaMa/AsteRoid/issues/${match[1]}`)); }
-        for (const entry of pending) { card.append(node('p', `Pending ${entry.amount} ${entry.currency} · ${entry.role || 'Contributor'}`)); if (Number.isSafeInteger(entry.issueNumber)) card.append(link(`Issue #${entry.issueNumber}`, `https://github.com/TheJollyLaMa/AsteRoid/issues/${entry.issueNumber}`)); }
+        for (const reference of worker.issuesClosed || []) { const match = /^TheJollyLaMa\/(?:DecentVoyager|AsteRoid)#(\d+)$/.exec(reference); if (match) card.append(link(`Closed issue #${match[1]}`, `https://github.com/TheJollyLaMa/DecentVoyager/issues/${match[1]}`)); }
+        for (const entry of pending) { card.append(node('p', `Pending ${entry.amount} ${entry.currency} · ${entry.role || 'Contributor'}`)); if (Number.isSafeInteger(entry.issueNumber)) card.append(link(`Issue #${entry.issueNumber}`, `https://github.com/TheJollyLaMa/DecentVoyager/issues/${entry.issueNumber}`)); }
         workers.append(card);
       }
       workers.append(node('p', 'Pilot eligibility requires a wallet address and whitelisted status. Client checks are convenience only; contracts and referee verify eligibility. Payroll settlement is separate and is never initiated here.'));

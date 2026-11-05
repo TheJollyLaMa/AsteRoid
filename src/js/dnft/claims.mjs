@@ -7,7 +7,7 @@ import { requirePilot } from '../pilots/gate.mjs';
 export function issueUrl(claim) {
   const json = JSON.stringify(claim, null, 2);
   const params = new URLSearchParams({ template: 'victory-stamp.yml', labels: 'victory-stamp', title: `Victory stamp: L${claim.level} ${claim.difficulty} · ${claim.recordId}`, claim: json, body: `### Claim JSON\n\n\`\`\`json\n${json}\n\`\`\`` });
-  return `https://github.com/TheJollyLaMa/AsteRoid/issues/new?${params}`;
+  return `https://github.com/TheJollyLaMa/DecentVoyager/issues/new?${params}`;
 }
 function walletAddress() { const state = window.DecentHead?.getWallet?.()?.snapshot?.(); return state?.connected && validAddress(state.address) ? state.address : null; }
 function requireDecentPilot(action) { requirePilot(window.__voyagerPilot, action); }
@@ -87,7 +87,7 @@ export function mountClaims() {
   }
   async function reconcile() {
     try {
-      const response = await fetch('https://raw.githubusercontent.com/TheJollyLaMa/AsteRoid/main/victory-stamps.json', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+      const response = await fetch('https://raw.githubusercontent.com/TheJollyLaMa/DecentVoyager/main/victory-stamps.json', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
       if (!response.ok) return;
       for (const minted of parseQueue(await response.json()).minted) {
         const entry = vault.entries.find(item => item.record.id === minted.recordId && item.tokenURI === minted.tokenURI && item.claimant?.toLowerCase() === minted.claimant.toLowerCase());

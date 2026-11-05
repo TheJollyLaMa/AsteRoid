@@ -21,7 +21,22 @@ test('bounty labels reject ambiguity, unsupported currencies and nonpositive amo
   assert.deepEqual(parseBounties(['bug', { name: 'bounty: 2 ART' }, 'bounty: 0.1 USDC']), [{ amount: '2', currency: 'ART' }, { amount: '0.1', currency: 'USDC' }]);
   for (const labels of [['bounty: 0 ART'], ['bounty: 1 ETH'], ['bounty: 1 USDC', 'bounty: 2 USDC'], ['bounty: $(attack) ART']]) assert.throws(() => parseBounties(labels));
 });
-test('closing references must belong to this repo and dedupe', () => { assert.deepEqual(extractIssueNumbers('Closes #12; fixes TheJollyLaMa/AsteRoid#13; resolves Other/Repo#14; closes #12'), [12, 13]); });
+test('closing references accept the renamed repo and its historical alias, not other repos', () => {
+  assert.deepEqual(extractIssueNumbers('Closes #12; fixes TheJollyLaMa/DecentVoyager#13; resolves Other/Repo#14; closes TheJollyLaMa/AsteRoid#12'), [12, 13]);
+  assert.deepEqual(extractIssueNumbers('Fixes TheJollyLaMa/AsteRoid#13'), [13]);
+  assert.deepEqual(extractIssueNumbers('Fixes TheJollyLaMa/AsteRoid#13', 'Other/Repo'), []);
+});
+test('repo rename preserves payroll deduplication without rewriting historical entries', () => {
+  const input = fixture(), legacy = queueBounty({ ...input, slug: 'TheJollyLaMa/AsteRoid' });
+  assert.equal(legacy.entries[0].id, 'TheJollyLaMa/AsteRoid#12:USDC:implementer');
+  for (const queue of [legacy.queue, { pending: [], settled: legacy.queue.pending }]) {
+    const result = queueBounty({ ...input, queue, accounts: legacy.accounts });
+    assert.equal(result.entries.length, 0);
+    assert.deepEqual(result.queue, queue);
+    assert.deepEqual(result.accounts, legacy.accounts);
+  }
+  assert.equal(queueBounty(input).entries[0].issueRef, 'TheJollyLaMa/DecentVoyager#12');
+});
 test('merged author accrual requires whitelist and dedupes settled/pending issue currencies', () => {
   const input = fixture(), result = queueBounty(input);
   assert.equal(input.queue.pending.length, 0); assert.equal(result.entries.length, 1); assert.equal(validatePayroll(result.queue, result.accounts), true);
