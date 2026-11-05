@@ -98,11 +98,9 @@ export function mountAdmin() {
       tabs[2].textContent = `Arena Rounds${counts.arena ? ` · ${counts.arena}` : ''}`;
       tabs[3].textContent = 'Decent Pilots';
       if (previewButton) previewButton.textContent = `☥ Admin preview · ${total} waiting for you`;
-      const menuEntry = document.querySelector('ankh-menu[side="left"]')?.shadowRoot?.querySelector('.options button');
-      if (menuEntry && authorized()) menuEntry.textContent = `Admin · ${total} waiting for you`;
+      adminLabel = `🛡 Admin · ${total} waiting for you`; attach();
     } catch {
-      const menuEntry = document.querySelector('ankh-menu[side="left"]')?.shadowRoot?.querySelector('.options button');
-      if (menuEntry && authorized()) menuEntry.textContent = 'Admin · queues unavailable';
+      adminLabel = '🛡 Admin · queues unavailable'; attach();
     }
   }
   async function ensCache() {
@@ -311,14 +309,15 @@ export function mountAdmin() {
   }
   async function open() { if (!preview && !authorized()) return; openDialog(dialog); await Promise.all([refreshQueue(), refreshWorkers(), refreshPrizes(), refreshArena(), refreshPendingBadge()]); }
   const observed = new WeakSet();
+  let adminLabel = '🛡 Admin · waiting for you';
   function attach(root = document) {
     for (const element of root.querySelectorAll('*')) {
       if (element.localName === 'ankh-menu' && element.getAttribute('side') !== 'right' && element.shadowRoot) {
         const entry = element.shadowRoot.querySelector('.options button');
-        if (entry) { entry.hidden = !preview && !authorized(); entry.disabled = !preview && !authorized(); const label = preview ? 'Admin (read-only preview)' : 'Admin · waiting for you'; if (entry.textContent !== label) entry.textContent = label; if (!entry.dataset.asteroidAdmin) { entry.dataset.asteroidAdmin = '1'; entry.style.cursor = 'pointer'; entry.addEventListener('click', () => void open()); } }
-        const details = element.shadowRoot.querySelector('details'); if (!preview && !authorized() && details) details.open = false;
-        // Keep the grid slot so DecentHead's title stays centred; hide and disable it for non-admins.
-        const locked = !preview && !authorized(); element.hidden = false; element.style.display = ''; element.style.visibility = locked ? 'hidden' : ''; element.inert = locked; if (locked) element.setAttribute('aria-hidden', 'true'); else element.removeAttribute('aria-hidden');
+        // The admin ankh is always visible; only the configured admin wallet (or ?adminPreview=1) can open the panel.
+        const locked = !preview && !authorized();
+        if (entry) { entry.hidden = false; entry.disabled = locked; const label = locked ? '🛡 Admin · connect the admin wallet' : preview ? '🛡 Admin (read-only preview)' : adminLabel; if (entry.textContent !== label) entry.textContent = label; entry.title = locked ? 'Admin tools for the Decent Voyager steward wallet.' : ''; entry.style.cursor = locked ? 'not-allowed' : 'pointer'; entry.style.opacity = locked ? '.62' : ''; if (!entry.dataset.asteroidAdmin) { entry.dataset.asteroidAdmin = '1'; entry.addEventListener('click', () => void open()); } }
+        element.hidden = false; element.style.display = ''; element.style.visibility = ''; element.inert = false; element.removeAttribute('aria-hidden');
       }
       if (element.shadowRoot) { if (!observed.has(element.shadowRoot)) { observed.add(element.shadowRoot); new MutationObserver(() => attach()).observe(element.shadowRoot, { childList: true, subtree: true }); } attach(element.shadowRoot); }
     }

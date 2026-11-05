@@ -85,7 +85,7 @@ stats and win records are saved per difficulty in `localStorage`, and can be bac
   the pot), `VoyagerPrizes` and `VoyagerStamps`, built as a reusable game layer for other dapps. See [docs/CONTRACTS.md](docs/CONTRACTS.md).
   Online arena and claims stay **unavailable** until contracts are deployed and `voyager.refereeUrl` is set in
   `src/decent-head.config.js`.
-- **Admin (left ankh)**: visible only to the configured admin wallet (or read-only with `?adminPreview=1`). Tabs:
+- **Admin (left ankh)**: always shown; it opens only for the configured admin wallet (or read-only with `?adminPreview=1`). Tabs:
   **Victory Stamps**, **Supporter Prizes**, **Arena Rounds** and **Decent Pilots**, with ENS names and a
   "waiting for you" badge.
 - **Payroll bot**: bounty/whitelist workflows and ledgers. See [docs/PAYROLL.md](docs/PAYROLL.md).

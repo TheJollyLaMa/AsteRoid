@@ -15,6 +15,23 @@ const quiet = (selector, css) => {
 quiet('wallet-connect', '#mobile,#status,.identity-note{display:none!important}');
 quiet('ipfs-status', '#label{display:none!important}');
 
+// Put the Mandelblum disc between "Decent" and "Voyager" instead of before the whole name.
+const centreDisc = () => {
+  const root = header.querySelector('app-title')?.shadowRoot, name = root?.querySelector('.name'), disc = root?.querySelector('button > img');
+  if (!name || !disc || name.dataset.voyager) return;
+  const [first, ...rest] = name.textContent.trim().split(/\s+/);
+  if (!rest.length) return;
+  name.dataset.voyager = '';
+  name.replaceChildren(first, disc, rest.join(' '));
+  disc.classList.add('voyager-disc');
+};
+centreDisc();
+quiet('app-title', `.name{display:inline-flex;align-items:center;gap:.28em;white-space:nowrap}
+button{font-size:clamp(18px,8.4cqi,52px)}
+.voyager-disc{width:.95em;height:.95em;animation:voyager-spin 18s linear infinite}
+@keyframes voyager-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.voyager-disc{animation:none}}`);
+
 let radio;
 const mountRadio = () => {
   radio = mount(document.getElementById('dbusk-radio'), {

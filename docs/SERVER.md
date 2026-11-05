@@ -40,14 +40,26 @@ The Node 20 service in `server/` verifies signed run logs by replaying them thro
 | `RATE_LIMIT_MAX` | No | Requests per IP per window (default 20). |
 | `RATE_LIMIT_WINDOW_MS` | No | Rate-limit window in milliseconds (default 60000). |
 
-## Owner key-in checklist
+## Owner key-in checklist (Render)
 
-1. Create a dedicated referee wallet and store its key only in Render's secret environment as `REFEREE_PRIVATE_KEY`; fund only as needed and verify the derived address against the configured referee on each contract.
-2. Add a narrowly scoped `GITHUB_TOKEN` with repository Contents read/write access for the queue files and contributor registry. Set `GITHUB_REPO` and the intended `GITHUB_REF`; do not use a broad personal token.
-3. Set `PINATA_JWT` only if metadata/image pinning is enabled; use a limited Pinata key and check Pinata usage/access policies.
-4. Populate `CORS_ORIGINS` with the exact deployed Decent Voyager origins, comma-separated. Do not use `*` with credentials or wallet APIs.
-5. Create the Render Web Service from this repository; `render.yaml` sets `rootDir: server`, Node 20, `npm install`, `npm start`, and `/health`. Set contract addresses, chain/RPC, admin wallet, and secrets in Render's environment; deploy only after the core replay and chain artifacts are integrated and verified.
-6. Confirm `GET /health`, a signed pilot run, queue append permissions, and the domain/verifying-contract values on the intended chain before enabling clients.
+The referee runs as its own Render service (`decent-voyager-referee`) in the same Render workspace as the other Decent services. It is deliberately not merged into DecentBusking's bot server: it replays runs with this repo's `src/js/game.js`, holds a prize-signing key, and must not share deploys or crashes with the radio.
+
+1. **Referee wallet.** Create a fresh wallet used only for signing. It never needs funds. Keep its private key for step 4 and its address for the contract deploy (it is the `referee` on `VoyagerStamps`, `VoyagerPrizes` and `VoyagerArena`).
+2. **Deploy contracts** on Base (see [CONTRACTS.md](CONTRACTS.md)) and note the three addresses.
+3. **Create the service.** Render dashboard → **New → Blueprint** → pick `TheJollyLaMa/AsteRoid` (branch `main` once PR #3 is merged). Render reads `render.yaml`: `rootDir: server`, Node 20, Starter plan (always on), `/health`, `CHAIN_ID=8453`, `CORS_ORIGINS=https://thejollylama.github.io`, and a generated `TICKET_SECRET`.
+4. **Paste the secrets** Render asks for:
+   - `REFEREE_PRIVATE_KEY`: the step 1 key.
+   - `GITHUB_TOKEN`: fine-grained token for `TheJollyLaMa/AsteRoid` only, Contents read/write + Metadata read.
+   - `VOYAGER_ARENA_ADDRESS`, `VOYAGER_STAMPS_ADDRESS`, `VOYAGER_PRIZES_ADDRESS`: from step 2.
+   - `BASE_RPC_URL`: a Base mainnet RPC (e.g. Alchemy/Infura; `https://mainnet.base.org` works for light traffic).
+   - `ADMIN_ADDRESS`: the admin wallet.
+   - `PINATA_JWT` (optional): a limited key, only if the referee should pin battle cards.
+   Add any extra game origins (an ENS gateway such as `https://<name>.eth.limo`) to `CORS_ORIGINS`, comma-separated, no `*`.
+5. **Check it:** `curl https://decent-voyager-referee.onrender.com/health` (use the URL Render shows).
+6. **Point the game at it:** set `voyager.refereeUrl` in `src/decent-head.config.js` to that URL, and the contract addresses in `src/js/chain/addresses.json`; commit. Online rounds and reward claims switch from "unavailable" to live.
+7. **Verify** a signed pilot run, a queue append on GitHub, and that the EIP-712 domain (chain 8453 + contract address) matches each contract before announcing.
+
+Cost: Starter is a fixed monthly fee per service. Review Render usage after the first month; if traffic is light, the referee can move onto a shared paid instance with other relays later (it only needs Node 20 and the repo checkout).
 
 ## Security and integration notes
 

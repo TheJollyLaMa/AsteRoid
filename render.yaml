@@ -1,7 +1,11 @@
+# Render blueprint for the Decent Voyager referee + arena relay (own service, same Render workspace as the
+# other Decent services). Starter keeps it awake: free instances sleep and would drop live arena rounds and
+# forget used flight tickets. Review plan/usage monthly and consolidate if traffic stays low.
 services:
   - type: web
     name: decent-voyager-referee
     runtime: node
+    plan: starter
     rootDir: server
     buildCommand: npm install
     startCommand: npm start
@@ -22,11 +26,11 @@ services:
       - key: PINATA_JWT
         sync: false
       - key: CORS_ORIGINS
-        sync: false
+        value: https://thejollylama.github.io
       - key: ADMIN_ADDRESS
         sync: false
       - key: CHAIN_ID
-        value: 84532
+        value: 8453
       - key: VOYAGER_ARENA_ADDRESS
         sync: false
       - key: VOYAGER_STAMPS_ADDRESS
