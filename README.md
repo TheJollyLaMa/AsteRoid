@@ -10,6 +10,7 @@ unlock **Sector II** (levels 11–20), win Supporter DNFTs, earn on-chain victor
 - Play: https://thejollylama.github.io/DecentVoyager/ (GitHub Pages, from `src/` via `.github/workflows/pages.yml`) · ENS: `voyager.decentagency.eth`.
 - Referee: https://decent-voyager-referee.onrender.com (Render Starter, `render.yaml`; signer `0x3197DDde77b859A8177607ca82E88938B31C02f4`)
 - Base contracts: see `contracts/deployments/base.json`. Supporter DNFT v1.0.0: token 80 on `0xe63E…439B`, DecentMarket escrow listing 10 (1,000 × 10 USDC).
+- Current ENS snapshot after the repo rename: `bafybeihtlxezj7l5i36bb6qxnbvag4pgbubmi2rdkgreztml33vi6iurlm` (frontend from commit `df2d08d`). The on-chain contenthash is verified; the `eth.limo` gateway currently fails during TLS setup, so use the Pages link above.
 
 The repository was renamed from `AsteRoid` to `DecentVoyager`. Frozen v1.0.0 Supporter metadata and source archives retain their original repository identity; GitHub redirects the old repository links. Historical payroll references, save keys and record schemas remain compatible. New issue links and payroll entries use `DecentVoyager`.
 

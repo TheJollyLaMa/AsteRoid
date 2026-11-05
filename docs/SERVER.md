@@ -42,6 +42,13 @@ The Node 20 service in `server/` verifies signed run logs by replaying them thro
 
 ## Owner key-in checklist (Render)
 
+The live service uses `TheJollyLaMa/DecentVoyager` and GitHub-backed queues.
+The initial fine-grained queue token expires on **2026-12-05**; rotate it in Render's
+`GITHUB_TOKEN` before then. Authenticated production queue reads were checked
+against both repository ledgers after deployment. No test victories or prize
+claims were inserted; a real winning flight is still needed to verify an
+end-to-end production queue append and claim.
+
 The referee runs as its own Render service (`decent-voyager-referee`) in the same Render workspace as the other Decent services. It is deliberately not merged into DecentBusking's bot server: it replays runs with this repo's `src/js/game.js`, holds a prize-signing key, and must not share deploys or crashes with the radio.
 
 1. **Referee wallet.** Create a fresh wallet used only for signing. It never needs funds. Keep its private key for step 4 and its address for the contract deploy (it is the `referee` on `VoyagerStamps`, `VoyagerPrizes` and `VoyagerArena`).
