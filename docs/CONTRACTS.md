@@ -34,8 +34,9 @@ calldata must match the compiled source and expected constructor.
 The public execution record is `deployments/base-rewards.json`. The original
 `deployments/base.json` and NFT-only claim address remain intact for old vouchers.
 The new deployment does not by itself activate the new game rules or fund DNFTs.
-The prepared 710-NFT reserve still requires a coordinated escrow listing cutover;
-never withdraw editions while leaving stale sale quantities active.
+The 710-NFT reserve was funded through the coordinated escrow listing cutover
+recorded in `deployments/base-reserves.json`; original sale listings were
+delisted before each withdrawal and reduced quantities relisted at unchanged prices.
 Native ETH is supported but no native-ETH reward budget has been approved or funded.
 Only standard non-rebasing, non-fee-on-transfer ERC-20 assets such as BNut are
 supported by the exact-amount reservation model.
@@ -44,8 +45,8 @@ Base deployment: `0xCa55A59BD2c15D0F11Ae5f7e7E96Bb58eb0B7DE5`;
 deployment transaction `0x2447a90468b84f9407db37d8b6fe1400c72a318eeb4b246572121dadd3265b00`.
 Exactly 10,000 BNut was minted directly to its custody in transaction
 `0x19263be090025e5b504e32275e1023bc60e515a0676a2bda8282f045e04bda72`.
-No ETH reward budget or NFT reserve has been transferred to it yet. The live
-frontend/referee remain on their previous rules until the listing/funding cutover.
+All 710 approved NFT units are also in custody, independently verified at Base
+block 53644409. No ETH reward budget was transferred.
 
 ## Plugging in another dapp/game
 
@@ -71,7 +72,7 @@ The local demo deploys fixtures only and demonstrates registration, pilot setup,
 
 - Keep `DEPLOYER_PRIVATE_KEY`, `BASE_RPC_URL`, and `BASE_SEPOLIA_RPC_URL` in the operator's secret store or local ignored `contracts/.env`. Deploy to Base Sepolia first; verify the constructor parameters and grant operational roles from the intended owner/multisig. No keys belong in this repository.
 - Register the Decent Voyager `gameId` and referee address using `VoyagerPilots.registerGame`; grant `PILOT_MANAGER_ROLE` and `GAME_MANAGER_ROLE` only to the appropriate administrators. Set the intended treasury and, only if approved, a nonzero protocol fee.
-- The Base Supporter collection is `0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B`; its sale holder is DecentMarket escrow `0x31b07b83e99A9bdF379bf40225b8A80d3804C89d`. New awards must use the separately recorded `VoyagerRewards` custodian, not the original NFT-only `VoyagerPrizes`. The approved preparation covers token IDs **70, 71, 75, 76, 77, 78, 79 and 80**, totaling 710 units. No NFT reserve transfer has been made; delist/relist coordination must precede withdrawal.
+- The Base Supporter collection is `0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B`; its sale holder is DecentMarket escrow `0x31b07b83e99A9bdF379bf40225b8A80d3804C89d`. New awards use the separately recorded `VoyagerRewards` custodian, not the original NFT-only `VoyagerPrizes`. Funded token IDs **70, 71, 75, 76, 77, 78, 79 and 80** total 710 units. Replacement sale listing IDs are **11–18** in that order; original mint evidence remains historical.
 - Verify each deployment on BaseScan (or Base Sepolia Basescan) using the recorded constructor arguments and matching Solidity 0.8.26, optimizer 200, IR, and Cancun settings. For example, after deploying and storing constructor values locally:
   ```sh
   npx hardhat verify --network base "$VOYAGER_PILOTS" "$ADMIN"

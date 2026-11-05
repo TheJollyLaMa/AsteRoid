@@ -77,7 +77,11 @@ async function main() {
                 assert.equal(old.priceETH, BigInt(item.priceETH));
                 assert.equal(old.priceToken, item.priceToken);
                 assert.equal(old.priceAmount, BigInt(item.priceAmount));
-                entry = { ...item, note: old.note };
+                entry = { project: item.project, tokenId: item.tokenId, reserve: item.reserve,
+                    oldListingId: item.oldListingId, preCutoverPrizeStock: item.currentPrizeStock,
+                    escrowStock: item.escrowStock, remainingSaleStock: item.remainingSaleStock,
+                    priceToken: item.priceToken, priceAmount: item.priceAmount,
+                    priceETH: item.priceETH, note: old.note };
                 journal.editions.push(entry);
                 persist();
             }
@@ -100,7 +104,7 @@ async function main() {
             assert.equal(listing.available, BigInt(item.remainingSaleStock));
             assert.equal(listing.tokenId, BigInt(item.tokenId));
             assert.equal(listing.priceAmount, BigInt(item.priceAmount));
-            entry.purchaseUrl = `https://thejollylama.github.io/DecentHead/supporter/buy.html?chainId=8453&escrow=${ESCROW}&listingId=${entry.newListingId}`;
+            entry.purchaseUrl = `https://thejollylama.github.io/DecentHead/supporter/buy.html?chainId=8453&escrow=${ESCROW}&listingId=${entry.newListingId}&priceUSDC=${entry.priceAmount}`;
             entry.status = 'FUNDED_AND_RELISTED';
             persist();
         }

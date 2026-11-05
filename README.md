@@ -9,7 +9,9 @@ unlock **Sector II** (levels 11–20), win Supporter DNFTs, earn on-chain victor
 
 - Play: https://thejollylama.github.io/DecentVoyager/ (GitHub Pages, from `src/` via `.github/workflows/pages.yml`) · ENS: `voyager.decentagency.eth`.
 - Referee: https://decent-voyager-referee.onrender.com (Render Starter, `render.yaml`; signer `0x3197DDde77b859A8177607ca82E88938B31C02f4`)
-- Base contracts: see `contracts/deployments/base.json`. Supporter DNFT v1.0.0: token 80 on `0xe63E…439B`, DecentMarket escrow listing 10 (1,000 × 10 USDC).
+- Base contracts: see `contracts/deployments/base.json` and `contracts/deployments/base-rewards.json`.
+  Supporter DNFT v1.0.0: token 80 on `0xe63E…439B`, replacement DecentMarket escrow listing 18
+  (900 × 10 USDC at reserve cutover; 100 held for game rewards). Frozen mint evidence records original listing 10.
 - Current ENS snapshot after the repo rename: `bafybeihtlxezj7l5i36bb6qxnbvag4pgbubmi2rdkgreztml33vi6iurlm` (frontend from commit `df2d08d`). The on-chain contenthash is verified; the `eth.limo` gateway currently fails during TLS setup, so use the Pages link above.
 
 The repository was renamed from `AsteRoid` to `DecentVoyager`. Frozen v1.0.0 Supporter metadata and source archives retain their original repository identity; GitHub redirects the old repository links. Historical payroll references, save keys and record schemas remain compatible. New issue links and payroll entries use `DecentVoyager`.
@@ -128,14 +130,15 @@ stats and win records are saved per difficulty in `localStorage`, and can be bac
 
 ### Reward rollout boundary
 
-The prepared reserve is 710 NFTs: Head 100, Market 100, Calendar 100, Canopy 100,
+The funded reserve is 710 NFTs: Head 100, Market 100, Calendar 100, Canopy 100,
 Pilgrimages 100, Voyager 100, Busking 10 and BigNuten 100. Perfect Pilot's matching
 budget is 10,000 BNut (Base token `0x25ACb773159Af5a5c672DEfe31C7Fff6a9A93736`,
-18 decimals). **The NFT reserve is prepared, not funded.** The 10,000 BNut has been
+18 decimals). **All 710 NFTs are held in VoyagerRewards.** The 10,000 BNut has been
 minted into `VoyagerRewards` at `0xCa55A59BD2c15D0F11Ae5f7e7E96Bb58eb0B7DE5`
 on Base: [mint receipt](https://basescan.org/tx/0x19263be090025e5b504e32275e1023bc60e515a0676a2bda8282f045e04bda72).
-The public execution record is `contracts/deployments/base-rewards.json`.
-These new rules are not yet active on the live game/referee.
+The public execution records are `contracts/deployments/base-rewards.json` and
+`contracts/deployments/base-reserves.json`. Reserve custody and reduced sale
+quantities were independently checked at Base block 53644409.
 The original NFT claim contract does not transfer ERC-20 tokens; new `VoyagerRewards`
 bundles transfer ERC-1155, ERC-20 and/or native ETH atomically, tied to the win-record ID.
 Perfect Pilot claims must use that escrow, never an NFT-only voucher plus a promise
@@ -144,9 +147,14 @@ funding and the new deployment are verified.
 
 Delisting/relisting escrow stock changes listing IDs. Coordinate all storefronts
 and release-evidence consumers; preserve each original price, including Busking's
-100 USDC price. Run the new frontend and referee together after existing runs drain:
-changing the seeded prize table changes replay outcomes for old clients.
-No new mint, treasury withdrawal or ENS snapshot is implied by these source changes.
+100 USDC price. Replacement listings are 11/12/13/14/15/16/17/18 for
+Head/Market/Busking/BigNuten/Calendar/Pilgrimages/Canopy/Voyager respectively.
+Each original release has supplemental `supporter-current-listing.json` evidence;
+frozen mint assets remain unchanged. The shared Head buyer also resolves retired
+links only to a unique same-token, same-price active replacement.
+Deploy the matching frontend/referee ruleset together; old flight tickets are
+rejected explicitly rather than replayed under changed seeded prize tables.
+Custody is not a guarantee of eligibility, remaining stock or a successful claim.
 
 Reuse: adapt the existing `Game.completeLevel`, `LevelTracker` totals, `buildMetadata`,
 referee tier-scoped vouchers and `createQueueWriter` rather than introduce another

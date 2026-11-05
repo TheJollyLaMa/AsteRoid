@@ -35,7 +35,7 @@ test('switching fires the selected weapon immediately and preserves earned tiers
 
 test('non-Rapid weapons maintain useful tier-one damage throughput and projectile speed', () => {
     const dps = type => WEAPONS[type].damage[0] * WEAPONS[type].pattern[0].length / WEAPONS[type].cooldown[0];
-    for (const type of ['blaster', 'spread', 'plasma']) {
+    for (const type of ['blaster', 'spread', 'plasma', 'prism']) {
         assert.ok(dps(type) >= dps('rapid'), `${type} must not fall behind Rapid's raw tier-one throughput`);
         assert.ok(WEAPONS[type].speed >= 660);
     }

@@ -46,12 +46,15 @@ Perfect Pilot queue entries include `protocol: "reward-bundle/1"` and `bonus`
 level-20 `receiptRecordId`. Both NFT units and outstanding unexpired BNut
 voucher amounts are reserved before publishing a claim. A shortfall in either
 asset prevents issuance; an on-chain transfer failure rolls back the entire claim.
-Do not enable this award until its 10,000-BNut budget and NFT custody are funded.
-A 710-NFT reserve plan is not a funded pool.
+The 10,000-BNut budget and 710-NFT custody are funded and independently verified
+at Base block 53644409; see `contracts/deployments/base-reserves.json`.
+Finite stock and outstanding-voucher reservations still gate every new offer.
 
-Deploy frontend/referee as one rule-version change after existing flight tickets
-drain; Calendar's addition and removal of the rare random prizes change seeded
-replay selection. Configure the new escrow only after deployment and custody checks.
+Deploy frontend/referee as one rule-version change. Tickets and run logs carry
+`voyager-1.1-handling-rewards`; older flights receive an explicit reload/new-flight
+error instead of replaying under changed physics or prize selection. Existing
+on-chain vouchers retain their original claim route. Configure the new escrow
+only after deployment and custody checks.
 
 ## Environment
 

@@ -6686,7 +6686,7 @@ const WEAPONS = {
         pattern: [[[0, 0]], [[0, -7], [0, 7]], [[-0.03, -10], [0, 0], [0.03, 10]]]
     },
     nova: { name: 'Nova Charger', color: '#fff36a', cooldown: [0.8, 0.72, 0.64], speed: 310, damage: [3, 5, 7], size: [10, 14, 18], pierce: false, pattern: [[[0, 0]], [[0, 0]], [[0, 0]]] },
-    prism: { name: 'Prism Splitter', color: '#67faff', cooldown: [0.42, 0.36, 0.3], speed: 520, damage: [2, 2, 3], size: [5, 6, 7], pierce: false, pattern: [[[0, 0]], [[-0.18, 0], [0, 0], [0.18, 0]], [[-0.28, 0], [-0.14, 0], [0, 0], [0.14, 0], [0.28, 0]]] },
+    prism: { name: 'Prism Splitter', color: '#67faff', cooldown: [0.22, 0.19, 0.16], speed: 740, damage: [3, 3, 4], size: [5, 6, 7], pierce: false, pattern: [[[0, 0]], [[-0.18, 0], [0, 0], [0.18, 0]], [[-0.28, 0], [-0.14, 0], [0, 0], [0.14, 0], [0.28, 0]]] },
     singularity: { name: 'Singularity', color: '#1c3f8a', cooldown: [0.9, 0.82, 0.74], speed: 270, damage: [4, 6, 8], size: [12, 16, 20], pierce: false, pattern: [[[0, 0]], [[0, 0]], [[0, 0]]] },
     plasma: {
         name: 'Plasma Lance',
