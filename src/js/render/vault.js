@@ -15,7 +15,7 @@ function shielded(vault, guards) {
 
 function drawVaultGlyph(ctx, x, y, radius, time, vault, guards = []) {
     const active = shielded(vault, guards);
-    const color = active ? '#ff5a9e' : '#ffe65c';
+    const color = active ? '#7dff8c' : '#ffe65c';
     const pulse = 0.72 + Math.sin(time * 5) * 0.22;
     drawGlow(ctx, x, y, radius * 2.8, color, 0.75 * pulse);
     ctx.save();

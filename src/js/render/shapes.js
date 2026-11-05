@@ -77,8 +77,8 @@ function drawGlowDot(ctx, x, y, radius, color, alpha = 1) {
 
 // ---------------------------------------------------------------- pixel art
 const SHIP_PALETTE = {
-    W: '#ffffff', C: '#7fd7ff', H: '#ff6cf5', B: '#13284a', D: '#0a1428',
-    M: '#ffe65c', A: '#ff3c8a', P: '#4a1d8a', F: '#ffb347'
+    W: '#ffffff', C: '#7fd7ff', H: '#d8e4ef', B: '#13284a', D: '#0a1428',
+    M: '#ffe65c', A: '#3fb8ff', P: '#1d4a6a', F: '#ffb347'
 };
 
 const SHIP_TOP = [
@@ -306,7 +306,7 @@ function drawShipTop(ctx, ship, x, y, time = 0, ripples = []) {
             ctx.stroke();
         }
         ctx.restore();
-        drawGlow(ctx, x, y - 8, 9, '#ff6cf5', 0.35);
+        drawGlow(ctx, x, y - 8, 9, '#d8e4ef', 0.35);
     }
     drawShield(ctx, ship, x, y, 30, time, ripples);
 }
@@ -327,8 +327,8 @@ function drawShipChase(ctx, ship, x, y, time = 0, ripples = []) {
             drawGlow(ctx, ex, 7, 18 * flick, '#ff8a2c', 0.9);
             drawGlow(ctx, ex, 7, 7 * flick, '#fff4c8', 0.9);
         }
-        drawGlow(ctx, -36, 0, 7, '#ff3c8a', 0.5 + 0.5 * Math.sin(time * 6));
-        drawGlow(ctx, 36, 0, 7, '#ff3c8a', 0.5 + 0.5 * Math.sin(time * 6 + Math.PI));
+        drawGlow(ctx, -36, 0, 7, '#3fb8ff', 0.5 + 0.5 * Math.sin(time * 6));
+        drawGlow(ctx, 36, 0, 7, '#3fb8ff', 0.5 + 0.5 * Math.sin(time * 6 + Math.PI));
         ctx.restore();
     }
     drawShield(ctx, ship, x, y, 62, time, ripples);
@@ -431,7 +431,7 @@ function drawPlayerBullet(ctx, bullet, x, y, dx, dy, scale = 1, alpha = 1, time 
     if (type === 'singularity') {
         const r = Math.max(4, (bullet.size || 10) * scale * 1.5);
         const pulse = 0.82 + 0.18 * Math.sin(time * 16);
-        drawGlow(ctx, x, y, r * 9 * pulse, '#a35bff', 0.95);
+        drawGlow(ctx, x, y, r * 9 * pulse, '#5fd9ff', 0.95);
         drawGlow(ctx, x, y, r * 5, '#251044', 1);
         ctx.fillStyle = '#020106';
         ctx.beginPath(); ctx.arc(x, y, r * 1.45, 0, Math.PI * 2); ctx.fill();
@@ -446,7 +446,7 @@ function drawPlayerBullet(ctx, bullet, x, y, dx, dy, scale = 1, alpha = 1, time 
         ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(uy, ux) + time * 0.15);
         ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(r * 2.4, 0); ctx.lineTo(-r, r); ctx.lineTo(-r * 0.5, 0); ctx.lineTo(-r, -r); ctx.closePath(); ctx.fill();
         ctx.strokeStyle = '#65ffff'; ctx.lineWidth = Math.max(1, r * 0.3); ctx.stroke(); ctx.restore();
-        for (let i = 0; i < 3; i++) { ctx.strokeStyle = ['#ff6cf5', '#71ffff', '#fff36a'][i]; ctx.globalAlpha *= 0.65; ctx.lineWidth = Math.max(1, r * 0.16); ctx.beginPath(); ctx.moveTo(x - ux * r * (i + 1), y - uy * r * (i + 1)); ctx.lineTo(x - ux * r * (i + 5), y - uy * r * (i + 5) + (i - 1) * r * 1.5); ctx.stroke(); }
+        for (let i = 0; i < 3; i++) { ctx.strokeStyle = ['#d8e4ef', '#71ffff', '#fff36a'][i]; ctx.globalAlpha *= 0.65; ctx.lineWidth = Math.max(1, r * 0.16); ctx.beginPath(); ctx.moveTo(x - ux * r * (i + 1), y - uy * r * (i + 1)); ctx.lineTo(x - ux * r * (i + 5), y - uy * r * (i + 5) + (i - 1) * r * 1.5); ctx.stroke(); }
     } else if (type === 'nova') {
         const r = Math.max(3, (bullet.radius || bullet.size || 8) * scale);
         drawGlow(ctx, x, y, r * 6, '#d6a1ff', 0.95);

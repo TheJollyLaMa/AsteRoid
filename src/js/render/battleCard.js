@@ -9,7 +9,7 @@ const {
 } = require('./cardMath');
 
 const TITLE = 'DECENT VOYAGER \u00b7 Galactic Gauntlet';
-const CARD_ACCENTS = ['#7fd7ff', '#5fffd0', '#c78cff', '#ff6cf5', '#ffd25c', '#7dff8c', '#ff8a2c', '#5fd9ff', '#ff5a8a', '#fff4c8'];
+const CARD_ACCENTS = ['#7fd7ff', '#5fffd0', '#9ff3ff', '#d8e4ef', '#ffd25c', '#7dff8c', '#ff8a2c', '#5fd9ff', '#5fffd0', '#fff4c8'];
 const list = (value) => (Array.isArray(value) ? value : []);
 const num = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
 
@@ -291,7 +291,7 @@ function statRows(record) {
         ['MISSED', String(num(s.asteroidsMissed)), '#9fb4c8'],
         ['SHOOTERS', String(num(s.shootersDestroyed)), '#ff8a2c'],
         ['SHOTS', String(num(s.shotsFired)), '#e8f6ff'],
-        ['MAX COMBO', `x${num(s.maxCombo)}`, '#ff6cf5'],
+        ['MAX COMBO', `x${num(s.maxCombo)}`, '#d8e4ef'],
         ['DAMAGE', String(num(s.damageTaken)), '#ff3c5a'],
         ['SHIELD BLOCKS', String(num(s.shieldBlocks)), '#5fd9ff'],
         ['TIME', formatDuration(record.durationSec), '#ffe65c'],
@@ -331,7 +331,7 @@ function drawPanel(ctx, record, rng, accent) {
     // Weapon mix bar.
     const mixY = top + rows.length * rowH + 4;
     const byWeapon = (record.stats && record.stats.shotsByWeapon) || {};
-    const colors = { blaster: '#9ff3ff', spread: '#5fffd0', rapid: '#ffe65c', plasma: '#ff6cf5' };
+    const colors = { blaster: '#9ff3ff', spread: '#5fffd0', rapid: '#ffe65c', plasma: '#d8e4ef' };
     const total = Object.keys(colors).reduce((sum, k) => sum + Math.max(0, num(byWeapon[k])), 0);
     pixelText(ctx, 'WEAPON MIX', panel.x + 30, mixY, { size: 18, color: '#9fb4c8' });
     const barX = panel.x + 30;

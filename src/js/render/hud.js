@@ -152,7 +152,7 @@ function createHud() {
             if (charge > 0) { ctx.fillStyle = color; ctx.fillRect(x + 37, y + 20, 74 * charge, 2); }
             if (versusMode(game)) pixelText(ctx, String(playerScore), x + 168, y + 15, { size: 11, color: '#ffe65c', align: 'right' });
         });
-        if (versusMode(game)) pixelText(ctx, 'VERSUS · INDIVIDUAL SCORE', VIEW.width - 100, 64, { size: 9, color: '#ff6cf5', align: 'right' });
+        if (versusMode(game)) pixelText(ctx, 'VERSUS · INDIVIDUAL SCORE', VIEW.width - 100, 64, { size: 9, color: '#d8e4ef', align: 'right' });
     }
 
     function drawToast(ctx) {
@@ -215,7 +215,7 @@ function createHud() {
         const x = VIEW.width - 20;
         const y = VIEW.height - 70;
         const scale = 1 + view.comboPop * 0.5;
-        const hue = (game.time * 240) % 360;
+        const hue = 150 + 45 * Math.sin(game.time * 4);
         drawGlow(ctx, x - 50, y - 8, 60 * scale, `hsl(${hue}, 100%, 60%)`, 0.25);
         pixelText(ctx, `x${combo}`, x, y, { size: Math.round(26 * scale), color: `hsl(${hue}, 100%, 70%)`, align: 'right' });
         pixelText(ctx, 'COMBO', x, y + 16, { size: 11, color: '#ffffff', align: 'right' });

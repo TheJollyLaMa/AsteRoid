@@ -5,18 +5,20 @@ window.DECENT_CONFIG.ipfsAdapter = installProgressPanel();
 // Configuration and host controls must exist before DecentHead snapshots them.
 await import('../../vendor/decent-head/2.0.0/js/main.js');
 
-const aboutRoot = document.querySelector('decent-header').shadowRoot.querySelector('about-modal').shadowRoot;
-const aboutArt = document.createElement('img');
-aboutArt.src = new URL('../../assets/brand/mandelblum-gate.png', import.meta.url).href;
-aboutArt.alt = 'Mandelblum portal art by TheJollyLaMa';
-aboutArt.width = 96; aboutArt.height = 96;
-aboutArt.style.cssText = 'display:block;object-fit:contain;margin:20px auto;filter:drop-shadow(0 0 16px #ff58ce45)';
-aboutRoot.querySelector('dialog > p').after(aboutArt);
+// Keep the header orbs clean: the fox itself connects, so drop the helper text and the duplicate MetaMask link.
+const header = document.querySelector('decent-header').shadowRoot;
+const quiet = (selector, css) => {
+  const root = header.querySelector(selector)?.shadowRoot;
+  if (!root || root.querySelector('style[data-voyager]')) return;
+  const style = document.createElement('style'); style.dataset.voyager = ''; style.textContent = css; root.append(style);
+};
+quiet('wallet-connect', '#mobile,#status,.identity-note{display:none!important}');
+quiet('ipfs-status', '#label{display:none!important}');
 
 let radio;
 const mountRadio = () => {
   radio = mount(document.getElementById('dbusk-radio'), {
-    workerUrl: 'https://decentbusking.onrender.com', compact: true, theme: 'auto', volume: 0.08,
+    workerUrl: 'https://decentbusking.onrender.com', compact: true, theme: 'dark', volume: 0.08,
     stations: [{ id: 'wqxr', label: 'WQXR', url: 'https://stream.wqxr.org/wqxr-web' }]
   });
 };

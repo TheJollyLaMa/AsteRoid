@@ -12,8 +12,8 @@ const MAX_WORLD_PARTICLES = 650;
 const MAX_SCREEN_PARTICLES = 700;
 const ROCK_COLORS = ['#7fffe0', '#ff8ae6', '#b9a8ff', '#ffffff', '#9ff3ff', '#ffe18a'];
 const SHOOTER_COLORS = ['#ff5a1c', '#ff8a5c', '#ffd25c', '#ffffff', '#ff3a1c'];
-const FIREWORK_COLORS = ['#ff3c8a', '#7fd7ff', '#7dff8c', '#ffe65c', '#ff6cf5', '#ffffff', '#ffb347'];
-const PICKUP_COLORS = { spread: '#5fffd0', rapid: '#ffe65c', plasma: '#ff6cf5', power: '#7dff8c', shield: '#6fa8ff' };
+const FIREWORK_COLORS = ['#3fb8ff', '#7fd7ff', '#7dff8c', '#ffe65c', '#d8e4ef', '#ffffff', '#ffb347'];
+const PICKUP_COLORS = { spread: '#5fffd0', rapid: '#ffe65c', plasma: '#d8e4ef', power: '#7dff8c', shield: '#6fa8ff' };
 
 const rand = (min, max) => min + Math.random() * (max - min);
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
@@ -158,7 +158,7 @@ function createFx() {
                         state.flashColor = '#7dff8c';
                         for (let i = 0; i < 18; i++) {
                             const a = (i / 18) * Math.PI * 2;
-                            addWorld({ kind: 'debris', x: ship.x, y: ship.y, vx: Math.cos(a) * 120, vy: Math.sin(a) * 120 + drift, life: 0.6, maxLife: 0.6, size: 3, color: i % 2 ? '#7dff8c' : '#ff6cf5', drag: 2 });
+                            addWorld({ kind: 'debris', x: ship.x, y: ship.y, vx: Math.cos(a) * 120, vy: Math.sin(a) * 120 + drift, life: 0.6, maxLife: 0.6, size: 3, color: i % 2 ? '#7dff8c' : '#d8e4ef', drag: 2 });
                         }
                     }
                     break;
@@ -329,7 +329,7 @@ function createFx() {
                 case 'thrust': {
                     const size = Math.max(1, Math.round(p.size * scale * (p.kind === 'thrust' ? 0.5 + t * 0.7 : 1)));
                     ctx.globalAlpha = t * fade;
-                    ctx.fillStyle = p.kind === 'thrust' ? (t > 0.6 ? '#fff4c8' : t > 0.3 ? '#ffb347' : '#ff3c8a') : p.color;
+                    ctx.fillStyle = p.kind === 'thrust' ? (t > 0.6 ? '#fff4c8' : t > 0.3 ? '#ffb347' : '#3fb8ff') : p.color;
                     ctx.fillRect(Math.round(s.x - size / 2), Math.round(s.y - size / 2), size, size);
                     break;
                 }
@@ -421,7 +421,7 @@ function createFx() {
                 const angle = (i / 40) * Math.PI * 2 + t * (i % 2 ? 0.2 : -0.15);
                 const inner = 45 + 15 * Math.sin(t * 11 + i);
                 const reach = 200 + 260 * Math.min(1, t / 1.6) + 35 * Math.sin(t * 8 + i * 0.5);
-                ctx.strokeStyle = i % 4 === 0 ? '#fff4c8' : i % 3 === 0 ? '#ff6cf5' : '#67faff';
+                ctx.strokeStyle = i % 4 === 0 ? '#fff4c8' : i % 3 === 0 ? '#d8e4ef' : '#67faff';
                 ctx.globalAlpha = Math.max(0, 0.75 - Math.max(0, t - 2.4) * 0.38);
                 ctx.lineWidth = i % 5 === 0 ? 4 : 2;
                 ctx.beginPath(); ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);

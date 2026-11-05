@@ -15,11 +15,13 @@ export function mountClaims() {
   if (document.getElementById('asteroid-victory-vault')) return;
   const vault = new VictoryVault(), busy = new Set();
   const dialog = createDialog('🏆 Victory Vault', 'asteroid-victory-vault');
-  const intro = node('p', 'Every cleared level earns a local victory record. Stamp its battle card and all stats to your IPFS, then request an administrator mint on Base. A request is NOT an on-chain NFT. Game stays paused after closing.');
+  const intro = node('p', 'Every level you clear is recorded here with its battle card and full stats. Decent Pilots who sign a flight log get level-pass DNFTs queued automatically (see Rewards waiting). As a fallback, stamp a record to IPFS and request the mint on GitHub. A request is not yet an on-chain NFT.');
   const status = node('p', '', { role: 'status', 'aria-live': 'polite', className: 'asteroid-status' });
   const list = node('section', '', { 'aria-label': 'Cleared levels' }); dialog.append(intro, status, list);
-  const toggle = button('🏆 Victory Vault (0)', () => { sync(); render(); openDialog(dialog); }); toggle.className = 'asteroid-vault-button'; document.body.append(toggle);
-  function sync() { vault.merge(window.asteroidGame?.getWinRecords?.() || []); toggle.textContent = `🏆 Victory Vault (${vault.entries.length})`; }
+  let opener = null;
+  const announce = () => window.dispatchEvent(new CustomEvent('voyager:vault-count', { detail: { count: vault.entries.length } }));
+  window.addEventListener('voyager:open-vault', event => { opener = event.detail?.opener || null; sync(); render(); openDialog(dialog); });
+  function sync() { vault.merge(window.asteroidGame?.getWinRecords?.() || []); announce(); }
   async function action(entry, task) {
     if (busy.has(entry.record.id)) return;
     busy.add(entry.record.id); render();
@@ -28,7 +30,7 @@ export function mountClaims() {
   }
   function render() {
     const retainFocus = dialog.contains(document.activeElement);
-    list.replaceChildren(); toggle.textContent = `🏆 Victory Vault (${vault.entries.length})`;
+    list.replaceChildren(); announce();
     if (vault.error) status.textContent = vault.error;
     if (!vault.entries.length) list.append(node('p', 'No victories yet. Clear a level to collect your first battle stamp.'));
     for (const entry of [...vault.entries].reverse()) {
@@ -99,7 +101,7 @@ export function mountClaims() {
   window.addEventListener('asteroid:save-imported', () => { sync(); render(); });
   window.addEventListener('decenthead:wallet', render);
   window.addEventListener('voyager:pilot', event => { window.__voyagerPilot = event.detail; render(); });
-  dialog.addEventListener('close', () => toggle.focus());
+  dialog.addEventListener('close', () => opener?.focus?.());
   sync(); render(); void reconcile();
   return { vault, dialog, refresh: sync };
 }

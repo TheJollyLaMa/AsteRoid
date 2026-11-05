@@ -155,6 +155,23 @@ function createService(options = {}) {
           pinning: env.PINATA_JWT ? 'configured' : 'skipped'
         });
       }
+      if (req.method === 'GET' && url.pathname === '/arena/open') {
+        const modes = url.searchParams.getAll('mode');
+        const difficulties = url.searchParams.getAll('difficulty');
+        const mode = modes[0] ?? null;
+        const difficulty = difficulties[0] ?? null;
+        if (modes.length > 1 || difficulties.length > 1 ||
+            (mode !== null && !['coop', 'versus'].includes(mode)) ||
+            (difficulty !== null && !['cadet', 'pilot', 'ace'].includes(difficulty))) {
+          return response(res, 400, { error: 'Arena mode or difficulty is invalid.' });
+        }
+        return response(res, 200, { rounds: arena.lobby.openRooms({ ...(mode === null ? {} : { mode }), ...(difficulty === null ? {} : { difficulty }) }) });
+      }
+      const arenaInvitesMatch = req.method === 'GET' && url.pathname.match(/^\/arena\/invites\/(0x[0-9a-fA-F]{40})$/);
+      if (arenaInvitesMatch) {
+        const address = getAddress(arenaInvitesMatch[1]);
+        return response(res, 200, { address, invites: arena.lobby.invitesFor(address) });
+      }
       if (req.method === 'POST' && url.pathname === '/tickets') {
         const body = await readJsonBody(req, 16 * 1024);
         const address = normalizeAddress(body.address);

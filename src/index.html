@@ -6,46 +6,75 @@
   <meta name="theme-color" content="#080d20">
   <meta name="description" content="Decent Voyager: Galactic Gauntlet. Fly Sector I freely; Decent Pilots can unlock Sector II, Supporter Vaults, flight stamps, and multiplayer.">
   <title>Decent Voyager · Galactic Gauntlet</title>
-  <link rel="icon" type="image/png" href="./assets/brand/mandelblum-gate.png">
+  <link rel="icon" type="image/png" href="./assets/brand/voyager-disc-64.png">
+  <link rel="apple-touch-icon" href="./assets/brand/voyager-disc.png">
   <link rel="stylesheet" href="./css/site.css">
   <script src="./decent-head.config.js"></script>
+  <script type="module" src="./js/shell/about-modal.mjs"></script>
 </head>
 <body>
   <a class="skip-link" href="#flight-deck">Skip to flight deck</a>
   <div class="space-gate" aria-hidden="true"></div>
-  <div class="site-header">
-    <decent-header aria-label="Decent Voyager tools"></decent-header>
-    <section class="radio-dock" aria-label="Flight deck radio">
-      <a href="https://github.com/A-Decent-Agency/DBuskRadio" target="_blank" rel="noopener noreferrer" class="radio-label">♫ DBusk / cockpit radio</a>
-      <div id="dbusk-radio"></div>
-    </section>
+  <div class="cockpit">
+    <div class="site-header">
+      <decent-header aria-label="Decent Voyager tools"></decent-header>
+      <section class="radio-dock" aria-label="DBusk radio">
+        <a href="https://github.com/A-Decent-Agency/DBuskRadio" target="_blank" rel="noopener noreferrer" class="radio-label">♫ DBusk</a>
+        <div id="dbusk-radio"></div>
+      </section>
+    </div>
+    <main id="flight-deck" tabindex="-1">
+      <div class="stage">
+        <canvas id="gameCanvas" width="800" height="600" tabindex="0" aria-label="Decent Voyager game canvas. Enter launches; arrows or WASD move, Space fires, P pauses."></canvas>
+        <nav id="launch-pad" class="launch-pad" aria-label="Choose your voyage" hidden>
+          <button type="button" data-launch-solo><span>▶</span> Solo voyage</button>
+          <button type="button" data-launch-multi><span>⚔</span> Multiplayer battle</button>
+        </nav>
+        <section id="arena-lobby" class="arena-lobby" aria-labelledby="arena-title" hidden>
+          <header><h2 id="arena-title">Multiplayer battle</h2><button type="button" class="arena-close" data-arena-back aria-label="Back to the start screen">×</button></header>
+          <form data-arena-form novalidate>
+            <fieldset class="arena-choice">
+              <legend>Where are your wingmates?</legend>
+              <label><input type="radio" name="arena-network" value="couch" checked><span><strong>Same screen</strong><small>Free · keyboard + gamepads · up to 5 ships</small></span></label>
+              <label><input type="radio" name="arena-network" value="online"><span><strong>Online round</strong><small>$10 USDC entry · Decent Pilots · winners split the pot</small></span></label>
+            </fieldset>
+            <fieldset class="arena-choice">
+              <legend>Battle style</legend>
+              <label><input type="radio" name="arena-mode" value="coop" checked><span><strong>Co-op</strong><small>Fly together, share the run</small></span></label>
+              <label><input type="radio" name="arena-mode" value="versus"><span><strong>Versus</strong><small>Same gauntlet, individual scores</small></span></label>
+            </fieldset>
+            <div class="arena-row">
+              <label>Difficulty <select name="arena-difficulty"><option value="cadet">Cadet</option><option value="pilot">Pilot</option><option value="ace">Ace</option></select></label>
+              <label data-couch-only>Ships <select name="arena-players"><option value="2">2 ships</option><option value="3">3 ships</option><option value="4">4 ships</option><option value="5">5 ships</option></select></label>
+            </div>
+            <fieldset class="arena-choice" data-online-only hidden>
+              <legend>Find opponents</legend>
+              <label><input type="radio" name="arena-pairing" value="random" checked><span><strong>Random pairing</strong><small>Join the next open round or wait for pilots</small></span></label>
+              <label><input type="radio" name="arena-pairing" value="invite"><span><strong>Invite wallets</strong><small>Only the addresses you list can join</small></span></label>
+              <label><input type="radio" name="arena-pairing" value="round"><span><strong>Join by round #</strong><small>A friend shared a round ID</small></span></label>
+            </fieldset>
+            <label class="arena-wide" data-pairing="invite" hidden>Wallets to invite (up to 4, one per line · 0x… or name.eth)<textarea name="arena-invites" rows="3" spellcheck="false" placeholder="0x… or friend.eth"></textarea></label>
+            <label class="arena-wide" data-pairing="round" hidden>Round ID<input name="arena-round-id" inputmode="numeric" placeholder="e.g. 12"></label>
+            <div data-arena-invites class="arena-invites" hidden></div>
+            <div class="arena-actions">
+              <button type="submit" class="arena-launch" data-arena-go>Launch couch battle</button>
+              <button type="button" data-arena-start hidden>Start round</button>
+              <button type="button" data-arena-claim hidden>Claim payout</button>
+              <button type="button" data-arena-refund hidden>Claim refund</button>
+              <button type="button" data-arena-reset hidden>Leave arena</button>
+            </div>
+          </form>
+          <p data-arena-status role="status" aria-live="polite"></p>
+        </section>
+        <p id="pilot-note" class="pilot-note" role="status" hidden></p>
+        <div class="flight-actions"><button id="flight-sign" class="flight-sign" type="button" hidden>Sign flight log</button><button id="flight-retry" class="flight-sign" type="button" hidden>Retry signed outbox</button><span id="flight-status" role="status" aria-live="polite"></span></div>
+      </div>
+    </main>
   </div>
-  <main id="flight-deck" tabindex="-1">
-    <div class="deck-label"><span>▰ GALACTIC GAUNTLET</span><span>Sector I · levels 1–10 · Sector II unlockable</span></div>
-    <div class="canvas-frame"><canvas id="gameCanvas" width="800" height="600" tabindex="0" aria-label="Decent Voyager game canvas. Enter launches; arrows or WASD move, Space fires, P pauses."></canvas></div>
-    <p class="flight-note">No wallet needed for Sector I (levels 1–10). Click <strong>Decent Voyager</strong> above for the flight manual.</p>
-    <p id="pilot-note" class="pilot-note" role="status">No wallet needed to fly Sector I. Not on the Decent Pilots list? Ask to join in the DecentAgency Discord.</p>
-    <div class="flight-actions"><button id="flight-sign" class="flight-sign" type="button" hidden>Sign flight log</button><button id="flight-retry" class="flight-sign" type="button" hidden>Retry signed outbox</button><span id="flight-status" role="status" aria-live="polite"></span></div>
-    <section id="arena-lobby" class="arena-lobby" aria-labelledby="arena-title">
-      <h2 id="arena-title">✦ Arena · couch free / online $10 USDC</h2>
-      <label>Ships <select name="arena-players"><option value="2">2 ships</option><option value="3">3 ships</option><option value="4">4 ships</option><option value="5">5 ships</option></select></label>
-      <label>Difficulty <select name="arena-difficulty"><option value="cadet">Cadet</option><option value="pilot">Pilot</option><option value="ace">Ace</option></select></label>
-      <label>Mode <select name="arena-mode"><option value="coop">Co-op</option><option value="versus">Versus</option></select></label>
-      <button type="button" data-arena-couch>Start free couch group</button>
-      <button type="button" data-arena-online>Create $10 online round</button>
-      <label>Round ID <input name="arena-round-id" inputmode="numeric" placeholder="Existing round" aria-label="Existing paid round ID"></label><button type="button" data-arena-join>Join paid round</button>
-      <button type="button" data-arena-start>Start online round</button>
-      <button type="button" data-arena-claim>Claim round payout</button>
-      <button type="button" data-arena-refund>Claim refund</button>
-      <button type="button" data-arena-reset>Leave arena</button>
-      <p data-arena-status role="status" aria-live="polite">Free local couch play is ready. Online arena appears when the referee and contracts are configured.</p>
-    </section>
-    <section id="pilot-rewards" class="pilot-rewards" aria-labelledby="reward-title"><h2 id="reward-title">Pilot vouchers</h2><p data-reward-status role="status" aria-live="polite">Voucher claims are available to Decent Pilots after a signed flight log.</p><div data-reward-list></div></section>
-  </main>
   <footer>
-    <p class="controls-legend">Arrows / WASD move · Space fire · Enter launch / continue · V overview / POV · P pause · M mute · C CRT<br>Title: ← / → level · ↑ / ↓ difficulty</p>
-    <nav aria-label="Project links"><a href="https://github.com/TheJollyLaMa/AsteRoid">Source</a><a href="https://github.com/TheJollyLaMa/AsteRoid/issues">Flight reports</a><a href="https://decentmarket.io">DecentMarket supporter listings</a><a href="https://discord.gg/tkBfwT3YMN">DecentAgency Discord · ask to join</a><a href="https://github.com/TheJollyLaMa/DecentCanopy">Decent ecosystem</a></nav>
-    <p class="credit">Mandelblum art · TheJollyLaMa <span aria-hidden="true">✦</span> Sector I is free for all. Your wallet. Your flight. Your choice.</p>
+    <p class="controls-legend">Arrows / WASD move · Space fire · B charge Nova · Enter launch · V overview / POV · P pause · M mute · C CRT · gamepad ready</p>
+    <nav aria-label="Project links"><a href="https://github.com/TheJollyLaMa/AsteRoid">Source</a><a href="https://github.com/TheJollyLaMa/AsteRoid/issues">Flight reports</a><a href="https://decentmarket.io">DecentMarket</a><a href="https://discord.gg/tkBfwT3YMN">DecentAgency Discord</a><a href="https://github.com/TheJollyLaMa/DecentCanopy">Decent ecosystem</a></nav>
+    <p class="credit">Mandelblum art · TheJollyLaMa <span aria-hidden="true">✦</span> Your wallet. Your flight. Your choice.</p>
   </footer>
   <script src="bundle.js"></script>
   <script type="module" src="./js/shell/main.mjs"></script>
@@ -54,6 +83,8 @@
   <script type="module" src="./js/pilots/rewards.mjs"></script>
   <script type="module" src="./js/arena/lobby.mjs"></script>
   <script type="module" src="js/dnft/claims.mjs"></script>
+  <script type="module" src="./js/shell/profile-menu.mjs"></script>
+  <script type="module" src="./js/shell/launch-pad.mjs"></script>
   <script type="module" src="js/admin/admin-panel.mjs"></script>
 </body>
 </html>

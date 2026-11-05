@@ -1,4 +1,5 @@
 import { requirePilot } from './gate.mjs';
+import { node, createDialog, openDialog } from '../dnft/ui.mjs';
 const ADDRESS = /^0x[\da-f]{40}$/i;
 const BASE = { chainId: 8453, chainName: 'Base', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://mainnet.base.org'], blockExplorerUrls: ['https://basescan.org'] };
 function contractAddress(book, name) { const values = book?.contracts || book || {}; const value = values[name] || values[name[0].toLowerCase() + name.slice(1)] || values.base?.[name] || values['8453']?.[name]; return typeof value === 'string' ? value : value?.address || null; }
@@ -12,32 +13,38 @@ export function normalizeVouchers(value) {
   return { stamps: payload.stamps || payload.victoryStamps || [], prizes: payload.prizes || payload.supporterPrizes || [] };
 }
 export function mountRewards() {
-  const root = document.getElementById('pilot-rewards');
-  if (!root) return null;
-  const status = root.querySelector('[data-reward-status]');
-  const list = root.querySelector('[data-reward-list]');
+  if (document.getElementById('voyager-rewards')) return null;
+  const root = createDialog('✦ Rewards waiting', 'voyager-rewards');
+  const status = node('p', '', { role: 'status', 'aria-live': 'polite', className: 'asteroid-status' });
+  const list = node('section', '', { 'aria-label': 'Rewards ready to claim' });
+  root.append(node('p', 'Level-pass DNFTs and Supporter Vault prizes you earn as a Decent Pilot are signed by the referee and queued for minting. They wait here every time you log in. Claim each one on Base whenever you like.'), status, list);
+  let opener = null;
+  const announce = count => window.dispatchEvent(new CustomEvent('voyager:rewards-count', { detail: { count } }));
+  window.addEventListener('voyager:open-rewards', event => { opener = event.detail?.opener || null; void load(); openDialog(root); });
+  root.addEventListener('close', () => opener?.focus?.());
   let pilot = { address: null, isPilot: false };
   const message = text => { status.textContent = text; };
   async function load() {
-    if (!pilot.isPilot || !pilot.address) { list.replaceChildren(); message('Voucher claims are available to Decent Pilots after a signed flight log.'); return; }
+    if (!pilot.isPilot || !pilot.address) { list.replaceChildren(); announce(0); message('Connect a Decent Pilot wallet with the header fox to see rewards queued for you.'); return; }
     const base = window.DECENT_CONFIG?.voyager?.refereeUrl;
-    if (!base) { message('Referee vouchers are unavailable until the server is configured.'); return; }
+    if (!base) { announce(0); message('The rewards referee is not online yet. Your wins are safe in the Victory Vault.'); return; }
     try {
       const response = await fetch(`${base.replace(/\/$/, '')}/vouchers/${encodeURIComponent(pilot.address)}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`Voucher service unavailable (${response.status})`);
       const vouchers = normalizeVouchers(await response.json());
       list.replaceChildren();
       const entries = [...vouchers.stamps.map(voucher => ({ kind: 'stamp', voucher })), ...vouchers.prizes.map(voucher => ({ kind: 'prize', voucher }))];
-      if (!entries.length) { message('No vouchers are waiting yet. Sign a completed flight log to submit eligible records.'); return; }
+      announce(entries.length);
+      if (!entries.length) { message('Nothing waiting yet. Clear a level, then sign your flight log at the end of the run.'); return; }
       for (const entry of entries) {
-        const { kind, voucher } = entry, title = kind === 'stamp' ? `Victory Stamp · level ${voucher.level ?? voucher.voucher?.level ?? '—'}` : `Supporter Prize · token ${voucher.tokenId ?? voucher.voucher?.tokenId ?? '—'}`;
+        const { kind, voucher } = entry, title = kind === 'stamp' ? `Level-pass DNFT · level ${voucher.level ?? voucher.voucher?.level ?? '—'}` : `Supporter Prize · token ${voucher.tokenId ?? voucher.voucher?.tokenId ?? '—'}`;
         const row = document.createElement('article'); row.append(document.createElement('h3'));
         row.firstChild.textContent = title;
-        const claim = document.createElement('button'); claim.type = 'button'; claim.textContent = 'Claim on-chain';
+        const claim = document.createElement('button'); claim.type = 'button'; claim.textContent = 'Claim on Base';
         claim.addEventListener('click', () => void claimVoucher(kind, voucher));
         row.append(claim); list.append(row);
       }
-      message(`${entries.length} voucher${entries.length === 1 ? '' : 's'} waiting for you.`);
+      message(`${entries.length} reward${entries.length === 1 ? '' : 's'} waiting for you.`);
     } catch (error) { message(`${error.message}. Your local flight log and GitHub-issue fallback remain available.`); }
   }
   async function claimVoucher(kind, voucher) {
@@ -65,7 +72,7 @@ export function mountRewards() {
       const estimate = await contract[method].estimateGas(gameId, args, signature);
       if (!window.confirm(`Submit ${method} on Base? Estimated gas: ${estimate}. Your wallet will show the final transaction.`)) return;
       const tx = await contract[method](gameId, args, signature, { gasLimit: estimate * 120n / 100n });
-      message(`Submitted ${tx.hash}; waiting for confirmation.`); await tx.wait(); message('Voucher claimed on-chain.'); await load();
+      message(`Submitted ${tx.hash}; waiting for confirmation.`); await tx.wait(); message('Claimed! It is in your wallet now.'); await load();
     } catch (error) { message(error.message); }
   }
   window.addEventListener('voyager:pilot', event => { pilot = event.detail || {}; void load(); });

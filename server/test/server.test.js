@@ -253,6 +253,131 @@ test('lobby creates a new group when the sixth player joins and applies disconne
   assert.equal(expired[0].player.alive, false);
 });
 
+test('invite-only lobby rooms reject strangers and admit invitees', () => {
+  const lobby = new LobbyManager();
+  const host = Wallet.createRandom();
+  const invitee = Wallet.createRandom();
+  const stranger = Wallet.createRandom();
+  const { room } = lobby.join({ address: host.address, paidRoundId: '41', visibility: 'invite', invites: [invitee.address] });
+
+  assert.equal(room.visibility, 'invite');
+  assert.deepEqual(room.invites, new Set([invitee.address.toLowerCase()]));
+  assert.throws(() => lobby.join({ address: stranger.address, paidRoundId: '41' }), /This arena round is invite-only\./);
+  const accepted = lobby.join({ address: invitee.address, paidRoundId: '41', visibility: 'invalid', invites: ['invalid'] });
+  assert.equal(accepted.room, room, 'existing room settings come from its host');
+  assert.equal(accepted.player.address, invitee.address);
+  assert.equal(lobby.join({ address: host.address, paidRoundId: '41' }).reconnected, true);
+
+  assert.throws(() => lobby.join({ address: Wallet.createRandom().address, paidRoundId: '42', invites: ['invalid'] }), /Invalid arena invite address/);
+  assert.throws(() => lobby.join({ address: Wallet.createRandom().address, paidRoundId: '43', invites: Array(5).fill(invitee.address) }), /at most 4 invitees/);
+});
+
+test('openRooms lists only public waiting paid rooms and applies filters', () => {
+  let now = 100;
+  const lobby = new LobbyManager({ now: () => now, maxPlayers: 2 });
+  const players = Array.from({ length: 10 }, () => Wallet.createRandom());
+  lobby.join({ address: players[0].address, paidRoundId: '1' });
+  now += 1;
+  lobby.join({ address: players[1].address, mode: 'versus', difficulty: 'pilot', paidRoundId: '2' });
+  now += 1;
+  lobby.join({ address: players[2].address, paidRoundId: '3', visibility: 'invite', invites: [players[3].address] });
+  now += 1;
+  const started = lobby.join({ address: players[4].address, paidRoundId: '4' }).room;
+  started.started = true;
+  now += 1;
+  lobby.join({ address: players[5].address, paidRoundId: '5' });
+  lobby.join({ address: players[6].address, paidRoundId: '5' });
+  lobby.join({ address: players[7].address });
+
+  assert.deepEqual(lobby.openRooms(), [
+    { paidRoundId: '1', mode: 'coop', difficulty: 'cadet', players: 1, maxPlayers: 2, createdAt: 100 },
+    { paidRoundId: '2', mode: 'versus', difficulty: 'pilot', players: 1, maxPlayers: 2, createdAt: 101 }
+  ]);
+  assert.deepEqual(lobby.openRooms({ mode: 'versus' }).map((room) => room.paidRoundId), ['2']);
+  assert.deepEqual(lobby.openRooms({ difficulty: 'pilot' }).map((room) => room.paidRoundId), ['2']);
+});
+
+test('invitesFor lists only pending invitations for non-members', () => {
+  const lobby = new LobbyManager();
+  const host = Wallet.createRandom();
+  const invitee = Wallet.createRandom();
+  const other = Wallet.createRandom();
+  lobby.join({ address: host.address, mode: 'versus', difficulty: 'ace', paidRoundId: '71', visibility: 'invite', invites: [invitee.address] });
+  const acceptedRoom = lobby.join({ address: Wallet.createRandom().address, paidRoundId: '72', visibility: 'invite', invites: [invitee.address] }).room;
+  lobby.join({ address: invitee.address, paidRoundId: '72' });
+  const startedRoom = lobby.join({ address: Wallet.createRandom().address, paidRoundId: '73', visibility: 'invite', invites: [invitee.address] }).room;
+  startedRoom.started = true;
+
+  assert.deepEqual(lobby.invitesFor(invitee.address), [{
+    paidRoundId: '71', mode: 'versus', difficulty: 'ace', host: host.address, players: 1, maxPlayers: 5
+  }]);
+  assert.deepEqual(lobby.invitesFor(host.address), []);
+  assert.deepEqual(lobby.invitesFor(other.address), []);
+  assert.ok(acceptedRoom.players.has(invitee.address.toLowerCase()));
+});
+
+test('arena websocket join passes visibility and returns it in joined message', async () => {
+  const pilot = Wallet.createRandom();
+  const service = createService({
+    pilotRegistry: { isPilot: async () => true }, verifyPaidJoin: async () => true,
+    queues: { async append() { return { status: 'queued' }; }, async read() { return { pending: [] }; } },
+    pinata: { async pinRecord() { return { status: 'skipped', metadataURI: '', imageURI: '' }; } }
+  });
+  const timestamp = Math.floor(Date.now() / 1000);
+  const nonce = 'testnonce-123';
+  const signature = await pilot.signMessage(`DecentVoyager arena session\n${pilot.address.toLowerCase()}\n${timestamp}\n${nonce}`);
+  const sent = [];
+  const socket = { readyState: 1, send(message) { sent.push(JSON.parse(message)); } };
+  await service.arena.join(socket, {
+    type: 'join', address: pilot.address, timestamp, nonce, signature, paidRoundId: '81',
+    visibility: 'invite', invites: [Wallet.createRandom().address]
+  });
+  assert.equal(sent[0].type, 'joined');
+  assert.equal(sent[0].visibility, 'invite');
+  assert.equal([...service.arena.lobby.values()][0].visibility, 'invite');
+  service.server.close();
+});
+
+test('arena discovery HTTP routes return public listings and wallet invitations', async (t) => {
+  const host = Wallet.createRandom();
+  const invitee = Wallet.createRandom();
+  const service = createService({
+    env: { CORS_ORIGINS: 'http://localhost:8907' },
+    pilotRegistry: { isPilot: async () => true },
+    queues: { async append() { return { status: 'queued' }; }, async read() { return { pending: [] }; } },
+    pinata: { async pinRecord() { return { status: 'skipped', metadataURI: '', imageURI: '' }; } }
+  });
+  service.arena.lobby.join({ address: host.address, mode: 'coop', difficulty: 'cadet', paidRoundId: '91' });
+  service.arena.lobby.join({ address: Wallet.createRandom().address, mode: 'versus', difficulty: 'ace', paidRoundId: '92', visibility: 'invite', invites: [invitee.address] });
+  await new Promise((resolve) => service.server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => service.server.close(resolve)));
+  const url = `http://127.0.0.1:${service.server.address().port}`;
+
+  const openResponse = await fetch(`${url}/arena/open?mode=coop`);
+  const open = await openResponse.json();
+  assert.equal(openResponse.status, 200);
+  assert.equal(open.rounds.length, 1);
+  assert.deepEqual(Object.keys(open.rounds[0]).sort(), ['createdAt', 'difficulty', 'maxPlayers', 'mode', 'paidRoundId', 'players']);
+  assert.equal(open.rounds[0].paidRoundId, '91');
+  const filtered = await fetch(`${url}/arena/open?difficulty=invalid`);
+  assert.equal(filtered.status, 400);
+  const duplicateFilter = await fetch(`${url}/arena/open?mode=coop&mode=versus`);
+  assert.equal(duplicateFilter.status, 400);
+
+  const invitesResponse = await fetch(`${url}/arena/invites/${invitee.address}`);
+  const invites = await invitesResponse.json();
+  assert.equal(invitesResponse.status, 200);
+  assert.equal(invites.address, invitee.address);
+  assert.equal(invites.invites.length, 1);
+  const inviteRoom = [...service.arena.lobby.values()][1];
+  assert.deepEqual(invites.invites[0], {
+    paidRoundId: '92', mode: 'versus', difficulty: 'ace',
+    host: inviteRoom.players.get(inviteRoom.host).address, players: 1, maxPlayers: 5
+  });
+  const malformedAddress = await fetch(`${url}/arena/invites/0x1234`);
+  assert.equal(malformedAddress.status, 404);
+});
+
 test('settle payload sorts survivors and hashes Solidity packed address-array values', async () => {
   const addresses = [
     '0x00000000000000000000000000000000000000ff',

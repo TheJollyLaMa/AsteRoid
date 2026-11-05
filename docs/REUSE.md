@@ -25,3 +25,11 @@ Scope: DecentCanopy agency-map leads, DecentMarket, DecentBusking, DecentHead, D
 - **Build new**: deterministic replay/run logs, flight tickets, the referee server, the arena relay, gamepad input and EIP-712 voucher flows. No multiplayer, gamepad or voucher donors were found in the scope above.
 
 Incompatibilities: the escrow owner (admin wallet) must transfer prize tokens to `VoyagerPrizes`. `decentagency.eth` is controlled by a different wallet from the admin wallet. Paid rounds carry legal risk as contests of skill.
+
+## Decent Voyager UI polish (About, profile menu, pairing)
+
+Need: a stunning About with no empty dropdowns, a Supporter token card (coming soon or buyable), the vault and rewards moved into the profile menu, and random or invite-only online pairing. Acceptance: shell tests assert no `<details>`, rewards/walkthrough/coming-soon content, removed page elements and invite parsing; server tests cover open rounds and invite-only joins; verified in the browser.
+
+- **DecentBusking** `ab7c1dd`: `js/components/about-override.js` and `header-right-ankh-override.js`. Adapted the pattern only: the custom `about-modal` is defined before the vendored header (whose define is guarded), and profile entries are injected into the right ankh's shadow tree. No vendor edits; no code copied.
+- **DecentMarket** escrow `0x31b0…C89d` (`getListing`, `purchaseWithETH`, `purchaseWithToken`): reused for the About's Buy button once `supporterDnft` is configured.
+- **Build new**: launch pad, arena form, pairing (`/arena/open`, `/arena/invites/:address`, invite-only rooms) and ENS invite resolution.

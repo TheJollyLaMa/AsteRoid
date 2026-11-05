@@ -1,36 +1,70 @@
-:root { color-scheme:dark; --cyan:#56edff; --pink:#ff58ce; --orange:#ffb65c; --dh-bg-1:#080d20; --dh-bg-2:#101b32; --dh-accent:var(--cyan); --dh-accent-2:var(--pink); --dh-text:#e8f2ff; --dh-muted:#adbdd7; font:14px/1.6 ui-monospace,Menlo,monospace; background:#050917; color:#e8f2ff; }
+:root { color-scheme:dark; --cyan:#56edff; --green:#7dff8c; --gold:#ffe65c; --silver:#c9d6e3; --orange:var(--gold); --dh-bg-1:#070c1c; --dh-bg-2:#0e1a30; --dh-accent:var(--cyan); --dh-accent-2:var(--green); --dh-text:#e8f2ff; --dh-muted:#adbdd7; font:14px/1.6 ui-monospace,Menlo,monospace; background:#040814; color:#e8f2ff; }
+body { margin:0; min-height:100vh; background:radial-gradient(ellipse at 15% 0%,#12305255,transparent 50%),radial-gradient(ellipse at 90% 100%,#0f3a2c40,transparent 55%),#040814; isolation:isolate; }
+body::before { content:''; position:fixed; inset:0; z-index:-2; pointer-events:none; opacity:.2; background-image:radial-gradient(#cdeeff 1px,transparent 1px),radial-gradient(#c9ffd6 1px,transparent 1px); background-size:91px 91px,137px 137px; background-position:11px 31px,67px 17px; }
+a { color:var(--cyan); text-underline-offset:4px; }
+a:hover { color:var(--gold); }
+:focus-visible { outline:2px solid var(--gold); outline-offset:4px; }
+.space-gate { position:fixed; z-index:-1; pointer-events:none; top:-160px; left:calc(50% - 260px); width:520px; height:520px; opacity:.08; background:url('../assets/brand/voyager-disc.png') center/contain no-repeat; animation:gate-orbit 120s linear infinite; }
+.cockpit { height:100dvh; min-height:520px; display:flex; flex-direction:column; }
+.site-header { flex:none; position:relative; width:min(1180px,100%); margin:0 auto; }
+decent-header { display:block; --dh-orbit-size:120px; --dh-orbit-size-mobile:84px; }
+.radio-dock { position:absolute; left:50%; bottom:6px; transform:translateX(-50%); z-index:4; width:min(420px,calc(100% - 300px)); display:flex; align-items:center; gap:10px; padding:4px 12px; border:1px solid #56edff2e; border-radius:99px; background:#070c1ccc; backdrop-filter:blur(6px); }
+.radio-label { font-size:10px; letter-spacing:.12em; text-transform:uppercase; flex:none; text-decoration:none; color:var(--green); }
+#dbusk-radio { flex:1; min-width:0; --dbusk-background:transparent; --dbusk-color:#e8f2ff; --dbusk-border-width:0px; --dbusk-accent:var(--cyan); --dbusk-padding:0px; --dbusk-max-width:100%; }
+main { flex:1; min-height:0; display:flex; padding:0 8px 8px; }
+.stage { position:relative; flex:1; min-height:0; container-type:size; display:grid; place-items:center; }
+canvas { display:block; width:min(100cqw,calc(100cqh * 4 / 3)); height:auto; aspect-ratio:4 / 3; background:#000; border-radius:10px; box-shadow:0 0 0 1px #56edff22,0 0 60px #56edff14,0 0 140px #7dff8c0c; image-rendering:auto; }
+.launch-pad { position:absolute; left:50%; bottom:calc((100cqh - min(100cqh,75cqw)) / 2 + min(100cqh,75cqw) * .025); transform:translateX(-50%); z-index:5; display:flex; gap:14px; flex-wrap:wrap; justify-content:center; animation:pad-in .5s cubic-bezier(.2,.8,.2,1); }
+.launch-pad button { display:inline-flex; align-items:center; gap:10px; padding:13px 24px; border-radius:14px; cursor:pointer; font:800 15px/1 ui-monospace,Menlo,monospace; letter-spacing:.06em; color:#e8f6ff; border:1px solid #56edff80; background:linear-gradient(135deg,#0d2440ee,#081426ee); box-shadow:0 0 24px #56edff26,inset 0 0 18px #56edff14; transition:transform .2s,box-shadow .2s,border-color .2s; }
+.launch-pad button span { color:var(--green); }
+.launch-pad button[data-launch-multi] { border-color:#ffe65c90; box-shadow:0 0 24px #ffe65c22,inset 0 0 18px #ffe65c12; } .launch-pad button[data-launch-multi] span { color:var(--gold); }
+.launch-pad button:hover { transform:translateY(-2px); box-shadow:0 0 34px #56edff44,inset 0 0 18px #56edff22; }
+.arena-lobby { position:absolute; z-index:6; inset:50% auto auto 50%; transform:translate(-50%,-50%); width:min(620px,calc(100cqw - 24px)); max-height:calc(100cqh - 20px); overflow:auto; padding:22px 26px; border:1px solid #56edff55; border-radius:20px; background:radial-gradient(ellipse at 100% 0,#123a4a99,transparent 60%),#060c1af2; backdrop-filter:blur(8px); box-shadow:0 30px 90px #000c,0 0 40px #56edff1c; font:14px/1.5 system-ui,sans-serif; animation:pad-in .35s cubic-bezier(.2,.8,.2,1); }
+.arena-lobby header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.arena-lobby h2 { margin:0; font:800 18px ui-monospace,Menlo,monospace; letter-spacing:.06em; color:#fff; }
+.arena-close { width:36px; height:36px; border-radius:50%; border:1px solid #c9d6e355; background:#0b1428; color:#e8f2ff; font-size:20px; cursor:pointer; }
+.arena-choice { border:0; padding:0; margin:14px 0; display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+.arena-choice legend { padding:0; margin-bottom:8px; font:700 11px ui-monospace,Menlo,monospace; letter-spacing:.18em; text-transform:uppercase; color:var(--cyan); }
+.arena-choice label { position:relative; cursor:pointer; }
+.arena-choice input { position:absolute; opacity:0; }
+.arena-choice label span { display:block; height:100%; box-sizing:border-box; padding:11px 13px; border:1px solid #c9d6e32e; border-radius:12px; background:#0b1630; transition:border-color .2s,box-shadow .2s; }
+.arena-choice strong { display:block; color:#fff; } .arena-choice small { color:#9fb4c8; font-size:12px; }
+.arena-choice input:checked + span { border-color:var(--green); box-shadow:0 0 0 1px var(--green) inset,0 0 18px #7dff8c22; }
+.arena-choice input:focus-visible + span { outline:2px solid var(--gold); outline-offset:2px; }
+.arena-row { display:flex; gap:16px; flex-wrap:wrap; }
+.arena-row label,.arena-wide { display:flex; flex-direction:column; gap:6px; color:#9fb4c8; font-size:12.5px; }
+.arena-wide { margin:10px 0; }
+.arena-lobby select,.arena-lobby input:not([type=radio]),.arena-lobby textarea { font:14px ui-monospace,Menlo,monospace; color:#e8f2ff; background:#0b1630; border:1px solid #c9d6e340; border-radius:9px; padding:9px 11px; }
+.arena-lobby textarea { resize:vertical; }
+.arena-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; }
+.arena-actions button,.arena-invites button { padding:10px 16px; border-radius:11px; border:1px solid #56edff65; background:#0d1d36; color:#e8f2ff; font:700 13.5px system-ui; cursor:pointer; }
+.arena-actions .arena-launch { padding:12px 22px; border:0; color:#04101a; background:linear-gradient(120deg,var(--cyan),var(--green)); box-shadow:0 8px 26px #56edff33; }
+.arena-invites { margin:10px 0; padding:12px; border:1px dashed #ffe65c66; border-radius:12px; } .arena-invites p { margin:0 0 8px; color:var(--gold); }
+.arena-lobby [data-arena-status] { margin:14px 0 0; color:#adbdd7; font-size:12.5px; min-height:1.5em; }
+.pilot-note { position:absolute; z-index:5; top:12px; left:50%; transform:translateX(-50%); width:max-content; max-width:calc(100% - 24px); margin:0; padding:8px 16px; border:1px solid #ffe65c66; border-radius:99px; background:#070c1ce6; color:#fff3b8; font-size:12px; text-align:center; }
+.flight-actions { position:absolute; z-index:5; bottom:12px; left:50%; transform:translateX(-50%); display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; max-width:calc(100% - 24px); }
+.flight-actions:not(:has(button:not([hidden]))) #flight-status:empty { display:none; }
+#flight-status:not(:empty) { padding:6px 12px; border-radius:99px; background:#070c1ce0; color:#adbdd7; font-size:12px; }
+.flight-sign { padding:10px 18px; border:0; border-radius:12px; cursor:pointer; color:#04101a; font:800 13px system-ui; background:linear-gradient(120deg,var(--gold),var(--green)); box-shadow:0 0 24px #ffe65c44; }
+footer { padding:22px 16px 28px; margin:0 auto; text-align:center; color:#8fa3bb; font-size:11px; }
+footer p { margin:9px 0; } footer nav { display:flex; flex-wrap:wrap; justify-content:center; gap:20px; }
+.credit { opacity:.7; font-size:10px; } .credit span { margin:0 10px; color:var(--green); }
+@keyframes pad-in { from { opacity:0; translate:0 12px; } }
+@media(max-width:760px) { .radio-dock { position:static; transform:none; width:calc(100% - 20px); margin:0 auto 6px; } main { padding:0 4px 4px; } .launch-pad button { padding:11px 16px; font-size:13px; } .arena-lobby { padding:18px; } }
 * { box-sizing:border-box; }
 html { min-height:100%; }
-body { margin:0; min-height:100vh; background:radial-gradient(ellipse at 10% 20%,#15325865,transparent 45%),radial-gradient(ellipse at 90% 70%,#43104d55,transparent 50%); isolation:isolate; }
-body::before { content:''; position:fixed; inset:0; z-index:-2; pointer-events:none; opacity:.22; background-image:radial-gradient(#bbfaff 1px,transparent 1px),radial-gradient(#ffb6ee 1px,transparent 1px); background-size:91px 91px,137px 137px; background-position:11px 31px,67px 17px; }
-a { color:var(--cyan); text-underline-offset:4px; }
-a:hover { color:var(--orange); }
 button,input { font:inherit; }
 button,a,input,canvas { touch-action:manipulation; }
-:focus-visible { outline:2px solid var(--orange); outline-offset:4px; }
 .skip-link { position:absolute; left:12px; top:-80px; z-index:10; padding:12px; background:#080d20; }
 .skip-link:focus { top:12px; }
-.space-gate { position:fixed; z-index:-1; pointer-events:none; top:-140px; left:calc(50% - 240px); width:480px; height:480px; opacity:.1; background:url('../assets/brand/mandelblum-gate.png') center/contain no-repeat; animation:gate-orbit 100s linear infinite; }
-.site-header { width:min(1100px,100%); margin:0 auto; position:relative; }
-decent-header { display:block; --dh-orbit-size:136px; --dh-orbit-size-mobile:88px; }
-.radio-dock { margin:0 auto 20px; width:min(660px,calc(100% - 32px)); display:flex; align-items:center; gap:14px; padding:8px 14px; border:1px solid #56edff30; border-radius:12px; background:#080d20dc; }
-.radio-label { font-size:10px; letter-spacing:.08em; text-transform:uppercase; flex:0 0 104px; text-decoration:none; }
 #dbusk-radio { flex:1; min-width:0; --dbusk-background:transparent; --dbusk-color:#e8f2ff; --dbusk-border-width:0px; --dbusk-accent:var(--cyan); --dbusk-padding:0px; --dbusk-max-width:100%; }
 #dbusk-radio::part(settings) { display:none; }
 #dbusk-radio::part(status) { min-height:0; }
 #dbusk-radio::part(now) { font-size:11px; color:#adbdd7; padding:3px 0 0; }
 #dbusk-radio::part(play) { color:var(--cyan); border-color:#56edff70; }
 #dbusk-radio::part(volume) { width:58px; }
-main { width:min(800px,calc(100% - 32px),max(400px,calc((100dvh - 380px) * 4 / 3))); margin:0 auto; }
-.deck-label { display:flex; justify-content:space-between; gap:10px; font-size:10px; letter-spacing:.13em; color:var(--orange); margin:0 0 9px; }
-.deck-label span:last-child { color:#adbdd7; }
-.canvas-frame { position:relative; padding:2px; background:linear-gradient(140deg,#56edff90,#14264b 40%,#ff58ce90); border-radius:6px; box-shadow:0 0 28px #56edff12,0 0 60px #ff58ce10; }
-.canvas-frame::after { content:''; position:absolute; inset:-4px; border:1px solid #56edff20; border-radius:9px; pointer-events:none; animation:frame-glow 8s ease-in-out infinite; }
-canvas { display:block; width:100%; height:auto; aspect-ratio:4 / 3; background:#000; border-radius:4px; }
-.flight-note { color:#adbdd7; text-align:center; font-size:11px; margin:12px 0 20px; }
 footer { padding:0 16px 24px; margin:0 auto; text-align:center; color:#adbdd7; font-size:11px; }
 footer p { margin:9px 0; } footer nav { display:flex; flex-wrap:wrap; justify-content:center; gap:20px; }
-.credit { opacity:.7; font-size:10px; } .credit span { margin:0 10px; color:var(--pink); }
 .progress-dialog { width:min(590px,calc(100vw - 24px)); max-height:calc(100dvh - 32px); overflow:auto; padding:0 24px 24px; border:1px solid #56edff70; border-radius:18px; background:#080d20; color:#e8f2ff; font:14px/1.65 system-ui,sans-serif; box-shadow:0 24px 100px #0009; }
 .progress-dialog::backdrop { background:#000b; backdrop-filter:blur(4px); }
 .progress-heading { display:flex; align-items:center; gap:16px; justify-content:space-between; position:sticky; top:0; padding:18px 0; background:#080d20; z-index:1; }
@@ -48,23 +82,12 @@ footer p { margin:9px 0; } footer nav { display:flex; flex-wrap:wrap; justify-co
 [hidden] { display:none !important; }
 @keyframes gate-orbit { to { transform:rotate(360deg); } }
 @keyframes frame-glow { 50% { opacity:.4; } }
-@media(max-width:600px) { main { width:calc(100% - 16px); } .radio-dock { gap:8px; padding:8px; width:calc(100% - 20px); } .radio-label { flex-basis:68px; font-size:9px; } .deck-label { font-size:9px; letter-spacing:.04em; } .progress-dialog { padding:0 16px 20px; } .progress-dialog section { padding:14px; } }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none !important; scroll-behavior:auto !important; } }
-.pilot-note,.pilot-rewards,.arena-lobby { width:min(660px,100%); margin:14px auto; padding:16px; border:1px solid #56edff38; border-radius:12px; background:linear-gradient(130deg,#081226e8,#180e28e8); box-shadow:0 0 24px #56edff0b,inset 0 0 20px #ff58ce08; }
-.pilot-note { border-color:#ffb65c70; color:#ffe0ad; text-align:center; }
-.arena-lobby h2,.pilot-rewards h2 { margin:0 0 10px; color:var(--cyan); font-size:15px; }
-.arena-lobby label { display:inline-flex; gap:8px; align-items:center; margin-right:12px; color:#adbdd7; }
-.arena-lobby select,.arena-lobby button,.flight-sign,.pilot-rewards button { margin:5px 4px; padding:8px 12px; border:1px solid #56edff65; border-radius:7px; color:#e8f2ff; background:#101b32; font:inherit; cursor:pointer; }
-.arena-lobby button:hover,.flight-sign:hover,.pilot-rewards button:hover { border-color:var(--pink); box-shadow:0 0 12px #ff58ce32; }
-.arena-lobby [data-arena-status],.pilot-rewards [data-reward-status] { color:#adbdd7; font-size:12px; }
-.pilot-rewards article { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px; margin:8px 0; border:1px solid #ffffff20; border-radius:9px; }
-.pilot-rewards article h3 { margin:0; font-size:12px; }
-.flight-sign { display:block; margin:10px auto; color:var(--orange); }
-.voyager-admin { position:relative; border-color:#56edff7d !important; background:radial-gradient(ellipse at 92% 8%,#281343 0,transparent 35%),linear-gradient(145deg,#060b1a,#09152a 55%,#140d22) !important; box-shadow:0 0 0 1px #ff58ce2b,0 0 35px #56edff25,0 24px 100px #000b !important; }
-.voyager-admin::before { content:''; position:absolute; inset:12px 12px auto auto; width:112px; height:112px; opacity:.12; pointer-events:none; background:url('../assets/brand/mandelblum-gate.png') center/contain no-repeat; }
-.voyager-admin nav button { background:linear-gradient(120deg,#101b32,#17152f); border-color:#56edff55; text-shadow:0 0 8px #56edff50; }
-.voyager-admin nav button[aria-selected=true] { color:#fff; background:linear-gradient(120deg,#12344a,#401d48); border-color:#ff58ce; box-shadow:0 0 16px #ff58ce3c; }
-.voyager-admin article { position:relative; border-color:#56edff38; background:linear-gradient(135deg,#102036,#171226); }
+.voyager-admin { position:relative; border-color:#56edff7d !important; background:radial-gradient(ellipse at 92% 8%,#0f2a3a 0,transparent 35%),linear-gradient(145deg,#060b1a,#09152a 55%,#0a1a1f) !important; box-shadow:0 0 0 1px #7dff8c2b,0 0 35px #56edff25,0 24px 100px #000b !important; }
+.voyager-admin::before { content:''; position:absolute; inset:12px 12px auto auto; width:112px; height:112px; opacity:.12; pointer-events:none; background:url('../assets/brand/voyager-disc.png') center/contain no-repeat; }
+.voyager-admin nav button { background:linear-gradient(120deg,#101b32,#0f2236); border-color:#56edff55; text-shadow:0 0 8px #56edff50; }
+.voyager-admin nav button[aria-selected=true] { color:#fff; background:linear-gradient(120deg,#12344a,#124a3a); border-color:#7dff8c; box-shadow:0 0 16px #7dff8c3c; }
+.voyager-admin article { position:relative; border-color:#56edff38; background:linear-gradient(135deg,#102036,#0e1f2a); }
 .voyager-admin article h3 { color:#ffb65c; }
 .voyager-admin img { object-fit:cover; border:1px solid #56edff40; }
 .supporter-batch-preview { max-height:40dvh; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; padding:12px; color:#b9f5ff; background:#020712; border:1px solid #56edff38; border-radius:9px; }

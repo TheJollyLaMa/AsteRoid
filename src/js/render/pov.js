@@ -46,9 +46,9 @@ function createPovRenderer() {
 
         // Horizon glow line.
         const hz = ctx.createLinearGradient(0, POV.horizon - 18, 0, POV.horizon + 18);
-        hz.addColorStop(0, 'rgba(255, 60, 138, 0)');
-        hz.addColorStop(0.5, 'rgba(255, 60, 138, 0.45)');
-        hz.addColorStop(1, 'rgba(255, 60, 138, 0)');
+        hz.addColorStop(0, 'rgba(63, 184, 255, 0)');
+        hz.addColorStop(0.5, 'rgba(63, 184, 255, 0.45)');
+        hz.addColorStop(1, 'rgba(63, 184, 255, 0)');
         ctx.fillStyle = hz;
         ctx.fillRect(0, POV.horizon - 18, VIEW.width, 36);
 
@@ -72,7 +72,7 @@ function createPovRenderer() {
         for (let y = Math.ceil(nearY / GRID_STEP) * GRID_STEP; y < farY; y += GRID_STEP) {
             const a = projectPov({ x: -800, y }, camera, FLOOR_HEIGHT);
             const b = projectPov({ x: 1600, y }, camera, FLOOR_HEIGHT);
-            ctx.strokeStyle = `rgba(255, 60, 200, ${0.4 * povFade(a.depth)})`;
+            ctx.strokeStyle = `rgba(127, 215, 255, ${0.4 * povFade(a.depth)})`;
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
@@ -165,7 +165,7 @@ function createPovRenderer() {
             ctx.lineTo(r, 6);
             ctx.stroke();
         }
-        ctx.fillStyle = '#ff3c8a';
+        ctx.fillStyle = '#3fb8ff';
         ctx.fillRect(-1, -1, 3, 3);
         ctx.restore();
     }

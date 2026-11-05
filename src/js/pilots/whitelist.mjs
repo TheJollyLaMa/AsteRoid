@@ -45,13 +45,13 @@ export function mountPilots({ fetchImpl = globalThis.fetch, readOnChain = contra
   const note = document.getElementById('pilot-note');
   const update = async state => {
     const address = state?.connected ? state.address : null;
-    if (!address) { dispatchPilot(null, false); if (note) { note.hidden = false; note.textContent = 'No wallet needed to fly Sector I. Not on the Decent Pilots list? Ask to join in the DecentAgency Discord.'; } return; }
+    if (!address) { dispatchPilot(null, false); if (note) note.hidden = true; return; }
     let allowed = isWhitelisted(address, pilots);
     if (allowed) {
       try { const chainResult = await readOnChain(address); if (chainResult !== null) allowed = !!chainResult; } catch { /* The local contributor list remains the fallback if the optional registry is unavailable. */ }
     }
     dispatchPilot(address, allowed);
-    if (note) { note.hidden = allowed; note.textContent = 'This wallet is not on the Decent Pilots list yet. Ask to join in the DecentAgency Discord; levels 1–10 remain free to play.'; }
+    if (note) { note.hidden = allowed; note.textContent = 'This wallet is not on the Decent Pilots list yet. Ask in the DecentAgency Discord. Levels 1–10 are free to fly.'; }
   };
   const start = async () => {
     if (started) return; started = true;

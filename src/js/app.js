@@ -203,9 +203,24 @@ function step(realDt, controls = null) {
     fx.update(realDt, game);
 }
 
+// The world stays 800×600; the backing store scales with the on-screen size so a full-page canvas stays sharp.
+const LOGICAL = { width: canvas.width, height: canvas.height };
+let renderScale = 1;
+function fitBacking() {
+    const width = canvas.getBoundingClientRect().width || LOGICAL.width;
+    const scale = Math.min(2, Math.max(1, Math.round((width * (window.devicePixelRatio || 1) / LOGICAL.width) * 4) / 4));
+    if (scale === renderScale && canvas.width === Math.round(LOGICAL.width * scale)) return;
+    renderScale = scale;
+    canvas.width = Math.round(LOGICAL.width * scale);
+    canvas.height = Math.round(LOGICAL.height * scale);
+}
+if (typeof ResizeObserver === 'function') new ResizeObserver(fitBacking).observe(canvas);
+fitBacking();
+
 function draw() {
     audio.setSector2(Number(game.level && game.level.number) >= 11);
     const shake = fx.shakeOffset();
+    ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
     ctx.save();
     ctx.translate(shake.x, shake.y);
     renderers[game.view](ctx, game, fx);

@@ -18,7 +18,7 @@ class LobbyManager {
     this.rooms = new Map();
   }
 
-  join({ address, mode = 'coop', difficulty = 'cadet', paidRoundId = null, socket = null }) {
+  join({ address, mode = 'coop', difficulty = 'cadet', paidRoundId = null, socket = null, visibility = 'public', invites = [] }) {
     const playerAddress = getAddress(address);
     if (!['coop', 'versus'].includes(mode)) throw new Error('Arena mode must be coop or versus.');
     if (!['cadet', 'pilot', 'ace'].includes(difficulty)) throw new Error('Arena difficulty is invalid.');
@@ -41,9 +41,20 @@ class LobbyManager {
       candidate.mode === mode && candidate.difficulty === difficulty &&
       String(candidate.paidRoundId || '') === String(paidRoundId || '')
     );
+    if (room && room.visibility === 'invite' && room.host !== key && !room.invites.has(key)) {
+      throw new Error('This arena round is invite-only.');
+    }
     if (!room) {
+      if (!['public', 'invite'].includes(visibility)) throw new Error('Arena visibility must be public or invite.');
+      if (!Array.isArray(invites)) throw new Error('Arena invites must be an array.');
+      if (invites.length > 4) throw new Error('An arena round may have at most 4 invitees.');
+      const inviteAddresses = new Set(invites.map((invite) => {
+        try { return getAddress(invite).toLowerCase(); }
+        catch { throw new Error(`Invalid arena invite address: ${invite}`); }
+      }));
       room = {
         id: randomUUID(), mode, difficulty, paidRoundId: paidRoundId == null ? null : String(paidRoundId),
+        visibility, invites: inviteAddresses, createdAt: this.now(),
         players: new Map(), started: false, host: key, game: null, frame: 0, settleNonce: 0, finalLevel: this.finalLevel
       };
       this.rooms.set(room.id, room);
@@ -87,6 +98,29 @@ class LobbyManager {
 
   getRoom(id) { return this.rooms.get(id) || null; }
   values() { return this.rooms.values(); }
+
+  openRooms({ mode, difficulty } = {}) {
+    return [...this.rooms.values()]
+      .filter((room) => room.visibility === 'public' && !room.started && room.players.size < this.maxPlayers && room.paidRoundId != null && room.paidRoundId !== '')
+      .filter((room) => mode === undefined || room.mode === mode)
+      .filter((room) => difficulty === undefined || room.difficulty === difficulty)
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((room) => ({
+        paidRoundId: room.paidRoundId, mode: room.mode, difficulty: room.difficulty,
+        players: room.players.size, maxPlayers: this.maxPlayers, createdAt: room.createdAt
+      }));
+  }
+
+  invitesFor(address) {
+    const key = getAddress(address).toLowerCase();
+    return [...this.rooms.values()]
+      .filter((room) => room.visibility === 'invite' && !room.started && room.host !== key && room.invites.has(key) && !room.players.has(key))
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((room) => ({
+        paidRoundId: room.paidRoundId, mode: room.mode, difficulty: room.difficulty,
+        host: room.players.get(room.host).address, players: room.players.size, maxPlayers: this.maxPlayers
+      }));
+  }
 }
 
 function sanitizeInput(input) {
@@ -216,9 +250,12 @@ class ArenaHub {
     }
     this.usedNonces.set(nonceKey, this.now());
     for (const [key, usedAt] of this.usedNonces) if (this.now() - usedAt > 600_000) this.usedNonces.delete(key);
-    const joined = this.lobby.join({ address, mode: message.mode || 'coop', difficulty: message.difficulty || 'cadet', paidRoundId, socket });
+    const joined = this.lobby.join({
+      address, mode: message.mode || 'coop', difficulty: message.difficulty || 'cadet', paidRoundId, socket,
+      visibility: message.visibility === 'invite' ? 'invite' : 'public', invites: Array.isArray(message.invites) ? message.invites : []
+    });
     this.connections.set(socket, address);
-    this.send(socket, { type: 'joined', roomId: joined.room.id, playerIndex: joined.player.index, reconnected: joined.reconnected, maxPlayers: MAX_GROUP_SIZE });
+    this.send(socket, { type: 'joined', roomId: joined.room.id, playerIndex: joined.player.index, reconnected: joined.reconnected, maxPlayers: MAX_GROUP_SIZE, visibility: joined.room.visibility });
     this.broadcast(joined.room, { type: 'playerJoined', address, playerIndex: joined.player.index });
   }
 

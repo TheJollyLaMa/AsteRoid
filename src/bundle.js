@@ -204,9 +204,24 @@ function step(realDt, controls = null) {
     fx.update(realDt, game);
 }
 
+// The world stays 800×600; the backing store scales with the on-screen size so a full-page canvas stays sharp.
+const LOGICAL = { width: canvas.width, height: canvas.height };
+let renderScale = 1;
+function fitBacking() {
+    const width = canvas.getBoundingClientRect().width || LOGICAL.width;
+    const scale = Math.min(2, Math.max(1, Math.round((width * (window.devicePixelRatio || 1) / LOGICAL.width) * 4) / 4));
+    if (scale === renderScale && canvas.width === Math.round(LOGICAL.width * scale)) return;
+    renderScale = scale;
+    canvas.width = Math.round(LOGICAL.width * scale);
+    canvas.height = Math.round(LOGICAL.height * scale);
+}
+if (typeof ResizeObserver === 'function') new ResizeObserver(fitBacking).observe(canvas);
+fitBacking();
+
 function draw() {
     audio.setSector2(Number(game.level && game.level.number) >= 11);
     const shake = fx.shakeOffset();
+    ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
     ctx.save();
     ctx.translate(shake.x, shake.y);
     renderers[game.view](ctx, game, fx);
@@ -2598,7 +2613,7 @@ const {
 } = require('./cardMath');
 
 const TITLE = 'DECENT VOYAGER \u00b7 Galactic Gauntlet';
-const CARD_ACCENTS = ['#7fd7ff', '#5fffd0', '#c78cff', '#ff6cf5', '#ffd25c', '#7dff8c', '#ff8a2c', '#5fd9ff', '#ff5a8a', '#fff4c8'];
+const CARD_ACCENTS = ['#7fd7ff', '#5fffd0', '#9ff3ff', '#d8e4ef', '#ffd25c', '#7dff8c', '#ff8a2c', '#5fd9ff', '#5fffd0', '#fff4c8'];
 const list = (value) => (Array.isArray(value) ? value : []);
 const num = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
 
@@ -2880,7 +2895,7 @@ function statRows(record) {
         ['MISSED', String(num(s.asteroidsMissed)), '#9fb4c8'],
         ['SHOOTERS', String(num(s.shootersDestroyed)), '#ff8a2c'],
         ['SHOTS', String(num(s.shotsFired)), '#e8f6ff'],
-        ['MAX COMBO', `x${num(s.maxCombo)}`, '#ff6cf5'],
+        ['MAX COMBO', `x${num(s.maxCombo)}`, '#d8e4ef'],
         ['DAMAGE', String(num(s.damageTaken)), '#ff3c5a'],
         ['SHIELD BLOCKS', String(num(s.shieldBlocks)), '#5fd9ff'],
         ['TIME', formatDuration(record.durationSec), '#ffe65c'],
@@ -2920,7 +2935,7 @@ function drawPanel(ctx, record, rng, accent) {
     // Weapon mix bar.
     const mixY = top + rows.length * rowH + 4;
     const byWeapon = (record.stats && record.stats.shotsByWeapon) || {};
-    const colors = { blaster: '#9ff3ff', spread: '#5fffd0', rapid: '#ffe65c', plasma: '#ff6cf5' };
+    const colors = { blaster: '#9ff3ff', spread: '#5fffd0', rapid: '#ffe65c', plasma: '#d8e4ef' };
     const total = Object.keys(colors).reduce((sum, k) => sum + Math.max(0, num(byWeapon[k])), 0);
     pixelText(ctx, 'WEAPON MIX', panel.x + 30, mixY, { size: 18, color: '#9fb4c8' });
     const barX = panel.x + 30;
@@ -3332,8 +3347,8 @@ const MAX_WORLD_PARTICLES = 650;
 const MAX_SCREEN_PARTICLES = 700;
 const ROCK_COLORS = ['#7fffe0', '#ff8ae6', '#b9a8ff', '#ffffff', '#9ff3ff', '#ffe18a'];
 const SHOOTER_COLORS = ['#ff5a1c', '#ff8a5c', '#ffd25c', '#ffffff', '#ff3a1c'];
-const FIREWORK_COLORS = ['#ff3c8a', '#7fd7ff', '#7dff8c', '#ffe65c', '#ff6cf5', '#ffffff', '#ffb347'];
-const PICKUP_COLORS = { spread: '#5fffd0', rapid: '#ffe65c', plasma: '#ff6cf5', power: '#7dff8c', shield: '#6fa8ff' };
+const FIREWORK_COLORS = ['#3fb8ff', '#7fd7ff', '#7dff8c', '#ffe65c', '#d8e4ef', '#ffffff', '#ffb347'];
+const PICKUP_COLORS = { spread: '#5fffd0', rapid: '#ffe65c', plasma: '#d8e4ef', power: '#7dff8c', shield: '#6fa8ff' };
 
 const rand = (min, max) => min + Math.random() * (max - min);
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
@@ -3478,7 +3493,7 @@ function createFx() {
                         state.flashColor = '#7dff8c';
                         for (let i = 0; i < 18; i++) {
                             const a = (i / 18) * Math.PI * 2;
-                            addWorld({ kind: 'debris', x: ship.x, y: ship.y, vx: Math.cos(a) * 120, vy: Math.sin(a) * 120 + drift, life: 0.6, maxLife: 0.6, size: 3, color: i % 2 ? '#7dff8c' : '#ff6cf5', drag: 2 });
+                            addWorld({ kind: 'debris', x: ship.x, y: ship.y, vx: Math.cos(a) * 120, vy: Math.sin(a) * 120 + drift, life: 0.6, maxLife: 0.6, size: 3, color: i % 2 ? '#7dff8c' : '#d8e4ef', drag: 2 });
                         }
                     }
                     break;
@@ -3649,7 +3664,7 @@ function createFx() {
                 case 'thrust': {
                     const size = Math.max(1, Math.round(p.size * scale * (p.kind === 'thrust' ? 0.5 + t * 0.7 : 1)));
                     ctx.globalAlpha = t * fade;
-                    ctx.fillStyle = p.kind === 'thrust' ? (t > 0.6 ? '#fff4c8' : t > 0.3 ? '#ffb347' : '#ff3c8a') : p.color;
+                    ctx.fillStyle = p.kind === 'thrust' ? (t > 0.6 ? '#fff4c8' : t > 0.3 ? '#ffb347' : '#3fb8ff') : p.color;
                     ctx.fillRect(Math.round(s.x - size / 2), Math.round(s.y - size / 2), size, size);
                     break;
                 }
@@ -3741,7 +3756,7 @@ function createFx() {
                 const angle = (i / 40) * Math.PI * 2 + t * (i % 2 ? 0.2 : -0.15);
                 const inner = 45 + 15 * Math.sin(t * 11 + i);
                 const reach = 200 + 260 * Math.min(1, t / 1.6) + 35 * Math.sin(t * 8 + i * 0.5);
-                ctx.strokeStyle = i % 4 === 0 ? '#fff4c8' : i % 3 === 0 ? '#ff6cf5' : '#67faff';
+                ctx.strokeStyle = i % 4 === 0 ? '#fff4c8' : i % 3 === 0 ? '#d8e4ef' : '#67faff';
                 ctx.globalAlpha = Math.max(0, 0.75 - Math.max(0, t - 2.4) * 0.38);
                 ctx.lineWidth = i % 5 === 0 ? 4 : 2;
                 ctx.beginPath(); ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
@@ -3955,7 +3970,7 @@ function createHud() {
             if (charge > 0) { ctx.fillStyle = color; ctx.fillRect(x + 37, y + 20, 74 * charge, 2); }
             if (versusMode(game)) pixelText(ctx, String(playerScore), x + 168, y + 15, { size: 11, color: '#ffe65c', align: 'right' });
         });
-        if (versusMode(game)) pixelText(ctx, 'VERSUS · INDIVIDUAL SCORE', VIEW.width - 100, 64, { size: 9, color: '#ff6cf5', align: 'right' });
+        if (versusMode(game)) pixelText(ctx, 'VERSUS · INDIVIDUAL SCORE', VIEW.width - 100, 64, { size: 9, color: '#d8e4ef', align: 'right' });
     }
 
     function drawToast(ctx) {
@@ -4018,7 +4033,7 @@ function createHud() {
         const x = VIEW.width - 20;
         const y = VIEW.height - 70;
         const scale = 1 + view.comboPop * 0.5;
-        const hue = (game.time * 240) % 360;
+        const hue = 150 + 45 * Math.sin(game.time * 4);
         drawGlow(ctx, x - 50, y - 8, 60 * scale, `hsl(${hue}, 100%, 60%)`, 0.25);
         pixelText(ctx, `x${combo}`, x, y, { size: Math.round(26 * scale), color: `hsl(${hue}, 100%, 70%)`, align: 'right' });
         pixelText(ctx, 'COMBO', x, y + 16, { size: 11, color: '#ffffff', align: 'right' });
@@ -4212,7 +4227,7 @@ function createOverviewRenderer() {
 module.exports = { createOverviewRenderer };
 
 },{"./assets":14,"./background":15,"./font":19,"./players":23,"./projection":26,"./shapes":28,"./vault":29}],23:[function(require,module,exports){
-const PLAYER_COLORS = ['#7fd7ff', '#ff6cf5', '#7dff8c', '#ffe65c', '#ff8a5c'];
+const PLAYER_COLORS = ['#7fd7ff', '#d8e4ef', '#7dff8c', '#ffe65c', '#ff8a5c'];
 
 function getPlayers(game) {
     const candidates = Array.isArray(game && game.players) ? game.players : (Array.isArray(game && game.ships) ? game.ships : []);
@@ -4324,9 +4339,9 @@ function createPovRenderer() {
 
         // Horizon glow line.
         const hz = ctx.createLinearGradient(0, POV.horizon - 18, 0, POV.horizon + 18);
-        hz.addColorStop(0, 'rgba(255, 60, 138, 0)');
-        hz.addColorStop(0.5, 'rgba(255, 60, 138, 0.45)');
-        hz.addColorStop(1, 'rgba(255, 60, 138, 0)');
+        hz.addColorStop(0, 'rgba(63, 184, 255, 0)');
+        hz.addColorStop(0.5, 'rgba(63, 184, 255, 0.45)');
+        hz.addColorStop(1, 'rgba(63, 184, 255, 0)');
         ctx.fillStyle = hz;
         ctx.fillRect(0, POV.horizon - 18, VIEW.width, 36);
 
@@ -4350,7 +4365,7 @@ function createPovRenderer() {
         for (let y = Math.ceil(nearY / GRID_STEP) * GRID_STEP; y < farY; y += GRID_STEP) {
             const a = projectPov({ x: -800, y }, camera, FLOOR_HEIGHT);
             const b = projectPov({ x: 1600, y }, camera, FLOOR_HEIGHT);
-            ctx.strokeStyle = `rgba(255, 60, 200, ${0.4 * povFade(a.depth)})`;
+            ctx.strokeStyle = `rgba(127, 215, 255, ${0.4 * povFade(a.depth)})`;
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
@@ -4443,7 +4458,7 @@ function createPovRenderer() {
             ctx.lineTo(r, 6);
             ctx.stroke();
         }
-        ctx.fillStyle = '#ff3c8a';
+        ctx.fillStyle = '#3fb8ff';
         ctx.fillRect(-1, -1, 3, 3);
         ctx.restore();
     }
@@ -4541,7 +4556,7 @@ const DIFFICULTY_OPTIONS = [
     { id: 'pilot', label: 'PILOT', tagline: 'FASTER + MEANER' },
     { id: 'ace', label: 'ACE', tagline: 'NEAR IMPOSSIBLE' }
 ];
-const RAINBOW = ['#ff3c8a', '#ffb347', '#ffe65c', '#7dff8c', '#7fd7ff', '#b98aff'];
+const RAINBOW = ['#7fd7ff', '#bfeaff', '#e8eef5', '#9ff3ff', '#7dff8c'];
 
 function drawCover(ctx, img, alpha = 1, zoom = 1, ox = 0, oy = 0) {
     if (!img) return false;
@@ -4611,10 +4626,10 @@ function drawTitle(ctx, game) {
     drawFloatingRocks(ctx, time);
     const cx = VIEW.width / 2;
 
-    drawGlow(ctx, cx, 92, 260, '#ff3c8a', 0.18 + 0.06 * Math.sin(time * 2));
+    drawGlow(ctx, cx, 92, 260, '#3fb8ff', 0.18 + 0.06 * Math.sin(time * 2));
     waveText(ctx, 'DECENT VOYAGER', cx, 110, { size: 49, time, amp: 5 });
     const shine = (time * 160) % 900 - 50;
-    pixelText(ctx, 'GALACTIC  GAUNTLET', cx, 145, { size: 18, align: 'center', color: '#ffb347' });
+    pixelText(ctx, 'GALACTIC  GAUNTLET', cx, 145, { size: 18, align: 'center', color: '#ffe65c' });
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.25;
@@ -4665,7 +4680,7 @@ function drawTitle(ctx, game) {
     drawGlow(ctx, cx, 337, 160, '#7dff8c', 0.12);
     pixelText(ctx, `TAB / X  MODE: ${(game.mode || game.multiplayerMode || 'COOP').toUpperCase()}  ·  CONTROLLER: PRESS A TO JOIN UP TO 5 DECENT PILOTS`, cx, 362, { size: 10, align: 'center', color: '#7fd7ff' });
 
-    panelBox(ctx, 90, 368, 620, 214);
+    panelBox(ctx, 90, 372, 620, 150);
     const controls = [
         ['LEFT/RIGHT A/D', 'STEER  (TITLE: LEVEL)'],
         ['UP/DOWN W/S', 'THROTTLE (TITLE: DIFFICULTY)'],
@@ -4675,16 +4690,16 @@ function drawTitle(ctx, game) {
         ['M', 'MUTE     C  CRT FILTER']
     ];
     controls.forEach(([key, action], i) => {
-        pixelText(ctx, key, 270, 392 + i * 20, { size: 12, color: '#ffe65c', align: 'right' });
-        pixelText(ctx, action, 290, 392 + i * 20, { size: 12, color: '#c9d6e3' });
+        pixelText(ctx, key, 270, 390 + i * 16, { size: 11, color: '#ffe65c', align: 'right' });
+        pixelText(ctx, action, 290, 390 + i * 16, { size: 11, color: '#c9d6e3' });
     });
-    drawBreathe(ctx, 128, 530, 12, time);
-    pixelText(ctx, 'ENS ETH = POWER RE-UP', 152, 535, { size: 11, color: '#7dff8c' });
-    pixelText(ctx, 'S/R/P WEAPONS  O SHIELD', 152, 553, { size: 11, color: '#c9d6e3' });
-    drawGlow(ctx, 470, 538, 22, '#ff3a1c', 0.7 + 0.3 * Math.sin(time * 7));
+    drawBreathe(ctx, 128, 494, 12, time);
+    pixelText(ctx, 'ENS ETH = POWER RE-UP', 152, 499, { size: 11, color: '#7dff8c' });
+    pixelText(ctx, 'S/R/P WEAPONS  O SHIELD', 152, 513, { size: 11, color: '#c9d6e3' });
+    drawGlow(ctx, 470, 502, 22, '#ff3a1c', 0.7 + 0.3 * Math.sin(time * 7));
     ctx.fillStyle = '#fff1c2';
-    ctx.fillRect(467, 535, 6, 6);
-    pixelText(ctx, 'ORANGE CORES SHOOT BACK!', 494, 543, { size: 11, color: '#ff8a5c' });
+    ctx.fillRect(467, 499, 6, 6);
+    pixelText(ctx, 'ORANGE CORES SHOOT BACK!', 494, 507, { size: 11, color: '#ff8a5c' });
 }
 
 function drawIntro(ctx, game) {
@@ -4694,7 +4709,7 @@ function drawIntro(ctx, game) {
     const slide = (1 - easeOutBack(t)) * VIEW.width;
     ctx.fillStyle = 'rgba(2, 3, 12, 0.55)';
     ctx.fillRect(0, cy - 70, VIEW.width, 110);
-    ctx.fillStyle = '#ff3c8a';
+    ctx.fillStyle = '#3fb8ff';
     ctx.fillRect(0, cy - 72, VIEW.width, 2);
     ctx.fillRect(0, cy + 40, VIEW.width, 2);
     pixelText(ctx, `${game.level.number >= 11 ? 'SECTOR II · FAR FUTURE' : 'LEVEL ' + game.level.number}`, cx - slide, cy - 20, { size: 44, align: 'center', color: '#7fd7ff' });
@@ -4789,7 +4804,7 @@ function drawVictory(ctx, game, fx) {
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 16; i++) {
         ctx.rotate((Math.PI * 2) / 16);
-        ctx.fillStyle = i % 2 ? 'rgba(255, 230, 92, 0.06)' : 'rgba(255, 60, 138, 0.06)';
+        ctx.fillStyle = i % 2 ? 'rgba(255, 230, 92, 0.06)' : 'rgba(63, 184, 255, 0.06)';
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.lineTo(-40, -700);
@@ -4987,8 +5002,8 @@ function drawGlowDot(ctx, x, y, radius, color, alpha = 1) {
 
 // ---------------------------------------------------------------- pixel art
 const SHIP_PALETTE = {
-    W: '#ffffff', C: '#7fd7ff', H: '#ff6cf5', B: '#13284a', D: '#0a1428',
-    M: '#ffe65c', A: '#ff3c8a', P: '#4a1d8a', F: '#ffb347'
+    W: '#ffffff', C: '#7fd7ff', H: '#d8e4ef', B: '#13284a', D: '#0a1428',
+    M: '#ffe65c', A: '#3fb8ff', P: '#1d4a6a', F: '#ffb347'
 };
 
 const SHIP_TOP = [
@@ -5216,7 +5231,7 @@ function drawShipTop(ctx, ship, x, y, time = 0, ripples = []) {
             ctx.stroke();
         }
         ctx.restore();
-        drawGlow(ctx, x, y - 8, 9, '#ff6cf5', 0.35);
+        drawGlow(ctx, x, y - 8, 9, '#d8e4ef', 0.35);
     }
     drawShield(ctx, ship, x, y, 30, time, ripples);
 }
@@ -5237,8 +5252,8 @@ function drawShipChase(ctx, ship, x, y, time = 0, ripples = []) {
             drawGlow(ctx, ex, 7, 18 * flick, '#ff8a2c', 0.9);
             drawGlow(ctx, ex, 7, 7 * flick, '#fff4c8', 0.9);
         }
-        drawGlow(ctx, -36, 0, 7, '#ff3c8a', 0.5 + 0.5 * Math.sin(time * 6));
-        drawGlow(ctx, 36, 0, 7, '#ff3c8a', 0.5 + 0.5 * Math.sin(time * 6 + Math.PI));
+        drawGlow(ctx, -36, 0, 7, '#3fb8ff', 0.5 + 0.5 * Math.sin(time * 6));
+        drawGlow(ctx, 36, 0, 7, '#3fb8ff', 0.5 + 0.5 * Math.sin(time * 6 + Math.PI));
         ctx.restore();
     }
     drawShield(ctx, ship, x, y, 62, time, ripples);
@@ -5341,7 +5356,7 @@ function drawPlayerBullet(ctx, bullet, x, y, dx, dy, scale = 1, alpha = 1, time 
     if (type === 'singularity') {
         const r = Math.max(4, (bullet.size || 10) * scale * 1.5);
         const pulse = 0.82 + 0.18 * Math.sin(time * 16);
-        drawGlow(ctx, x, y, r * 9 * pulse, '#a35bff', 0.95);
+        drawGlow(ctx, x, y, r * 9 * pulse, '#5fd9ff', 0.95);
         drawGlow(ctx, x, y, r * 5, '#251044', 1);
         ctx.fillStyle = '#020106';
         ctx.beginPath(); ctx.arc(x, y, r * 1.45, 0, Math.PI * 2); ctx.fill();
@@ -5356,7 +5371,7 @@ function drawPlayerBullet(ctx, bullet, x, y, dx, dy, scale = 1, alpha = 1, time 
         ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(uy, ux) + time * 0.15);
         ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(r * 2.4, 0); ctx.lineTo(-r, r); ctx.lineTo(-r * 0.5, 0); ctx.lineTo(-r, -r); ctx.closePath(); ctx.fill();
         ctx.strokeStyle = '#65ffff'; ctx.lineWidth = Math.max(1, r * 0.3); ctx.stroke(); ctx.restore();
-        for (let i = 0; i < 3; i++) { ctx.strokeStyle = ['#ff6cf5', '#71ffff', '#fff36a'][i]; ctx.globalAlpha *= 0.65; ctx.lineWidth = Math.max(1, r * 0.16); ctx.beginPath(); ctx.moveTo(x - ux * r * (i + 1), y - uy * r * (i + 1)); ctx.lineTo(x - ux * r * (i + 5), y - uy * r * (i + 5) + (i - 1) * r * 1.5); ctx.stroke(); }
+        for (let i = 0; i < 3; i++) { ctx.strokeStyle = ['#d8e4ef', '#71ffff', '#fff36a'][i]; ctx.globalAlpha *= 0.65; ctx.lineWidth = Math.max(1, r * 0.16); ctx.beginPath(); ctx.moveTo(x - ux * r * (i + 1), y - uy * r * (i + 1)); ctx.lineTo(x - ux * r * (i + 5), y - uy * r * (i + 5) + (i - 1) * r * 1.5); ctx.stroke(); }
     } else if (type === 'nova') {
         const r = Math.max(3, (bullet.radius || bullet.size || 8) * scale);
         drawGlow(ctx, x, y, r * 6, '#d6a1ff', 0.95);
@@ -5487,7 +5502,7 @@ function shielded(vault, guards) {
 
 function drawVaultGlyph(ctx, x, y, radius, time, vault, guards = []) {
     const active = shielded(vault, guards);
-    const color = active ? '#ff5a9e' : '#ffe65c';
+    const color = active ? '#7dff8c' : '#ffe65c';
     const pulse = 0.72 + Math.sin(time * 5) * 0.22;
     drawGlow(ctx, x, y, radius * 2.8, color, 0.75 * pulse);
     ctx.save();
@@ -6510,12 +6525,12 @@ const WEAPONS = {
         pierce: false,
         pattern: [[[0, 0]], [[0, -7], [0, 7]], [[-0.03, -10], [0, 0], [0.03, 10]]]
     },
-    nova: { name: 'Nova Charger', color: '#b67aff', cooldown: [0.8, 0.72, 0.64], speed: 310, damage: [3, 5, 7], size: [10, 14, 18], pierce: false, pattern: [[[0, 0]], [[0, 0]], [[0, 0]]] },
+    nova: { name: 'Nova Charger', color: '#fff36a', cooldown: [0.8, 0.72, 0.64], speed: 310, damage: [3, 5, 7], size: [10, 14, 18], pierce: false, pattern: [[[0, 0]], [[0, 0]], [[0, 0]]] },
     prism: { name: 'Prism Splitter', color: '#67faff', cooldown: [0.42, 0.36, 0.3], speed: 520, damage: [2, 2, 3], size: [5, 6, 7], pierce: false, pattern: [[[0, 0]], [[-0.18, 0], [0, 0], [0.18, 0]], [[-0.28, 0], [-0.14, 0], [0, 0], [0.14, 0], [0.28, 0]]] },
-    singularity: { name: 'Singularity', color: '#531c8a', cooldown: [0.9, 0.82, 0.74], speed: 270, damage: [4, 6, 8], size: [12, 16, 20], pierce: false, pattern: [[[0, 0]], [[0, 0]], [[0, 0]]] },
+    singularity: { name: 'Singularity', color: '#1c3f8a', cooldown: [0.9, 0.82, 0.74], speed: 270, damage: [4, 6, 8], size: [12, 16, 20], pierce: false, pattern: [[[0, 0]], [[0, 0]], [[0, 0]]] },
     plasma: {
         name: 'Plasma Lance',
-        color: '#ff6cf5',
+        color: '#d8e4ef',
         cooldown: [0.55, 0.48, 0.42],
         speed: 400,
         damage: [3, 4, 5],

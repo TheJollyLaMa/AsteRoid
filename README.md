@@ -61,15 +61,20 @@ stats and win records are saved per difficulty in `localStorage`, and can be bac
   **Sector II**. A second vault on level 19 or 20 holds DecentBusking, BigNuten, DecentCanopy or Decent Pilgrimages.
   Captures are queued for payout automatically once the referee verifies the run.
 - **Sector II · Far Future** (levels 11–20): a warp transition, new backgrounds, future rocks and wilder weapons.
-- **Couch multiplayer**: 2–5 ships on one screen (ships shrink as the group grows), in co-op or versus.
+- **Start screen**: **Solo voyage** or **Multiplayer battle**. Multiplayer opens a form: same screen (free, 2–5 ships,
+  ships shrink as the group grows) or an online round with random pairing, invited wallets (0x… or name.eth) or a
+  shared round number, in co-op or versus.
 - **Stats**: every shot, hit, accuracy, rocks destroyed vs missed, shooters downed, combos, dodges and closest call,
   damage taken, shield blocks, pickups and a bounded battle log are recorded for each cleared level.
 
 ## Decent features
 
 - **DecentHead v2 header**: IPFS save/restore of your progress (Pinata or local Kubo, your own credentials), wallet
-  connect, and an About / flight manual with project links (click the AsteRoid title).
-- **DBusk radio** in the cockpit strip. It never autoplays.
+  connect, and a full About / flight manual (click the Decent Voyager title): rewards, flight school, a multiplayer
+  walkthrough, the Supporter DNFT ("Coming soon" until `supporterDnft` is set in the config, then buyable) and links.
+- **DBusk radio** docked in the header. It never autoplays.
+- **☥ profile menu (right ankh)**: **Victory Vault**, **Rewards waiting** (referee-signed level-pass DNFTs and Supporter
+  prizes queued for you; they wait there every time you log in until you claim on Base) and **Flight manual**.
 - **Victory Vault + DNFT stamps**: every cleared level becomes a record with a rendered battle card. Pin the card and
   full-stat metadata to IPFS, then request a mint via a prefilled GitHub issue. See [docs/VICTORY-STAMPS.md](docs/VICTORY-STAMPS.md).
 - **Decent Pilots whitelist**: `contributor-accounts.json`. Every wallet action (signed flight logs, vouchers,

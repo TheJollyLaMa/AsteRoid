@@ -79,7 +79,7 @@ test('pixel-art ship maps are rectangular and use known palette keys', () => {
             for (const ch of row) assert.ok(ch === '.' || SHIP_PALETTE[ch], `unknown palette key ${ch}`);
         });
     }
-    assert.equal(bulletWeaponType({ color: '#ff6cf5' }), 'plasma');
+    assert.equal(bulletWeaponType({ color: '#d8e4ef' }), 'plasma');
 });
 
 test('fx caps particles and applies hit-stop on level clear', () => {

@@ -52,9 +52,9 @@ export function createRunTicketManager({
   async function fetchTicket() {
     const address = pilot.address, url = baseUrl(), token = generation;
     if (!pilot.isPilot || !address) { report('Connect a Decent Pilot wallet to prepare referee flight tickets.'); return null; }
-    if (!url) { report('Rewards need a referee flight ticket. The GitHub fallback remains in Victory Vault → Request mint on GitHub.'); return null; }
+    if (!url) { report('Rewards need a referee flight ticket. The GitHub fallback remains in ☥ profile → Victory Vault → Request mint on GitHub.'); return null; }
     const game = getGame();
-    if (typeof game?.setNextRunSeed !== 'function') { report('This game build cannot use referee flight tickets. Rewards need the referee; GitHub fallback remains in Victory Vault.'); return null; }
+    if (typeof game?.setNextRunSeed !== 'function') { report('This game build cannot use referee flight tickets. Rewards need the referee; GitHub fallback remains in ☥ profile → Victory Vault.'); return null; }
     try {
       const response = await fetchImpl(`${url.replace(/\/$/, '')}/tickets`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address }),
@@ -71,7 +71,7 @@ export function createRunTicketManager({
       applyIfTitle();
       return ticket;
     } catch (error) {
-      if (token === generation) report(`Rewards need a referee flight ticket (${error.message}). GitHub fallback: Victory Vault → Request mint on GitHub.`);
+      if (token === generation) report(`Rewards need a referee flight ticket (${error.message}). GitHub fallback: ☥ profile → Victory Vault → Request mint on GitHub.`);
       return null;
     }
   }
@@ -94,11 +94,10 @@ export function createRunTicketManager({
     }
     pilot = { address, isPilot };
     if (isPilot && address) {
-      if (!baseUrl()) report('Rewards need a referee flight ticket. The GitHub fallback remains in Victory Vault → Request mint on GitHub.');
-      else if (typeof getGame()?.setNextRunSeed !== 'function') report('This game build cannot use referee flight tickets. Rewards need the referee; GitHub fallback remains in Victory Vault.');
+      if (!baseUrl()) report('Rewards need a referee flight ticket. The GitHub fallback remains in ☥ profile → Victory Vault → Request mint on GitHub.');
+      else if (typeof getGame()?.setNextRunSeed !== 'function') report('This game build cannot use referee flight tickets. Rewards need the referee; GitHub fallback remains in ☥ profile → Victory Vault.');
       else void ensureTicket();
-    } else if (!baseUrl()) report('Rewards need a referee flight ticket. The GitHub fallback remains in Victory Vault → Request mint on GitHub.');
-    else report('Connect a Decent Pilot wallet to prepare referee flight tickets.');
+    } else report('');
   }
 
   function runStarted(runId) {

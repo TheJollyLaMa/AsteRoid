@@ -1,4 +1,4 @@
-const PLAYER_COLORS = ['#7fd7ff', '#ff6cf5', '#7dff8c', '#ffe65c', '#ff8a5c'];
+const PLAYER_COLORS = ['#7fd7ff', '#d8e4ef', '#7dff8c', '#ffe65c', '#ff8a5c'];
 
 function getPlayers(game) {
     const candidates = Array.isArray(game && game.players) ? game.players : (Array.isArray(game && game.ships) ? game.ships : []);

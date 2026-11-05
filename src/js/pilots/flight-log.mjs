@@ -40,7 +40,7 @@ export function mountFlightLog({ getGame = () => window.voyager?.game || window.
       if (pilot.isPilot && promptedRun !== runId && (records.length || captures.length)) {
         promptedRun = runId;
         const hasTicket = !!game?.getRunLog?.()?.ticket;
-        if (!hasTicket) notify('Rewards need a referee flight ticket. No ticket was attached; GitHub fallback: Victory Vault → Request mint on GitHub.');
+        if (!hasTicket) notify('Rewards need a referee flight ticket. No ticket was attached; GitHub fallback: ☥ profile → Victory Vault → Request mint on GitHub.');
         if (action) { action.hidden = !hasTicket; action.disabled = false; action.textContent = 'Sign flight log'; action.onclick = async () => { action.disabled = true; try { await signFlight(); action.hidden = true; } catch (error) { notify(error.message); action.disabled = false; } }; }
       }
     }
@@ -53,7 +53,7 @@ export function mountFlightLog({ getGame = () => window.voyager?.game || window.
     if ((await signer.getAddress()).toLowerCase() !== pilot.address.toLowerCase()) throw new Error('Wallet changed; reconnect and retry');
     const runLog = game.getRunLog();
     if (!runLog || typeof runLog !== 'object') throw new Error('Run log is unavailable');
-    if (!runLog.ticket) throw new Error('Rewards need a referee flight ticket. GitHub fallback: Victory Vault → Request mint on GitHub.');
+    if (!runLog.ticket) throw new Error('Rewards need a referee flight ticket. GitHub fallback: ☥ profile → Victory Vault → Request mint on GitHub.');
     const ethers = window.ethers || await (await import('../../vendor/decent-head/2.0.0/js/wallet.js')).loadEthers();
     const runHash = logHash(runLog, ethers);
     const signature = await signer.signMessage(runHash);
