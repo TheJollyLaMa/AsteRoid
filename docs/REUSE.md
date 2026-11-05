@@ -33,3 +33,10 @@ Need: a stunning About with no empty dropdowns, a Supporter token card (coming s
 - **DecentBusking** `ab7c1dd`: `js/components/about-override.js` and `header-right-ankh-override.js`. Adapted the pattern only: the custom `about-modal` is defined before the vendored header (whose define is guarded), and profile entries are injected into the right ankh's shadow tree. No vendor edits; no code copied.
 - **DecentMarket** escrow `0x31b0…C89d` (`getListing`, `purchaseWithETH`, `purchaseWithToken`): reused for the About's Buy button once `supporterDnft` is configured.
 - **Build new**: launch pad, arena form, pairing (`/arena/open`, `/arena/invites/:address`, invite-only rooms) and ENS invite resolution.
+
+## Decent Voyager v1.0.0 release (Supporter DNFT, Pages, ENS)
+
+Need: version-mint and list a Supporter DNFT for v1.0.0, publish the game, and give it an ENS name. Acceptance: the About shows the live listing (price, stock, Buy), DecentMarket's `verifyPublicListing` passes on Base, and Pages serves the game.
+
+- **DecentMarket-supporter-gallery** `scripts/prepare-supporter-release.mjs`, `render-supporter-artwork.mjs` and `js/supporter-mint.mjs` (`transactionFor`, `verifyReceipt`, `validateRelease`/`validateMetadata`, `buildEvidence`): reused the four-transaction protocol and validators unchanged; adapted the artwork/prepare script to Voyager (a level 9 Ace gameplay frame, palette, AsteRoid repo/tag). Result: token 80, listing 10, recorded in DecentMarket `releases/decentvoyager-v1.0.0` (PR #73).
+- **Build new**: the Actions Pages workflow (the site lives in `src/`), the `supporterDnft.image` option in the About, and a directory pin plus `voyager.decentagency.eth` contenthash set from the DA wallet.

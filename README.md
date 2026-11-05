@@ -5,6 +5,12 @@ like Galaga: fly a corridor of Mandelblum rocks, blast through gauntlets, dodge 
 **Sector I** (levels 1–10) is free for everyone with no wallet. **Decent Pilots** (the DecentAgency whitelist) can
 unlock **Sector II** (levels 11–20), win Supporter DNFTs, earn on-chain victory stamps and join paid arena rounds.
 
+## Live v1
+
+- Play: https://thejollylama.github.io/AsteRoid/ (GitHub Pages, from `src/` via `.github/workflows/pages.yml`) · ENS: `voyager.decentagency.eth` (contenthash `bafybeidjn5rw5q4aid7fgtwz3qra73sgcvlpzqagwvc3mct2isniwgl5fa`, a pinned v1.0.0 `src/`)
+- Referee: https://decent-voyager-referee.onrender.com (Render Starter, `render.yaml`; signer `0x3197DDde77b859A8177607ca82E88938B31C02f4`)
+- Base contracts: see `contracts/deployments/base.json`. Supporter DNFT v1.0.0: token 80 on `0xe63E…439B`, DecentMarket escrow listing 10 (1,000 × 10 USDC).
+
 ## Play locally
 
 ```sh
