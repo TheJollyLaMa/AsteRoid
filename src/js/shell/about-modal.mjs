@@ -109,6 +109,7 @@ ol li strong { color:#fff; display:block; }
   background:radial-gradient(ellipse at 0 50%,#ffe65c14,transparent 60%),linear-gradient(140deg,#121c30,#0a1422); box-shadow:inset 0 0 40px #ffe65c0c; }
 .token { position:relative; aspect-ratio:1; border-radius:20px; display:grid; place-items:center; background:radial-gradient(circle,#173248,#070d18 70%); border:1px solid #c9d6e340; overflow:hidden; }
 .token img { width:78%; filter:drop-shadow(0 0 22px #ffe65c66); animation:float 5s ease-in-out infinite; }
+.token.card-art img { width:100%; border-radius:18px; filter:drop-shadow(0 0 18px #5ad8ff55); }
 .token::after { content:''; position:absolute; inset:0; background:linear-gradient(115deg,transparent 35%,#ffffff22 50%,transparent 65%); animation:sheen 4.5s ease-in-out infinite; }
 .badge { display:inline-block; padding:5px 12px; border-radius:99px; font:800 11px/1 ui-monospace,Menlo,monospace; letter-spacing:.2em; text-transform:uppercase; color:#04101a; background:var(--gold); box-shadow:0 0 18px #ffe65c66; }
 .badge.live { background:var(--green); box-shadow:0 0 18px #7dff8c66; }
@@ -164,12 +165,12 @@ export class VoyagerAbout extends Base {
         <div class="track online"><h3>Online round</h3><div class="price">$10 USDC · winners split the pot</div><ol>${ABOUT.online.map(step => `<li><strong>${esc(step.title)}</strong>${esc(step.text)}</li>`).join('')}</ol></div>
       </div></section>
       <section aria-labelledby="support"><h2 id="support">Support the voyage</h2><div class="supporter">
-        <div class="token"><img src="${esc(art('brand/voyager-disc.png'))}" alt="Decent Voyager supporter token art"></div>
+        <div class="token${listed && supporter.image ? ' card-art' : ''}"><img src="${esc(art(listed && supporter.image ? supporter.image : 'brand/voyager-disc.png'))}" alt="Decent Voyager supporter token art"></div>
         <div><span class="badge ${listed ? 'live' : ''}">${listed ? 'Available now' : 'Coming soon'}</span>
           <h3>${esc(tokenTitle)}</h3>
           <p>${listed ? 'Back Decent Voyager directly. The token is held in the DecentMarket escrow on Base and transfers to your wallet when you buy.' : 'The Decent Voyager Supporter DNFT is being minted. Supporters fund new sectors, weapons, and arena prizes, and join the DecentAgency payroll family. It will be purchasable right here when it lands.'}</p>
           ${listed ? `<p class="quiet" id="listing">Checking the escrow listing…</p><button class="buy" id="buy" type="button">Buy supporter DNFT</button>` : `<p class="quiet">Until then you can win Supporter tokens from DecentHead, DecentMarket, DecentBusking, BigNuten, DecentCanopy, and Decent Pilgrimages in Ace-mode vaults.</p>`}
-          ${listed && safe(supporter.marketUrl) ? `<p><a class="chip" href="${esc(safe(supporter.marketUrl))}" target="_blank" rel="noopener noreferrer">View on DecentMarket</a></p>` : ''}
+          ${listed && safe(supporter.marketUrl) ? `<p style="margin-top:16px"><a class="chip" href="${esc(safe(supporter.marketUrl))}" target="_blank" rel="noopener noreferrer">View on DecentMarket</a></p>` : ''}
           <p class="quiet" id="purchase-status" role="status" aria-live="polite"></p>
         </div></div></section>
       <section aria-labelledby="pilots"><h2 id="pilots">Pilots &amp; your data</h2><div class="duo">
