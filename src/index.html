@@ -3,17 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asteroid Game</title>
+    <title>AsteRoid · Galactic Gauntlet</title>
     <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            background: #000;
+            color: #9fb4c8;
+            font-family: monospace;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
         canvas {
             display: block;
-            margin: 0 auto;
+            width: min(100vw, calc((100vh - 40px) * 4 / 3));
+            height: auto;
+            aspect-ratio: 4 / 3;
             background-color: black;
+            image-rendering: auto;
+        }
+        p {
+            margin: 0;
+            font-size: 12px;
         }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <script src="bundle.js"></script> <!-- This will be our browserified output -->
+    <canvas id="gameCanvas" width="800" height="600" aria-label="AsteRoid game canvas"></canvas>
+    <p>Arrows/WASD move · Space fire · V overview/POV · P pause · M mute</p>
+    <script src="bundle.js"></script>
 </body>
 </html>
