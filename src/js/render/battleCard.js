@@ -1,5 +1,5 @@
 // Collectible "battle card" renderer: a deterministic image of one cleared level.
-const { getImage, loadAssets, makeCanvas, ROCK_KEYS, backdropKeyFor, rockKeyFor } = require('./assets');
+const { getImage, loadAssets, makeCanvas, ROCK_KEYS, FUTURE_ROCK_KEYS, backdropKeyFor, rockKeyFor } = require('./assets');
 const { pixelText } = require('./font');
 const { drawGlow, drawPickup, pixelSprite, SHIP_TOP, SHIP_PALETTE } = require('./shapes');
 const { difficultyColor } = require('./hud');
@@ -8,7 +8,7 @@ const {
     cardLayout, mapPoint, killRadius, levelLengthOf, sampleRecord
 } = require('./cardMath');
 
-const TITLE = 'AsteRoid \u00b7 Galactic Gauntlet';
+const TITLE = 'DECENT VOYAGER \u00b7 Galactic Gauntlet';
 const CARD_ACCENTS = ['#7fd7ff', '#5fffd0', '#c78cff', '#ff6cf5', '#ffd25c', '#7dff8c', '#ff8a2c', '#5fd9ff', '#ff5a8a', '#fff4c8'];
 const list = (value) => (Array.isArray(value) ? value : []);
 const num = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
@@ -47,7 +47,7 @@ function drawBackdrop(ctx, record, rng, accent) {
     ctx.globalAlpha = 1;
     // Floating Mandelblum rocks in the margins.
     for (let i = 0; i < 5; i++) {
-        const img = getImage(ROCK_KEYS[Math.floor(rng() * ROCK_KEYS.length)]);
+        const img = getImage(num(record.level) >= 11 ? FUTURE_ROCK_KEYS[Math.floor(rng() * FUTURE_ROCK_KEYS.length)] : ROCK_KEYS[Math.floor(rng() * ROCK_KEYS.length)]);
         if (!img) continue;
         const size = 70 + rng() * 90;
         const x = rng() < 0.5 ? 20 + rng() * 60 : width - 80 - rng() * 60;
@@ -116,11 +116,15 @@ function drawHeader(ctx, record, accent) {
     const { header } = cardLayout();
     const diffId = String(record.difficulty || 'cadet');
     const diffLabel = String(record.difficultyLabel || diffId).toUpperCase();
-    pixelText(ctx, TITLE, header.x, header.y + 30, { size: 26, color: '#7fd7ff' });
+    pixelText(ctx, TITLE, header.x, header.y + 30, { size: 24, color: '#7fd7ff' });
     const levelText = `LEVEL ${String(num(record.level, 1)).padStart(2, '0')}`;
     drawGlow(ctx, header.x + 150, header.y + 78, 260, accent, 0.35);
     pixelText(ctx, levelText, header.x, header.y + 96, { size: 60, color: '#fff4c8', outline: accent });
     pixelText(ctx, String(record.levelName || '').toUpperCase(), header.x, header.y + 138, { size: 30, color: accent });
+    const captures = Array.isArray(record.captures) ? record.captures.length : (record.supporterCaptured || record.capture ? 1 : 0);
+    const sector = num(record.level) >= 11 || record.sector === 2 ? 'SECTOR II · FAR FUTURE' : 'SECTOR I · GALACTIC GAUNTLET';
+    const runBadges = `${sector}${captures ? `  ·  SUPPORTER CAPTURES ${captures}` : ''}`;
+    pixelText(ctx, runBadges, header.x + header.w, header.y + 148, { size: 13, color: num(record.level) >= 11 ? '#67faff' : captures ? '#ffe65c' : '#9fb4c8', align: 'right' });
     drawBadge(ctx, diffLabel, header.x + header.w, header.y + 2, difficultyColor(diffId));
     pixelText(ctx, 'CLEARED', header.x + header.w, header.y + 92, { size: 22, color: '#9fb4c8', align: 'right' });
     pixelText(ctx, formatUtc(record.completedAt), header.x + header.w, header.y + 124, { size: 24, color: '#e8f6ff', align: 'right' });

@@ -1,5 +1,5 @@
 // Save format, validation, legacy migration and quota-tolerant persistence.
-const { LEVEL_COUNT } = require('./levels');
+const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('./levels');
 const { DIFFICULTY_IDS, isDifficulty, difficultyLabel } = require('./difficulty');
 const {
     WEAPON_TYPES,
@@ -15,6 +15,7 @@ const SAVE_APP = 'asteroid-galactic-gauntlet';
 const SAVE_VERSION = 1;
 const STORAGE_KEY = 'asteroid-galactic-gauntlet-save';
 const LEGACY_STORAGE_KEY = 'asteroid-galactica-progress';
+const BACKUP_KEY = 'asteroid-galactic-gauntlet-save-unreadable';
 const MAX_WINS = 200;
 const MAX_IMPORT_WINS = 2000;
 const MAX_SAVE_CHARS = 10 * 1024 * 1024;
@@ -22,7 +23,7 @@ const MAX_SCORE = 1e10;
 const MAX_STRING = 200;
 
 function createProgress() {
-    return { unlocked: 1, highScore: 0, bestLevelScores: {} };
+    return { unlocked: 1, highScore: 0, bestLevelScores: {}, sector2Unlocked: false };
 }
 
 function createEmptySave() {
@@ -103,15 +104,15 @@ function validateProgress(progress) {
         const label = difficultyLabel(id);
         if (!isPlainObject(entry)) fail(`${label} progress must be an object.`);
         const unlocked = entry.unlocked;
-        if (!Number.isInteger(unlocked) || unlocked < 1 || unlocked > LEVEL_COUNT) {
-            fail(`${label} progress: unlocked level must be a whole number from 1 to ${LEVEL_COUNT}.`);
+        if (!Number.isInteger(unlocked) || unlocked < 1 || unlocked > TOTAL_LEVEL_COUNT) {
+            fail(`${label} progress: unlocked level must be a whole number from 1 to ${TOTAL_LEVEL_COUNT}.`);
         }
         const bestIn = entry.bestLevelScores ?? {};
         if (!isPlainObject(bestIn)) fail(`${label} progress: best level scores must be an object.`);
         const bestLevelScores = {};
         for (const [level, score] of Object.entries(bestIn)) {
             const n = Number(level);
-            if (!Number.isInteger(n) || n < 1 || n > LEVEL_COUNT || String(n) !== level) {
+            if (!Number.isInteger(n) || n < 1 || n > TOTAL_LEVEL_COUNT || String(n) !== level) {
                 fail(`${label} progress: "${level.slice(0, 10)}" is not a level number.`);
             }
             bestLevelScores[level] = num(score, `${label} best score for level ${level}`);
@@ -119,8 +120,11 @@ function validateProgress(progress) {
         byDifficulty[id] = {
             unlocked,
             highScore: num(entry.highScore ?? 0, `${label} high score`),
-            bestLevelScores
+            bestLevelScores,
+            sector2Unlocked: entry.sector2Unlocked === true
         };
+        if (typeof entry.sector2Unlocked !== 'boolean' && entry.sector2Unlocked !== undefined) fail(`${label} progress: Sector II unlock must be true or false.`);
+        if (unlocked > LEVEL_COUNT && !byDifficulty[id].sector2Unlocked) fail(`${label} progress: Sector II level progress requires an unlock.`);
     }
     return { lastDifficulty, byDifficulty };
 }
@@ -155,12 +159,23 @@ function tuples(list, where, cap, shape) {
     });
 }
 
+function validateCaptures(captures, where) {
+    if (!Array.isArray(captures) || captures.length > 2) fail(`${where} must be a list of at most two captures.`);
+    return captures.map((capture, index) => {
+        const label = `${where} #${index + 1}`;
+        if (!isPlainObject(capture) || !isPlainObject(capture.prize)) fail(`${label} is malformed.`);
+        const tier = num(capture.tier, `${label} tier`, { min: 1, max: 2, integer: true });
+        if (!Number.isInteger(capture.level) || capture.level < 1 || capture.level > TOTAL_LEVEL_COUNT) fail(`${label} level is invalid.`);
+        return { tier, level: capture.level, at: isoDate(capture.at, `${label} date`), prize: { project: str(capture.prize.project, `${label} project`, 100), tokenId: num(capture.prize.tokenId, `${label} token ID`, { integer: true }), label: str(capture.prize.label, `${label} label`, 160), version: str(capture.prize.version, `${label} version`, 40), metadataURI: str(capture.prize.metadataURI, `${label} metadata URI`, 300) } };
+    });
+}
+
 function validateLevelRecord(record, where = 'Level record') {
     if (!isPlainObject(record)) fail(`${where} must be an object.`);
     if (record.schema !== RECORD_SCHEMA) fail(`${where} uses an unsupported schema (expected ${RECORD_SCHEMA}).`);
     if (!isDifficulty(record.difficulty)) fail(`${where} has an unknown difficulty.`);
     const level = record.level;
-    if (!Number.isInteger(level) || level < 1 || level > LEVEL_COUNT) fail(`${where}: level must be 1–${LEVEL_COUNT}.`);
+    if (!Number.isInteger(level) || level < 1 || level > TOTAL_LEVEL_COUNT) fail(`${where}: level must be 1–${TOTAL_LEVEL_COUNT}.`);
     const score = record.score;
     if (!isPlainObject(score)) fail(`${where} is missing its score.`);
     const ship = record.ship;
@@ -177,6 +192,14 @@ function validateLevelRecord(record, where = 'Level record') {
     const completedAt = isoDate(record.completedAt, `${where} completedAt`);
     if (Date.parse(completedAt) < Date.parse(startedAt)) fail(`${where} completion date is before its start date.`);
     const s = `${where} stats`;
+    const extendNewCounters = (source, fields) => {
+        if (!isPlainObject(source)) return source;
+        const result = { ...source };
+        for (const field of fields) if (result[field] === undefined) result[field] = 0;
+        return result;
+    };
+    const shotsByWeapon = extendNewCounters(stats.shotsByWeapon, ['nova', 'prism', 'singularity']);
+    const pickupsCollected = extendNewCounters(stats.pickupsCollected, ['nova', 'prism', 'singularity']);
     const count = (key) => num(key === 'volleys' ? (stats[key] ?? 0) : stats[key], `${s}.${key}`, {
         max: 1e9, integer: !['damageTaken', 'timeInPov', 'timeInOverview'].includes(key)
     });
@@ -186,6 +209,7 @@ function validateLevelRecord(record, where = 'Level record') {
         game: str(record.game, `${where} game`),
         gameVersion: str(record.gameVersion, `${where} gameVersion`, 20),
         level,
+        captures: validateCaptures(record.captures ?? [], `${where} captures`),
         levelName: str(record.levelName, `${where} levelName`, 60),
         difficulty: record.difficulty,
         difficultyLabel: str(record.difficultyLabel, `${where} difficultyLabel`, 20),
@@ -211,7 +235,7 @@ function validateLevelRecord(record, where = 'Level record') {
         stats: {
             shotsFired: count('shotsFired'),
             volleys: count('volleys'),
-            shotsByWeapon: counters(stats.shotsByWeapon, WEAPON_TYPES, `${s}.shotsByWeapon`, true),
+            shotsByWeapon: counters(shotsByWeapon, WEAPON_TYPES, `${s}.shotsByWeapon`, true),
             hits: count('hits'),
             accuracy: num(stats.accuracy, `${s}.accuracy`, { max: 1 }),
             asteroidsSpawned: count('asteroidsSpawned'),
@@ -225,7 +249,7 @@ function validateLevelRecord(record, where = 'Level record') {
             collisions: count('collisions'),
             shieldBlocks: count('shieldBlocks'),
             damageTaken: count('damageTaken'),
-            pickupsCollected: counters(stats.pickupsCollected, PICKUP_TYPES, `${s}.pickupsCollected`, true),
+            pickupsCollected: counters(pickupsCollected, PICKUP_TYPES, `${s}.pickupsCollected`, true),
             pickupsMissed: count('pickupsMissed'),
             maxCombo: count('maxCombo'),
             timeInPov: count('timeInPov'),
@@ -307,19 +331,73 @@ function readJson(storage, key) {
 }
 
 // Loads the current save, migrating the pre-difficulty progress format into cadet.
-// Corrupt or unavailable storage falls back to a fresh save.
+// Corrupt or unavailable storage falls back to a fresh save; an unreadable save (for example one
+// written by a newer build) is copied to BACKUP_KEY first so it is never silently destroyed.
 function loadSave(storage) {
     const current = readJson(storage, STORAGE_KEY);
     if (current) {
         try {
             return validateSave(current);
         } catch (error) {
-            // Fall through to legacy/fresh.
+            try {
+                if (storage && !storage.getItem(BACKUP_KEY)) storage.setItem(BACKUP_KEY, storage.getItem(STORAGE_KEY));
+            } catch (backupError) {
+                // Best effort only.
+            }
         }
     }
     const legacy = readJson(storage, LEGACY_STORAGE_KEY);
     if (isLegacyShape(legacy)) return migrateLegacy(legacy);
     return createEmptySave();
+}
+
+const maxMap = (a = {}, b = {}) => {
+    const out = { ...a };
+    for (const [key, value] of Object.entries(b)) out[key] = Math.max(out[key] ?? 0, value);
+    return out;
+};
+
+// Combines two valid saves so that progress made in another tab (or by an older build that later
+// wrote over it) is kept: wins are unioned by id and progress/lifetime counters take the maximum.
+function mergeSaves(stored, incoming) {
+    const byDifficulty = {};
+    for (const id of DIFFICULTY_IDS) {
+        const a = stored.progress.byDifficulty[id] || createProgress();
+        const b = incoming.progress.byDifficulty[id] || createProgress();
+        byDifficulty[id] = {
+            unlocked: Math.max(a.unlocked, b.unlocked),
+            highScore: Math.max(a.highScore, b.highScore),
+            bestLevelScores: maxMap(a.bestLevelScores, b.bestLevelScores),
+            sector2Unlocked: Boolean(a.sector2Unlocked || b.sector2Unlocked)
+        };
+    }
+    const lifetime = { ...incoming.lifetime };
+    for (const key of TOTALS_COUNTER_FIELDS) lifetime[key] = Math.max(stored.lifetime[key] ?? 0, incoming.lifetime[key] ?? 0);
+    lifetime.shotsByWeapon = maxMap(stored.lifetime.shotsByWeapon, incoming.lifetime.shotsByWeapon);
+    lifetime.pickupsCollected = maxMap(stored.lifetime.pickupsCollected, incoming.lifetime.pickupsCollected);
+    lifetime.maxCombo = Math.max(stored.lifetime.maxCombo ?? 0, incoming.lifetime.maxCombo ?? 0);
+    const seen = new Map();
+    for (const record of [...stored.wins, ...incoming.wins]) seen.set(record.id, record);
+    const wins = [...seen.values()]
+        .sort((x, y) => Date.parse(x.completedAt) - Date.parse(y.completedAt))
+        .slice(-MAX_WINS);
+    return {
+        ...incoming,
+        progress: { lastDifficulty: incoming.progress.lastDifficulty, byDifficulty },
+        lifetime,
+        wins
+    };
+}
+
+// Returns `save` merged with whatever valid save is currently stored (or `save` unchanged).
+function mergeStoredSave(storage, save) {
+    const stored = readJson(storage, STORAGE_KEY);
+    if (!stored) return save;
+    try {
+        return mergeSaves(validateSave(stored), save);
+    } catch (error) {
+        return save;
+    }
 }
 
 function stripBattleLog(record) {
@@ -362,7 +440,10 @@ module.exports = {
     SAVE_VERSION,
     STORAGE_KEY,
     LEGACY_STORAGE_KEY,
+    BACKUP_KEY,
     MAX_WINS,
+    mergeSaves,
+    mergeStoredSave,
     createEmptySave,
     createProgress,
     migrateLegacy,

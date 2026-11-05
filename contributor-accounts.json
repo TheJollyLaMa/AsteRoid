@@ -7,14 +7,38 @@
       "role": "owner",
       "walletAddress": "0x807061DF657A7697c04045dA7d16D941861cAABc",
       "whitelisted": true,
-      "totalEarnedByCurrency": {
-        "ART": "0",
-        "USDC": "0"
-      },
-      "pendingBalanceByCurrency": {
-        "ART": "0",
-        "USDC": "0"
-      },
+      "totalEarnedByCurrency": { "ART": "0", "USDC": "0" },
+      "pendingBalanceByCurrency": { "ART": "0", "USDC": "0" },
+      "issuesClosed": []
+    },
+    {
+      "github": "copilot",
+      "displayName": "Copilot RoboSoul",
+      "role": "contributor",
+      "payoutMode": "retain-in-fund",
+      "whitelisted": true,
+      "totalEarnedByCurrency": { "ART": "0", "USDC": "0" },
+      "pendingBalanceByCurrency": { "ART": "0", "USDC": "0" },
+      "issuesClosed": []
+    },
+    {
+      "github": "withinthevacuum",
+      "displayName": "withinthevacuum",
+      "role": "tester",
+      "walletAddress": "0x405Bb3Cdf23833bb27BAD6629b7cd4f01688235f",
+      "whitelisted": true,
+      "totalEarnedByCurrency": { "ART": "0", "USDC": "0" },
+      "pendingBalanceByCurrency": { "ART": "0", "USDC": "0" },
+      "issuesClosed": []
+    },
+    {
+      "github": "joseacabrerav",
+      "displayName": "Jose Cabrera",
+      "role": "contributor",
+      "walletAddress": "0x29185eB8cfD22Aa719529217bFbadE61677e0Ad2",
+      "whitelisted": true,
+      "totalEarnedByCurrency": { "ART": "0", "USDC": "0" },
+      "pendingBalanceByCurrency": { "ART": "0", "USDC": "0" },
       "issuesClosed": []
     }
   ]

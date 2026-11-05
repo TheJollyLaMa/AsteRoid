@@ -1,8 +1,9 @@
 const { VIEW } = require('./projection');
 const { WEAPONS, MAX_TIER } = require('../weapons');
-const { LEVEL_COUNT } = require('../levels');
+const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('../levels');
 const { PICKUP_STYLE, SHIP_TOP, SHIP_PALETTE, pixelSprite, drawBreathe, drawGlow } = require('./shapes');
 const { pixelText } = require('./font');
+const { getPlayers, versusMode } = require('./players');
 
 const DIFFICULTY_COLORS = { cadet: '#7dff8c', pilot: '#ffd25c', ace: '#ff3c5a' };
 const POWER_SEGMENTS = 16;
@@ -58,7 +59,7 @@ function panelBox(ctx, x, y, w, h, color = 'rgba(127, 215, 255, 0.55)') {
 }
 
 function createHud() {
-    const view = { score: 0, lastTime: null, combo: 0, comboPop: 0, power: 1, lastLevelKey: '' };
+    const view = { score: 0, lastTime: null, combo: 0, comboPop: 0, power: 1, lastLevelKey: '', toast: '', toastUntil: 0 };
 
     function drawPower(ctx, game) {
         const ship = game.ship;
@@ -103,18 +104,62 @@ function createHud() {
     }
 
     function drawWeapon(ctx, game) {
-        const ship = game.ship;
-        const spec = WEAPONS[ship.weapon.type] || WEAPONS.blaster;
+        const ship = game.ship || {};
+        const weapon = ship.weapon || { type: 'blaster', tier: 1 };
+        const spec = WEAPONS[weapon.type] || WEAPONS.blaster;
         const x = 14;
         const y = VIEW.height - 92;
         panelBox(ctx, x, y, 286, 24, spec.color);
         pixelText(ctx, spec.name.toUpperCase(), x + 10, y + 17, { size: 12, color: spec.color });
         for (let i = 0; i < MAX_TIER; i++) {
             const px = x + 200 + i * 26;
-            ctx.fillStyle = i < ship.weapon.tier ? spec.color : 'rgba(255,255,255,0.12)';
+            ctx.fillStyle = i < (weapon.tier || 1) ? spec.color : 'rgba(255,255,255,0.12)';
             ctx.fillRect(px, y + 7, 20, 10);
             if (i < ship.weapon.tier) drawGlow(ctx, px + 10, y + 12, 14, spec.color, 0.3);
         }
+    }
+
+    function drawCharge(ctx, game) {
+        const ship = game.ship || {};
+        const weapon = ship.weapon || {};
+        const raw = game.charge ?? ship.charge ?? ship.chargeAmount ?? ship.weaponCharge ?? 0;
+        const charge = Math.max(0, Math.min(1, Number(raw) || 0));
+        const charging = Boolean(game.charging || ship.charging || charge > 0);
+        if (!charging && charge <= 0) return;
+        const color = (WEAPONS[weapon.type] || WEAPONS.nova || {}).color || '#b67aff';
+        const x = 14; const y = VIEW.height - 126; const w = 286;
+        panelBox(ctx, x, y, w, 12, color);
+        ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(x + 2, y + 3, w - 4, 6);
+        ctx.fillStyle = color; ctx.fillRect(x + 2, y + 3, (w - 4) * charge, 6);
+        drawGlow(ctx, x + 2 + (w - 4) * charge, y + 6, 24 + charge * 30, color, 0.3 + charge * 0.6);
+        if (charging) pixelText(ctx, `${weapon.type === 'singularity' ? 'EVENT HORIZON' : weapon.type === 'prism' ? 'PRISM CHARGE' : 'NOVA CHARGE'} ${Math.round(charge * 100)}%`, x + 4, y - 3, { size: 9, color: '#ffffff' });
+    }
+
+    function drawPlayers(ctx, game) {
+        const players = getPlayers(game);
+        if (players.length <= 1) return;
+        players.forEach(({ player, ship, index, color, score }, i) => {
+            const y = 72 + i * 27;
+            const x = VIEW.width - 188;
+            panelBox(ctx, x, y, 176, 27, color);
+            pixelText(ctx, `P${index + 1}`, x + 8, y + 15, { size: 11, color });
+            const power = Math.max(0, Math.min(1, Number(ship.power) / Math.max(1, Number(ship.maxPower) || 100)));
+            ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(x + 37, y + 8, 74, 7);
+            ctx.fillStyle = color; ctx.fillRect(x + 37, y + 8, 74 * power, 7);
+            pixelText(ctx, `♥${Math.max(0, Number(ship.lives) || 0)}`, x + 120, y + 15, { size: 10, color: '#ffffff' });
+            const playerScore = Number(player && player.score) || score || Number(game.playerStats && game.playerStats[index] && game.playerStats[index].score) || (index === 0 ? game.score : 0);
+            const charge = Math.max(0, Math.min(1, Number(ship.charge) || 0));
+            if (charge > 0) { ctx.fillStyle = color; ctx.fillRect(x + 37, y + 20, 74 * charge, 2); }
+            if (versusMode(game)) pixelText(ctx, String(playerScore), x + 168, y + 15, { size: 11, color: '#ffe65c', align: 'right' });
+        });
+        if (versusMode(game)) pixelText(ctx, 'VERSUS · INDIVIDUAL SCORE', VIEW.width - 100, 64, { size: 9, color: '#ff6cf5', align: 'right' });
+    }
+
+    function drawToast(ctx) {
+        if (!view.toast || Date.now() >= view.toastUntil) return;
+        const alpha = Math.min(1, (view.toastUntil - Date.now()) / 300);
+        panelBox(ctx, VIEW.width / 2 - 150, 66, 300, 30, '#7fd7ff');
+        pixelText(ctx, view.toast, VIEW.width / 2, 86, { size: 12, align: 'center', color: '#ffffff', alpha });
     }
 
     function drawLives(ctx, game) {
@@ -133,7 +178,8 @@ function createHud() {
         const width = 300;
         const x = (VIEW.width - width) / 2;
         const diff = game.difficulty;
-        const label = `LV ${game.level.number}/${LEVEL_COUNT}  ${game.level.name.toUpperCase()}`;
+        const sector = game.level.number >= 11 ? 'SECTOR II · FAR FUTURE  ' : '';
+        const label = `${sector}LV ${game.level.number}/${game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT}  ${game.level.name.toUpperCase()}`;
         pixelText(ctx, label, VIEW.width / 2, 20, { size: 13, align: 'center' });
         const segments = 30;
         const lit = Math.floor(game.levelProgress * segments);
@@ -240,6 +286,7 @@ function createHud() {
         const now = game.time || 0;
         const dt = view.lastTime === null ? 0 : Math.max(0, Math.min(0.1, now - view.lastTime));
         view.lastTime = now;
+        drawToast(ctx);
         if (game.state === 'title') {
             view.score = 0;
             return;
@@ -248,7 +295,9 @@ function createHud() {
         drawProgress(ctx, game);
         drawLives(ctx, game);
         drawWeapon(ctx, game);
+        drawCharge(ctx, game);
         drawPower(ctx, game);
+        drawPlayers(ctx, game);
         drawCombo(ctx, game, dt);
         const viewLabel = game.view === 'pov' ? 'POV' : 'MAP';
         const flags = `${opts.muted ? 'M:OFF ' : ''}${opts.crt ? 'CRT ' : ''}[V] ${viewLabel}`;
@@ -256,7 +305,7 @@ function createHud() {
         if (game.view === 'pov') drawRadar(ctx, game);
     }
 
-    return { drawHud, view };
+    return { drawHud, view, setToast(message, duration = 2200) { view.toast = String(message); view.toastUntil = Date.now() + duration; } };
 }
 
 module.exports = { createHud, rollUp, litSegments, difficultyColor, difficultyName, panelBox, POWER_SEGMENTS, DIFFICULTY_COLORS };

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const Game = require('../src/js/game');
 const {
-    SAVE_APP, SAVE_VERSION, STORAGE_KEY, LEGACY_STORAGE_KEY, createEmptySave, validateSave, persistSave, loadSave
+    SAVE_APP, SAVE_VERSION, STORAGE_KEY, LEGACY_STORAGE_KEY, BACKUP_KEY, createEmptySave, validateSave, persistSave, loadSave
 } = require('../src/js/save');
 
 function memoryStorage({ quota = Infinity } = {}) {
@@ -95,16 +95,16 @@ test('import rejects invalid saves with friendly errors and leaves the game unto
         [{ ...good(), app: 'other-game' }, /not an AsteRoid/],
         [{ ...good(), version: 2 }, /newer than this game supports/],
         [{ ...good(), version: '1' }, /no version/],
-        [(() => { const s = good(); s.progress.byDifficulty.cadet.unlocked = 11; return s; })(), /Cadet progress: unlocked level must be a whole number from 1 to 10/],
+        [(() => { const s = good(); s.progress.byDifficulty.cadet.unlocked = 21; return s; })(), /Cadet progress: unlocked level must be a whole number from 1 to 20/],
         [(() => { const s = good(); s.progress.byDifficulty.ace.unlocked = 0; return s; })(), /Ace progress/],
         [(() => { const s = good(); s.progress.byDifficulty.pilot.unlocked = 2.5; return s; })(), /Pilot progress/],
         [(() => { const s = good(); s.progress.byDifficulty.nightmare = { unlocked: 1, highScore: 0 }; return s; })(), /Unknown difficulty "nightmare"/],
         [(() => { const s = good(); s.progress.lastDifficulty = 'hard'; return s; })(), /Unknown difficulty "hard"/],
         [(() => { const s = good(); s.progress.byDifficulty.cadet.highScore = -5; return s; })(), /high score must be between/],
         [(() => { const s = good(); s.progress.byDifficulty.cadet.highScore = 'lots'; return s; })(), /high score must be a number/],
-        [(() => { const s = good(); s.progress.byDifficulty.cadet.bestLevelScores = { 12: 5 }; return s; })(), /not a level number/],
+        [(() => { const s = good(); s.progress.byDifficulty.cadet.bestLevelScores = { 21: 5 }; return s; })(), /not a level number/],
         [(() => { const s = good(); s.wins = 'nope'; return s; })(), /must be a list/],
-        [(() => { const s = good(); s.wins[1].level = 42; return s; })(), /Victory record #2: level must be 1–10/],
+        [(() => { const s = good(); s.wins[1].level = 42; return s; })(), /Victory record #2: level must be 1–20/],
         [(() => { const s = good(); s.wins[0].schema = 'asteroid-level-record/9'; return s; })(), /unsupported schema/],
         [(() => { const s = good(); s.wins[0].stats.accuracy = 3; return s; })(), /accuracy must be between 0 and 1/],
         [(() => { const s = good(); s.wins[0].battleLog.path = Array(301).fill([1, 1]); return s; })(), /more than 300/],
@@ -193,4 +193,30 @@ test('import rejects non-JSON values, missing required record fields and invalid
         mutate((s) => { s.wins[0].difficultyLabel = 'Easy'; })
     ]) assert.throws(() => game.importSave(save), Error);
     assert.deepEqual(game.getWinRecords(), good.wins, 'failed imports are atomic');
+});
+
+test('saving merges progress and wins written by another tab instead of overwriting them', () => {
+    const storage = memoryStorage();
+    const tabA = new Game({ storage });
+    const tabB = new Game({ storage });
+    tabA.startCampaign(1, 'pilot');
+    clearLevel(tabA);
+    const pilotWin = tabA.getWinRecords()[0];
+    assert.ok(pilotWin);
+    tabB.startCampaign(1, 'cadet');
+    clearLevel(tabB);
+    const stored = validateSave(storage.getItem(STORAGE_KEY));
+    assert.ok(stored.wins.some((w) => w.id === pilotWin.id), 'tab B kept tab A\'s win');
+    assert.equal(stored.wins.length, 2);
+    assert.equal(stored.progress.byDifficulty.pilot.unlocked, 2);
+    assert.equal(stored.progress.byDifficulty.cadet.unlocked, 2);
+});
+
+test('an unreadable save is backed up before falling back to a fresh save', () => {
+    const storage = memoryStorage();
+    const future = JSON.stringify({ ...createEmptySave(), version: SAVE_VERSION + 1 });
+    storage.setItem(STORAGE_KEY, future);
+    const save = loadSave(storage);
+    assert.equal(save.wins.length, 0);
+    assert.equal(storage.getItem(BACKUP_KEY), future);
 });

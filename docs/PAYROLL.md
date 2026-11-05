@@ -29,3 +29,7 @@ Read-only GitHub inspection on 2026-11-05 found no repository Actions secret nam
 `payroll-assets.json` records the donor Base ART/USDC identities as configuration, **not verified treasury integration**. It deliberately has `routerAddress: null` and `settlementEnabled: false`; `asteroid-repo-dev` is a proposed ledger scope, not a deployed/funded fund. Do not reuse Busking's artist funds or shared router as if AsteRoid were funded. Settlements require separate owner-reviewed contract/asset/fund verification, funding, authorization and receipt reconciliation. No signing key, spending workflow or automatic transfer is installed.
 
 This subset pays only the merged implementer's approved bounty; Busking's idea splits, retained credits, artist/radio payroll, testing bounties and settlement tooling are intentionally not transplanted. Existing same-repo accrual records are the source of truth; queueing does not promise available funds or a payment date.
+
+## Referee supporter-prize entries
+
+`payroll-queue.json` may also contain `kind: "supporter-prize"` entries created by the Decent Voyager referee. These carry the signed voucher, player, tier, project/token label, and run evidence; they are reviewed as collectible releases, not contributor-payment amounts. The validator checks their addresses, voucher fields, signatures, digests, timestamps, and duplicate player/token pairs, while excluding them from contributor balance accounting and settlement.

@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: decent-voyager-referee
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: REFEREE_PRIVATE_KEY
+        sync: false
+      - key: TICKET_SECRET
+        generateValue: true
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPO
+        value: TheJollyLaMa/AsteRoid
+      - key: GITHUB_REF
+        value: main
+      - key: PINATA_JWT
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: ADMIN_ADDRESS
+        sync: false
+      - key: CHAIN_ID
+        value: 84532
+      - key: VOYAGER_ARENA_ADDRESS
+        sync: false
+      - key: VOYAGER_STAMPS_ADDRESS
+        sync: false
+      - key: VOYAGER_PRIZES_ADDRESS
+        sync: false
+      - key: SUPPORTER_NFT_ADDRESS
+        value: 0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B
+      - key: BASE_RPC_URL
+        sync: false
+      - key: ARENA_FINAL_LEVEL
+        value: 10
+      - key: RATE_LIMIT_MAX
+        value: 20
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 60000

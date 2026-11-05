@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const Game = require('../src/js/game');
 const Asteroid = require('../src/js/asteroid');
 const Bullet = require('../src/js/bullet');
-const { getLevel, LEVEL_COUNT, LEVEL_NAMES } = require('../src/js/levels');
+const { getLevel, LEVEL_COUNT, TOTAL_LEVEL_COUNT, LEVEL_NAMES } = require('../src/js/levels');
 const { DIFFICULTIES } = require('../src/js/difficulty');
 const { populateLevel } = require('../src/js/levelLayout');
 const { createRng } = require('../src/js/rng');
@@ -27,6 +27,7 @@ function playingGame(level = 1) {
 
 test('there are 10 levels with rising difficulty', () => {
     assert.equal(LEVEL_COUNT, 10);
+    assert.equal(TOTAL_LEVEL_COUNT, 20);
     const levels = Array.from({ length: 10 }, (_, i) => getLevel(i + 1));
     for (let i = 1; i < levels.length; i++) {
         assert.ok(levels[i].scrollSpeed > levels[i - 1].scrollSpeed);
@@ -35,7 +36,7 @@ test('there are 10 levels with rising difficulty', () => {
         assert.ok(levels[i].fireInterval < levels[i - 1].fireInterval);
         assert.ok(levels[i].enemyBulletSpeed > levels[i - 1].enemyBulletSpeed);
     }
-    assert.throws(() => getLevel(11), RangeError);
+    assert.throws(() => getLevel(21), RangeError);
 });
 
 test('early levels use stationary asteroids, later levels move', () => {

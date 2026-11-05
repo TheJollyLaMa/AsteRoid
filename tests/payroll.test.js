@@ -5,7 +5,13 @@ const seedAccounts = require('../contributor-accounts.json');
 const seedQueue = require('../payroll-queue.json');
 const fixtureAccounts = { contributors: [{ github: 'TheJollyLaMa', walletAddress: '0x807061DF657A7697c04045dA7d16D941861cAABc', whitelisted: true, role: 'owner', totalEarnedByCurrency: { ART: '0', USDC: '0' }, pendingBalanceByCurrency: { ART: '0', USDC: '0' }, issuesClosed: [] }] };
 function fixture() { return { queue: { pending: [], settled: [] }, accounts: structuredClone(fixtureAccounts), issue: { number: 12, labels: [{ name: 'bounty: 1.234567 USDC' }] }, pr: { number: 20, merged: true, user: { login: 'thejollylama' } } }; }
-test('live repository payroll ledgers validate as workers and earnings evolve', () => { assert.equal(validatePayroll(seedQueue, seedAccounts), true); });
+test('live repository payroll and supporter-prize ledgers validate without treating prizes as payroll', () => {
+  assert.equal(validatePayroll(seedQueue, seedAccounts), true);
+  assert.throws(() => queueBounty({ ...fixture(), pr: { ...fixture().pr, user: { login: 'copilot' } } }), /owner-whitelisted wallet/);
+  const prize = { kind: 'supporter-prize', runId: 'run-1', runHash: `0x${'1'.repeat(64)}`, player: '0x405Bb3Cdf23833bb27BAD6629b7cd4f01688235f', tier: 1, project: 'DecentHead', tokenId: '70', label: 'DecentHead v2.0.0 #70', voucher: { player: '0x405Bb3Cdf23833bb27BAD6629b7cd4f01688235f', nftContract: '0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B', tokenId: '70', tier: 1, runId: `0x${'2'.repeat(64)}`, deadline: '1794000000' }, signature: `0x${'3'.repeat(130)}`, digest: `0x${'4'.repeat(64)}`, queuedAt: '2026-11-05T18:00:00.000Z', status: 'pending' };
+  assert.equal(validatePayroll({ ...seedQueue, pending: [prize] }, seedAccounts), true);
+  assert.throws(() => validatePayroll({ ...seedQueue, pending: [prize, prize] }, seedAccounts), /supporter prize/);
+});
 test('fixed decimal units preserve exact amounts without floating-point rounding', () => {
   assert.equal(amountToUnits('1.234567', 'USDC'), 1234567n); assert.equal(unitsToAmount(1234567n, 'USDC'), '1.234567');
   assert.equal(unitsToAmount(10000000n, 'USDC'), '10'); assert.equal(unitsToAmount(1n, 'ART'), '.00000001'.replace(/^\./, '0.'));

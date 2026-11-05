@@ -1,11 +1,15 @@
 {
-  "name": "asteroid",
+  "name": "decent-voyager",
   "version": "1.0.0",
-  "description": "AsteRoid: Galactic Gauntlet, a 10-level scrolling space shooter with overview and POV views.",
+  "description": "Decent Voyager: Galactic Gauntlet. A 20-level Web3 space shooter with Decent Pilot DNFT stamps, Supporter vaults, co-op/versus arenas and Base contracts.",
   "main": "index.js",
   "scripts": {
     "test": "node --test \"tests/**/*.test.js\" \"tests/**/*.test.mjs\"",
-    "build": "browserify src/js/app.js -o src/bundle.js"
+    "build": "browserify src/js/app.js -o src/bundle.js",
+    "test:contracts": "npm --prefix contracts test",
+    "test:server": "npm --prefix server test",
+    "test:all": "npm test && npm run test:contracts && npm run test:server",
+    "server": "npm --prefix server start"
   },
   "keywords": [],
   "author": "",

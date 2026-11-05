@@ -4,11 +4,12 @@ const { range, pick } = require('./rng');
 const WORLD_WIDTH = Asteroid.WORLD_WIDTH;
 const SAFE_START = 520;
 const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield'];
+const FUTURE_PICKUPS = ['nova', 'prism', 'singularity'];
 
 function scatterAsteroid(level, rng, y) {
     const size = range(rng, 14, 26 + level.number * 1.6);
     const moving = rng() < level.movingChance;
-    return new Asteroid({
+    const asteroid = new Asteroid({
         x: range(rng, 40, WORLD_WIDTH - 40),
         y,
         size,
@@ -18,6 +19,14 @@ function scatterAsteroid(level, rng, y) {
         hp: level.scatterHpBonus ? Math.max(1, Math.ceil(size / 14)) + level.scatterHpBonus : undefined,
         rng
     });
+    if (level.futureSector) {
+        asteroid.phaseRock = level.phaseRocks && rng() < 0.2;
+        asteroid.orbiting = level.orbitingGuards && rng() < 0.18;
+        asteroid.phaseActive = false;
+        asteroid.phaseClock = range(rng, 0, 1.8);
+        if (asteroid.orbiting) { asteroid.orbitCenterX = asteroid.x; asteroid.orbitCenterY = asteroid.y; asteroid.orbitAngle = range(rng, 0, Math.PI * 2); asteroid.orbitRadius = range(rng, 24, 70); asteroid.orbitSpeed = range(rng, 1.2, 2.4); }
+    }
+    return asteroid;
 }
 
 function addWall(asteroids, level, rng, y) {
@@ -94,7 +103,7 @@ function populateLevel(level, rng) {
         const pattern = gauntletPattern(level, k);
         gauntletYs.push(y);
         PATTERNS[pattern](asteroids, level, rng, y);
-        const pickup = { x: range(rng, 120, WORLD_WIDTH - 120), y: y + 480, type: pick(rng, PICKUP_TYPES), size: 14 };
+        const pickup = { x: range(rng, 120, WORLD_WIDTH - 120), y: y + 480, type: pick(rng, level.futureSector ? PICKUP_TYPES.concat(FUTURE_PICKUPS) : PICKUP_TYPES), size: 14 };
         if (k % (level.gauntletPickupEvery ?? 1) === 0) pickups.push(pickup);
     }
 
@@ -117,4 +126,4 @@ function populateLevel(level, rng) {
     return { asteroids, pickups };
 }
 
-module.exports = { populateLevel, PICKUP_TYPES, SAFE_START };
+module.exports = { populateLevel, PICKUP_TYPES, FUTURE_PICKUPS, SAFE_START };

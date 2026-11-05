@@ -1,7 +1,7 @@
 // Full-screen overlays: title, intro, pause, level clear celebration,
 // victory finale and game over.
 const { VIEW } = require('./projection');
-const { LEVEL_COUNT, getLevel } = require('../levels');
+const { LEVEL_COUNT, TOTAL_LEVEL_COUNT, getLevel } = require('../levels');
 const { getImage, ROCK_KEYS } = require('./assets');
 const { pixelText } = require('./font');
 const { drawGlow, drawBreathe, pixelSprite, SHIP_TOP, SHIP_PALETTE } = require('./shapes');
@@ -83,14 +83,14 @@ function drawTitle(ctx, game) {
     const cx = VIEW.width / 2;
 
     drawGlow(ctx, cx, 92, 260, '#ff3c8a', 0.18 + 0.06 * Math.sin(time * 2));
-    waveText(ctx, 'ASTEROID', cx, 112, { size: 64, time, amp: 5 });
+    waveText(ctx, 'DECENT VOYAGER', cx, 110, { size: 49, time, amp: 5 });
     const shine = (time * 160) % 900 - 50;
-    pixelText(ctx, 'GALACTIC  GAUNTLET', cx, 148, { size: 18, align: 'center', color: '#ffb347' });
+    pixelText(ctx, 'GALACTIC  GAUNTLET', cx, 145, { size: 18, align: 'center', color: '#ffb347' });
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.25;
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(shine, 130, 24, 22);
+    ctx.fillRect(shine, 126, 24, 22);
     ctx.restore();
 
     // Difficulty cards.
@@ -127,13 +127,14 @@ function drawTitle(ctx, game) {
     if (canLeft) pixelText(ctx, '<', cx - 270 - bob, 284, { size: 22, color: '#7fd7ff' });
     if (canRight) pixelText(ctx, '>', cx + 256 + bob, 284, { size: 22, color: '#7fd7ff' });
     pixelText(ctx, `LEVEL ${level.number}: ${level.name.toUpperCase()}`, cx, 284, { size: 20, align: 'center' });
-    pixelText(ctx, `${difficultyName(game, true).toUpperCase()} UNLOCKED ${progress.unlocked}/${LEVEL_COUNT}   HI ${progress.highScore || 0}`, cx, 306, {
+    pixelText(ctx, `${difficultyName(game, true).toUpperCase()} UNLOCKED ${progress.unlocked}/${progress.sector2Unlocked ? TOTAL_LEVEL_COUNT : LEVEL_COUNT}   HI ${progress.highScore || 0}`, cx, 306, {
         size: 11, align: 'center', color: '#9fb4c8'
     });
     if (Math.floor(time * 2.5) % 2 === 0) {
         pixelText(ctx, 'PRESS ENTER TO LAUNCH', cx, 344, { size: 20, align: 'center', color: '#7dff8c' });
     }
     drawGlow(ctx, cx, 337, 160, '#7dff8c', 0.12);
+    pixelText(ctx, `TAB / X  MODE: ${(game.mode || game.multiplayerMode || 'COOP').toUpperCase()}  ·  CONTROLLER: PRESS A TO JOIN UP TO 5 DECENT PILOTS`, cx, 362, { size: 10, align: 'center', color: '#7fd7ff' });
 
     panelBox(ctx, 90, 368, 620, 214);
     const controls = [
@@ -167,8 +168,8 @@ function drawIntro(ctx, game) {
     ctx.fillStyle = '#ff3c8a';
     ctx.fillRect(0, cy - 72, VIEW.width, 2);
     ctx.fillRect(0, cy + 40, VIEW.width, 2);
-    pixelText(ctx, `LEVEL ${game.level.number}`, cx - slide, cy - 20, { size: 44, align: 'center', color: '#7fd7ff' });
-    pixelText(ctx, game.level.name.toUpperCase(), cx + slide, cy + 14, { size: 20, align: 'center', color: '#ffb347' });
+    pixelText(ctx, `${game.level.number >= 11 ? 'SECTOR II · FAR FUTURE' : 'LEVEL ' + game.level.number}`, cx - slide, cy - 20, { size: 44, align: 'center', color: '#7fd7ff' });
+    pixelText(ctx, game.level.number >= 11 ? `LEVEL ${game.level.number}: ${game.level.name}`.toUpperCase() : game.level.name.toUpperCase(), cx + slide, cy + 14, { size: 20, align: 'center', color: '#ffb347' });
     if (game.difficulty) {
         pixelText(ctx, `${difficultyName(game).toUpperCase()} MODE  GET READY`, cx, cy + 34, { size: 11, align: 'center', color: difficultyColor(game.difficulty) });
     }
@@ -306,7 +307,7 @@ function drawVictory(ctx, game, fx) {
         });
     }
     const pulse = 0.6 + 0.4 * Math.sin(time * 5);
-    pixelText(ctx, `ALL ${LEVEL_COUNT} SECTORS CLEARED`, cx, 470, { size: 16, align: 'center', color: '#7dff8c', alpha: pulse });
+    pixelText(ctx, `ALL ${game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT} LEVELS CLEARED`, cx, 470, { size: 16, align: 'center', color: '#7dff8c', alpha: pulse });
     pixelText(ctx, 'CLAIM YOUR VICTORY STAMPS IN THE VAULT', cx, 492, { size: 11, align: 'center', color: '#c9d6e3' });
     pixelText(ctx, 'ENTER  MENU', cx, VIEW.height - 30, { size: 12, align: 'center', color: '#9fb4c8' });
 }

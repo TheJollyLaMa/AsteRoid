@@ -2,6 +2,8 @@ const { VIEW, POV, povCamera, projectPov, povFade } = require('./projection');
 const { drawAsteroid, drawPickup, drawShipChase, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { levelTint, createStarfield, drawNebula } = require('./background');
 const { getImage } = require('./assets');
+const { getPlayers, playerScale } = require('./players');
+const { drawVaultPov } = require('./vault');
 
 const FLOOR_HEIGHT = -40;
 const GRID_STEP = 100;
@@ -82,7 +84,7 @@ function createPovRenderer() {
         if (gate && gate.depth < POV.far * 1.3) {
             const alpha = Math.max(0.25, povFade(gate.depth));
             const size = Math.min(2000, 900 * gate.scale);
-            const img = getImage('gate');
+            const img = getImage(game.level.number >= 11 ? 'gate-sector2' : 'gate') || getImage('gate');
             if (img) {
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
@@ -90,7 +92,7 @@ function createPovRenderer() {
                 ctx.drawImage(img, gate.x - size / 2, gate.y - size / 2, size, size);
                 ctx.restore();
             }
-            drawGlow(ctx, gate.x, gate.y, size * 0.6, '#7dff8c', alpha * 0.35);
+            drawGlow(ctx, gate.x, gate.y, size * 0.6, game.level.number >= 11 ? '#67faff' : '#7dff8c', alpha * 0.45);
             const left = projectPov({ x: 0, y: game.level.length }, camera, 160);
             const right = projectPov({ x: 800, y: game.level.length }, camera, FLOOR_HEIGHT);
             if (left && right) {
@@ -112,11 +114,11 @@ function createPovRenderer() {
             const p = projectPov(obj, camera, height);
             if (p && p.depth < POV.far) items.push({ kind, obj, p });
         };
-        game.asteroids.forEach((a) => add('asteroid', a));
-        game.pickups.forEach((pk) => add('pickup', pk));
-        game.enemyBullets.forEach((b) => add('enemyBullet', b));
-        game.playerBullets.forEach((b) => add('playerBullet', b));
-        game.particles.forEach((pt) => add('particle', pt));
+        (game.asteroids || []).forEach((a) => add('asteroid', a));
+        (game.pickups || []).forEach((pk) => add('pickup', pk));
+        (game.enemyBullets || []).forEach((b) => add('enemyBullet', b));
+        (game.playerBullets || []).forEach((b) => add('playerBullet', b));
+        (game.particles || []).forEach((pt) => add('particle', pt));
         items.sort((a, b) => b.p.depth - a.p.depth);
         return items;
     }
@@ -128,7 +130,7 @@ function createPovRenderer() {
         if (kind === 'asteroid') {
             const radius = obj.size * p.scale;
             if (radius > 1400 || p.x + radius < 0 || p.x - radius > VIEW.width) return;
-            drawAsteroid(ctx, obj, p.x, p.y, radius, alpha, time);
+            drawAsteroid(ctx, obj, p.x, p.y, radius, alpha, time, game.level.number >= 11);
         } else if (kind === 'pickup') {
             drawPickup(ctx, obj, p.x, p.y, Math.min(120, obj.size * p.scale), time, alpha);
         } else if (kind === 'enemyBullet') {
@@ -180,10 +182,20 @@ function createPovRenderer() {
                 return { x: p.x, y: p.y, scale: Math.min(1.8, p.scale), alpha: povFade(p.depth) * (p.scale > 1.4 ? 0.7 : 1) };
             });
         }
+        drawVaultPov(ctx, game, camera, projectPov, time);
         if (game.state === 'playing' || game.state === 'paused' || game.state === 'levelComplete') {
-            drawReticle(ctx, camera, game.ship, time);
-            const shipPoint = projectPov(game.ship, camera, 0);
-            if (shipPoint) drawShipChase(ctx, game.ship, shipPoint.x, shipPoint.y, time, fx ? fx.ripples : []);
+            const players = getPlayers(game);
+            players.forEach(({ ship, index, color }) => {
+                const shipPoint = projectPov(ship, camera, 0);
+                if (!shipPoint) return;
+                const size = playerScale(players.length, ship);
+                drawGlow(ctx, shipPoint.x, shipPoint.y, 52 * size, color, 0.35);
+                if (index === 0) drawReticle(ctx, camera, ship, time);
+                ctx.save(); ctx.translate(shipPoint.x, shipPoint.y); ctx.scale(size, size);
+                drawShipChase(ctx, ship, 0, 0, time, fx ? fx.ripples : []);
+                ctx.fillStyle = color; ctx.fillRect(-8, 3, 16, 5);
+                ctx.restore();
+            });
         }
     };
 }

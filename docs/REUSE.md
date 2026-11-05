@@ -12,3 +12,16 @@ Inspected the curated DecentCanopy `data/agency-map.json` leads, actual source/t
 Build-new choices: game's metadata flattening, local victory vault, GitHub issue request/queue validator, explicit public-ledger export/import, and the minimal integer payroll accrual/validation scripts. No speculative shared extraction. No public Canopy inventory was changed from local/private findings.
 
 Validation: targeted native node:test cases cover metadata/JSON safety/claim validation/queue dedupe, Base batch tuple/receipt/admin gating, contributor identities and exact decimal payroll behavior. Browser preview covers a synthetic victory record, pause-on-open, disconnected fox instruction, separate worker tab and disabled mint/switch/recovery controls. Real pinning, wallet prompts and transactions are intentionally not exercised. See final task results for the latest full-suite count.
+
+## Decent Voyager v1 (pilots, vaults, arena, contracts)
+
+Receiving needs: a whitelist that gates every wallet action, guarded Supporter DNFT vaults paid from tokens that are already minted, automatic queuing of stamps and prizes, paid co-op and versus rounds of up to 5 players, gamepads, and a reusable contract layer. Acceptance: non-pilots never see wallet prompts; server replay rejects tampered or ungranted seeds; contract tests verify server-signed vouchers and settlements; the online arena stays explicitly unavailable until it is configured.
+
+Scope: DecentCanopy agency-map leads, DecentMarket, DecentBusking, DecentHead, DecentAgencyOffice and DBuskRadio source, and on-chain reads on Base and Ethereum. This is not whole-library coverage.
+
+- **DecentMarket** `2942cf8`: `contracts/` Hardhat + OpenZeppelin 5 layout and the escrow `withdrawNFT`/`listDNFT` interfaces. Reused the toolchain choice (Hardhat, per-subproject install) and read the escrow's 10 Supporter listings (ids 70–79, collection `0xe63E…439B`) on-chain. The Voyager contracts are new code: no donor contract handles referee vouchers or USDC pots.
+- **DecentBusking** `ab7c1dd`: `contributor-accounts.json` shape, adapted as the Decent Pilots whitelist (4 collaborators).
+- **DecentHead** `8542720` and **DBuskRadio** `6b67e02`: unchanged vendored header and radio (see `src/vendor/PROVENANCE.txt`).
+- **Build new**: deterministic replay/run logs, flight tickets, the referee server, the arena relay, gamepad input and EIP-712 voucher flows. No multiplayer, gamepad or voucher donors were found in the scope above.
+
+Incompatibilities: the escrow owner (admin wallet) must transfer prize tokens to `VoyagerPrizes`. `decentagency.eth` is controlled by a different wallet from the admin wallet. Paid rounds carry legal risk as contests of skill.

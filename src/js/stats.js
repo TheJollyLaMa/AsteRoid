@@ -15,8 +15,8 @@
 //   the previous kill, without the ship losing power in between. maxCombo is the level best.
 // - closestCall: smallest gap in px between the ship's and a dodged enemy bullet's edges
 //   (-1 when no enemy bullet was dodged).
-const WEAPON_TYPES = ['blaster', 'spread', 'rapid', 'plasma'];
-const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield'];
+const WEAPON_TYPES = ['blaster', 'spread', 'rapid', 'plasma', 'nova', 'prism', 'singularity'];
+const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield', 'nova', 'prism', 'singularity'];
 const COMBO_WINDOW = 2;
 const RECORD_SCHEMA = 'asteroid-level-record/1';
 const GAME_NAME = 'AsteRoid: Galactic Gauntlet';
@@ -249,7 +249,8 @@ function randomSuffix() {
     return Math.floor(Math.random() * 36 ** 6).toString(36).padStart(6, '0');
 }
 
-function buildLevelRecord({ level, tracker, ship, view, score, startedAt, completedAt, durationSec, suffix = randomSuffix() }) {
+function buildLevelRecord({ level, tracker, ship, view, score, startedAt, completedAt, durationSec, captures = [], idFn = randomSuffix, suffix }) {
+    suffix = suffix === undefined ? idFn() : suffix;
     const completedIso = new Date(completedAt).toISOString();
     return {
         schema: RECORD_SCHEMA,
@@ -257,6 +258,7 @@ function buildLevelRecord({ level, tracker, ship, view, score, startedAt, comple
         game: GAME_NAME,
         gameVersion: GAME_VERSION,
         level: level.number,
+        captures: captures.map((capture) => ({ ...capture })),
         levelName: level.name,
         difficulty: level.difficulty,
         difficultyLabel: level.difficultyLabel,

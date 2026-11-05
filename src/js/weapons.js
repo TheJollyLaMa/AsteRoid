@@ -38,6 +38,9 @@ const WEAPONS = {
         pierce: false,
         pattern: [[[0, 0]], [[0, -7], [0, 7]], [[-0.03, -10], [0, 0], [0.03, 10]]]
     },
+    nova: { name: 'Nova Charger', color: '#b67aff', cooldown: [0.8, 0.72, 0.64], speed: 310, damage: [3, 5, 7], size: [10, 14, 18], pierce: false, pattern: [[[0, 0]], [[0, 0]], [[0, 0]]] },
+    prism: { name: 'Prism Splitter', color: '#67faff', cooldown: [0.42, 0.36, 0.3], speed: 520, damage: [2, 2, 3], size: [5, 6, 7], pierce: false, pattern: [[[0, 0]], [[-0.18, 0], [0, 0], [0.18, 0]], [[-0.28, 0], [-0.14, 0], [0, 0], [0.14, 0], [0.28, 0]]] },
+    singularity: { name: 'Singularity', color: '#531c8a', cooldown: [0.9, 0.82, 0.74], speed: 270, damage: [4, 6, 8], size: [12, 16, 20], pierce: false, pattern: [[[0, 0]], [[0, 0]], [[0, 0]]] },
     plasma: {
         name: 'Plasma Lance',
         color: '#ff6cf5',
@@ -67,17 +70,21 @@ function downgradeWeapon(weapon) {
     return createWeapon('blaster');
 }
 
-function fireWeapon(weapon, ship, scrollSpeed) {
+function fireWeapon(weapon, ship, scrollSpeed, charge = 0) {
     const spec = WEAPONS[weapon.type];
     const tierIndex = weapon.tier - 1;
-    const bullets = spec.pattern[tierIndex].map(([angle, offset]) => new Bullet({
+    const chargeScale = weapon.type === 'nova' || weapon.type === 'singularity' ? 0.5 + Math.max(0, Math.min(1, charge)) * 1.5 : 1;
+    const pattern = spec.pattern[tierIndex];
+    const bullets = pattern.map(([angle, offset]) => new Bullet({
         x: ship.x + offset,
         y: ship.y + ship.size,
         vx: Math.sin(angle) * spec.speed,
         vy: Math.cos(angle) * spec.speed + scrollSpeed,
         size: spec.size[tierIndex],
-        damage: spec.damage[tierIndex],
-        pierce: spec.pierce,
+        damage: Math.round(spec.damage[tierIndex] * chargeScale),
+        pierce: (weapon.type !== 'nova' && weapon.type !== 'singularity' && spec.pierce) || charge >= 0.85,
+        radius: 0,
+        maxRadius: weapon.type === 'nova' || weapon.type === 'singularity' ? spec.size[tierIndex] * chargeScale : 0,
         life: 1.4,
         owner: 'player',
         color: spec.color

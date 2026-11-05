@@ -35,7 +35,7 @@ test('firing counts projectiles, volleys and shots by weapon', () => {
     const stats = game.levelStats;
     assert.equal(stats.shotsFired, 8);
     assert.equal(stats.volleys, 2);
-    assert.deepEqual(stats.shotsByWeapon, { blaster: 1, spread: 7, rapid: 0, plasma: 0 });
+    assert.deepEqual(stats.shotsByWeapon, { blaster: 1, spread: 7, rapid: 0, plasma: 0, nova: 0, prism: 0, singularity: 0 });
     assert.equal(stats.hits, 0);
     assert.equal(stats.accuracy, 0);
 });
@@ -191,7 +191,7 @@ test('clearing a level emits a JSON-safe LevelRecord and stores it', () => {
     assert.equal(record.difficulty, 'pilot');
     assert.equal(record.difficultyLabel, 'Pilot');
     assert.equal(record.seed, game.level.seed);
-    assert.match(record.id, /^2026-11-05T12:00:\d\d\.000Z-pilot-L1-[0-9a-z]+$/);
+    assert.match(record.id, /^2026-11-05T12:00:\d\d\.\d{3}Z-pilot-L1-[0-9a-z]+$/);
     assert.ok(Date.parse(record.completedAt) > Date.parse(record.startedAt));
     assert.deepEqual(Object.keys(record.score).sort(), ['bonus', 'level', 'total']);
     assert.equal(record.score.total, game.score);

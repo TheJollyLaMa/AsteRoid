@@ -1,0 +1,9 @@
+{
+  "name": "decent-voyager-contracts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hardhat contracts for Decent Voyager and reusable game rounds",
+  "scripts": { "compile": "hardhat compile", "test": "hardhat test", "deploy": "hardhat run scripts/deploy.js", "e2e": "hardhat run scripts/local-e2e.js" },
+  "devDependencies": { "@nomicfoundation/hardhat-toolbox": "^5.0.0", "dotenv": "^16.6.1", "hardhat": "^2.22.0" },
+  "dependencies": { "@openzeppelin/contracts": "^5.1.0" }
+}

@@ -3,12 +3,14 @@ import { buildMetadata, buildClaim } from './metadata.mjs';
 import { pinFile, canvasBlob, gatewayUrl } from './pin.mjs';
 import { validAddress, parseQueue } from './validation.mjs';
 import { node, button, link, createDialog, openDialog } from './ui.mjs';
+import { requirePilot } from '../pilots/gate.mjs';
 export function issueUrl(claim) {
   const json = JSON.stringify(claim, null, 2);
   const params = new URLSearchParams({ template: 'victory-stamp.yml', labels: 'victory-stamp', title: `Victory stamp: L${claim.level} ${claim.difficulty} · ${claim.recordId}`, claim: json, body: `### Claim JSON\n\n\`\`\`json\n${json}\n\`\`\`` });
   return `https://github.com/TheJollyLaMa/AsteRoid/issues/new?${params}`;
 }
 function walletAddress() { const state = window.DecentHead?.getWallet?.()?.snapshot?.(); return state?.connected && validAddress(state.address) ? state.address : null; }
+function requireDecentPilot(action) { requirePilot(window.__voyagerPilot, action); }
 export function mountClaims() {
   if (document.getElementById('asteroid-victory-vault')) return;
   const vault = new VictoryVault(), busy = new Set();
@@ -36,7 +38,9 @@ export function mountClaims() {
       for (const [label, uri] of [['Battle PNG', entry.image], ['Metadata', entry.tokenURI]]) if (uri) { card.append(node('p', `${label} CID: ${uri.slice(7)}`), link(`Open ${label}`, gatewayUrl(uri, gateway))); }
       if (entry.txHash && /^0x[\da-f]{64}$/i.test(entry.txHash)) card.append(link('Mint transaction on BaseScan', `https://basescan.org/tx/${entry.txHash}`));
       if (entry.status !== 'minted') {
+        const isPilot = window.__voyagerPilot?.isPilot === true;
         const stamp = button(entry.tokenURI ? 'Re-stamp for connected wallet' : 'Stamp DNFT', () => action(entry, async () => {
+          requireDecentPilot('Stamping a victory record');
           const claimant = walletAddress(); if (!claimant) throw new Error('Click the fox in the header to connect your wallet. No accounts are requested automatically.');
           const session = window.DecentHead?.getIpfs?.();
           if (!entry.image) {
@@ -50,10 +54,11 @@ export function mountClaims() {
           const tokenURI = await pinFile(session, new Blob([JSON.stringify(metadata)], { type: 'application/json' }), `asteroid-L${record.level}-metadata.json`);
           vault.update(record.id, { tokenURI, claimant, status: 'pinned', claim: null });
           status.textContent = 'Pinned. Request mint to submit to the administrator; no mint transaction has been sent.';
-        })); stamp.disabled = busy.has(record.id) || entry.status === 'requested'; card.append(stamp);
+        })); stamp.disabled = !isPilot || busy.has(record.id) || entry.status === 'requested'; card.append(stamp);
         if (entry.tokenURI) {
           const request = button('Request mint on GitHub', () => {
             try {
+              requireDecentPilot('Requesting a victory stamp');
               const claimant = walletAddress(); if (!claimant) throw new Error('Connect your wallet with the header fox before requesting a mint.');
               if (claimant.toLowerCase() !== entry.claimant?.toLowerCase()) throw new Error('Wallet changed. Re-stamp the metadata for this wallet first.');
               const claim = entry.claim || buildClaim(record, { tokenURI: entry.tokenURI, image: entry.image, claimant });
@@ -63,14 +68,15 @@ export function mountClaims() {
               status.replaceChildren(node('span', 'Claim prepared. Submit the opened GitHub form to actually join the queue. If blocked, '), link('open issue form', issueUrl(claim)), node('span', '. Requested is not minted.'));
               render();
             } catch (error) { status.textContent = error.message; }
-          }); request.disabled = busy.has(record.id); card.append(request);
-          card.append(button('Copy claim JSON', () => action(entry, async () => {
+          }); request.disabled = !isPilot || busy.has(record.id); card.append(request);
+          const copy = button('Copy claim JSON', () => action(entry, async () => {
+            requireDecentPilot('Copying a victory claim');
             const claimant = walletAddress(); if (!claimant || claimant.toLowerCase() !== entry.claimant?.toLowerCase()) throw new Error('Connect the wallet used to stamp this record with the header fox.');
             const claim = entry.claim || buildClaim(record, { tokenURI: entry.tokenURI, image: entry.image, claimant });
             vault.update(record.id, { claim });
             if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(JSON.stringify(claim, null, 2)); status.textContent = 'Claim JSON copied. Submit it in a victory-stamp GitHub issue.'; }
             else { const text = node('textarea', JSON.stringify(claim, null, 2), { 'aria-label': 'Claim JSON' }); status.replaceChildren(text); text.focus(); text.select(); }
-          })));
+          })); copy.disabled = !isPilot || busy.has(record.id); card.append(copy);
         }
       }
       list.append(card);
@@ -92,6 +98,7 @@ export function mountClaims() {
   window.addEventListener('asteroid:ready', () => { sync(); render(); });
   window.addEventListener('asteroid:save-imported', () => { sync(); render(); });
   window.addEventListener('decenthead:wallet', render);
+  window.addEventListener('voyager:pilot', event => { window.__voyagerPilot = event.detail; render(); });
   dialog.addEventListener('close', () => toggle.focus());
   sync(); render(); void reconcile();
   return { vault, dialog, refresh: sync };

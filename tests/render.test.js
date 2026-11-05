@@ -130,3 +130,21 @@ test('renderBattleCard rejects without a record and without a DOM canvas', async
     await assert.rejects(renderBattleCard(null), TypeError);
     await assert.rejects(renderBattleCard(card.sampleRecord()), /DOM canvas/);
 });
+
+test('Sector II assets, palettes, and multiplayer render helpers are available', () => {
+    const { futureRockKeyFor, supporterImageKey, SECTOR2_BACKDROP_KEYS } = require('../src/js/render/assets');
+    const { levelTint } = require('../src/js/render/background');
+    const { getPlayers, playerScale, versusMode } = require('../src/js/render/players');
+    for (let id = 0; id < 20; id++) assert.ok(MANIFEST[futureRockKeyFor(id)]);
+    SECTOR2_BACKDROP_KEYS.forEach((key) => assert.ok(MANIFEST[key]));
+    [70, 71, 75, 76, 78, 79].forEach((id) => assert.ok(MANIFEST[supporterImageKey(id)]));
+    assert.equal(supporterImageKey(999), null);
+    assert.notDeepEqual(levelTint(11), levelTint(1));
+    assert.equal(require('../src/js/render/assets').backdropKeyFor(11), SECTOR2_BACKDROP_KEYS[0]);
+    const ships = [{ x: 10, y: 20, lives: 3, power: 80 }, { x: 40, y: 20, lives: 2, power: 50 }];
+    const game = { ship: ships[0], ships, mode: 'versus' };
+    assert.equal(getPlayers(game).length, 2);
+    assert.equal(playerScale(3), 0.8);
+    assert.equal(playerScale(4), 0.7);
+    assert.equal(versusMode(game), true);
+});

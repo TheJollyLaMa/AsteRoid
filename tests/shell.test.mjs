@@ -75,10 +75,10 @@ test('header config is public Base-only with HTTPS project links and small local
   const source=readFileSync(new URL('../src/decent-head.config.js',import.meta.url),'utf8');
   const context={ window:{} }; vm.runInNewContext(source,context);
   const config=context.window.DECENT_CONFIG;
-  assert.equal(config.appName,'AsteRoid'); assert.equal(config.chain.chainId,8453);
+  assert.equal(config.appName,'Decent Voyager'); assert.equal(config.chain.chainId,8453); assert.equal(config.voyager.chainId,8453); assert.equal(config.voyager.testnetChainId,84532);
   assert.equal(config.providers.default,'pinata'); assert.equal(config.ens.enabled,true); assert.equal(config.supporterDnft,null);
   for (const link of [...config.links,...config.relatedDapps]) assert.match(link.url,/^https:\/\//);
-  for (const section of ['How to play','Difficulties','Victory stamps','Save to IPFS','Mandelblum art','Open source']) assert.ok(config.about.sections.some(entry => entry.title===section));
+  for (const section of ['How to play','Sectors I & II','Decent Pilots','Supporter Vault & prizes','Multiplayer & arena','Victory stamps & flight logs','Save to IPFS','Mandelblum art','Open source']) assert.ok(config.about.sections.some(entry => entry.title===section));
   assert.doesNotMatch(source,/\b(jwt|apiKey|apiSecret|privateKey)\s*:/);
   assert.ok(statSync(new URL('../src/assets/brand/mandelblum-gate.png',import.meta.url)).size<=100000);
 });
@@ -87,5 +87,7 @@ test('static shell preserves bundle/canvas and host-module ordering for relative
   assert.match(html,/<canvas id="gameCanvas" width="800" height="600"/);
   assert.ok(html.indexOf('decent-head.config.js')<html.indexOf('js/shell/main.mjs'));
   for (const path of ['js/dnft/claims.mjs','js/admin/admin-panel.mjs']) assert.ok(html.indexOf('bundle.js')<html.indexOf(path));
+  assert.match(html, /Decent Voyager/);
+  for (const path of ['js/pilots/whitelist.mjs','js/pilots/flight-log.mjs','js/arena/lobby.mjs']) assert.ok(html.includes(path));
   assert.doesNotMatch(html,/(?:src|href)="\/(?!\/)/);
 });

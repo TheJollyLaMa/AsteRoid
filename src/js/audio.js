@@ -9,6 +9,8 @@ function createAudio() {
     let master = null;
     let noiseBuffer = null;
     let muted = false;
+    let futureMusic = false;
+    let futureNodes = [];
     const lastPlayed = {};
 
     function ensureContext() {
@@ -36,6 +38,30 @@ function createAudio() {
 
     function ready() {
         return Boolean(context && master && !muted);
+    }
+
+    function setSector2(enabled) {
+        const active = Boolean(enabled);
+        if (active === futureMusic) return;
+        if (active) {
+            const ctx = ensureContext();
+            if (!ctx || !master) return;
+            futureMusic = true;
+            const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 620;
+            const droneGain = ctx.createGain(); droneGain.gain.value = 0.012;
+            const first = ctx.createOscillator(); first.type = 'sawtooth'; first.frequency.value = 55;
+            const second = ctx.createOscillator(); second.type = 'triangle'; second.frequency.value = 164.81;
+            const shimmer = ctx.createOscillator(); shimmer.type = 'sine'; shimmer.frequency.value = 0.17;
+            const depth = ctx.createGain(); depth.gain.value = 240;
+            shimmer.connect(depth).connect(filter.frequency);
+            first.connect(filter); second.connect(filter); filter.connect(droneGain).connect(master);
+            first.start(); second.start(); shimmer.start();
+            futureNodes = [first, second, shimmer];
+        } else {
+            futureMusic = false;
+            futureNodes.forEach((node) => { try { node.stop(); } catch (error) { /* Already stopped. */ } });
+            futureNodes = [];
+        }
     }
 
     function throttle(key, seconds) {
@@ -130,11 +156,52 @@ function createAudio() {
             tone({ frequency: 260, endFrequency: 55, duration: 0.38, type: 'sawtooth', volume: 0.07, filter: { from: 3200, to: 200, q: 6 }, vibrato: 28 });
             tone({ frequency: 110, endFrequency: 40, duration: 0.3, type: 'sine', volume: 0.12 });
             tone({ frequency: 1800, endFrequency: 600, duration: 0.12, type: 'triangle', volume: 0.03 });
+        },
+        nova: () => {
+            noise({ duration: 0.48, volume: 0.34, from: 5000, to: 70, q: 1.4 });
+            tone({ frequency: 190, endFrequency: 28, duration: 0.72, type: 'sine', volume: 0.38 });
+            tone({ frequency: 880, endFrequency: 120, duration: 0.42, type: 'sawtooth', volume: 0.12, filter: { from: 2800, to: 100, q: 5 } });
+        },
+        prism: () => {
+            [0, 5, 9, 14].forEach((note, i) => tone({ frequency: NOTE(note + 24), endFrequency: NOTE(note + 36), duration: 0.18, type: i % 2 ? 'triangle' : 'sine', volume: 0.065, delay: i * 0.018 }));
+            noise({ duration: 0.12, volume: 0.07, from: 9000, to: 2500, type: 'highpass' });
+        },
+        singularity: () => {
+            tone({ frequency: 880, endFrequency: 24, duration: 0.5, type: 'sine', volume: 0.28, vibrato: 15 });
+            tone({ frequency: 360, endFrequency: 32, duration: 0.44, type: 'sawtooth', volume: 0.14, filter: { from: 2400, to: 40, q: 9 } });
+            noise({ duration: 0.34, volume: 0.13, from: 800, to: 50, type: 'lowpass', q: 4 });
         }
     };
 
     const sounds = {
         shot: (e) => (LASERS[e.weapon] || LASERS.blaster)(),
+        chargeStart: () => {
+            tone({ frequency: 140, endFrequency: 980, duration: 1.15, type: 'sawtooth', volume: 0.12, filter: { from: 500, to: 4200, q: 3 }, vibrato: 9 });
+            tone({ frequency: 70, endFrequency: 490, duration: 1.15, type: 'sine', volume: 0.08, delay: 0.04, vibrato: 5 });
+        },
+        chargeRelease: (e) => {
+            const charge = Math.max(0, Math.min(1, Number(e.charge) || 0));
+            tone({ frequency: 850 + charge * 450, endFrequency: 90, duration: 0.3 + charge * 0.45, type: 'sawtooth', volume: 0.15 + charge * 0.08, filter: { from: 4400, to: 90, q: 5 } });
+            if (charge > 0.7) LASERS.nova();
+        },
+        novaBlast: (e) => { LASERS.nova(); if (Number(e.charge) > 0.75) explosion(54, true); },
+        vaultSpawned: () => {
+            tone({ frequency: 460, endFrequency: 220, duration: 0.4, type: 'sawtooth', volume: 0.1, vibrato: 6 });
+            tone({ frequency: 620, endFrequency: 300, duration: 0.48, type: 'triangle', volume: 0.07, delay: 0.12 });
+            noise({ duration: 0.3, volume: 0.08, from: 1100, to: 350, type: 'bandpass', q: 4, delay: 0.1 });
+        },
+        guardDestroyed: () => { explosion(22, true); arpeggio([12, 19], { step: 0.04, type: 'triangle', volume: 0.045 }); },
+        supporterCaptured: () => {
+            arpeggio([3, 7, 10, 15, 19, 22, 27, 31], { step: 0.075, type: 'sine', volume: 0.11, length: 0.3 });
+            arpeggio([-9, -2, 3, 10, 15], { step: 0.15, type: 'triangle', volume: 0.1, length: 0.42 });
+            noise({ duration: 1.15, volume: 0.12, from: 8000, to: 1800, type: 'highpass', delay: 0.35 });
+        },
+        warpStart: () => {
+            noise({ duration: 1.35, volume: 0.28, from: 7000, to: 180, type: 'bandpass', q: 0.8 });
+            tone({ frequency: 88, endFrequency: 1400, duration: 1.25, type: 'sawtooth', volume: 0.13, filter: { from: 150, to: 5000, q: 3 }, vibrato: 18 });
+        },
+        warpEnd: () => arpeggio([0, 7, 12, 19, 24, 31], { step: 0.065, type: 'triangle', volume: 0.09, length: 0.2 }),
+        sectorUnlocked: () => arpeggio([0, 7, 12, 19, 24, 31], { step: 0.08, type: 'sine', volume: 0.08, length: 0.24 }),
         enemyShot: () => {
             if (!throttle('enemyShot', 0.06)) return;
             tone({ frequency: 640, endFrequency: 150, duration: 0.2, type: 'triangle', volume: 0.05, vibrato: 40 });
@@ -215,14 +282,20 @@ function createAudio() {
         get muted() {
             return muted;
         },
-        play(events) {
+        setSector2,
+        play(events, game = null) {
             if (!ready()) return;
+            const future = Number(game && game.level && game.level.number) >= 11;
             for (const raw of events) {
                 const event = normalizeEvent(raw);
                 const sound = sounds[event.type];
                 if (!sound) continue;
                 try {
                     sound(event);
+                    if (future && ['enemyShot', 'explode', 'shot', 'hit'].includes(event.type)) {
+                        const base = event.type === 'enemyShot' ? 110 : event.type === 'explode' ? 38 : event.type === 'hit' ? 660 : 1320;
+                        tone({ frequency: base, endFrequency: event.type === 'explode' ? 30 : base * 2.4, duration: 0.16, type: 'sawtooth', volume: 0.035, filter: { from: 5000, to: 160, q: 4 }, vibrato: 12 });
+                    }
                 } catch (error) {
                     // A failed sound must never break the game loop.
                 }

@@ -50,3 +50,23 @@ footer p { margin:9px 0; } footer nav { display:flex; flex-wrap:wrap; justify-co
 @keyframes frame-glow { 50% { opacity:.4; } }
 @media(max-width:600px) { main { width:calc(100% - 16px); } .radio-dock { gap:8px; padding:8px; width:calc(100% - 20px); } .radio-label { flex-basis:68px; font-size:9px; } .deck-label { font-size:9px; letter-spacing:.04em; } .progress-dialog { padding:0 16px 20px; } .progress-dialog section { padding:14px; } }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none !important; scroll-behavior:auto !important; } }
+.pilot-note,.pilot-rewards,.arena-lobby { width:min(660px,100%); margin:14px auto; padding:16px; border:1px solid #56edff38; border-radius:12px; background:linear-gradient(130deg,#081226e8,#180e28e8); box-shadow:0 0 24px #56edff0b,inset 0 0 20px #ff58ce08; }
+.pilot-note { border-color:#ffb65c70; color:#ffe0ad; text-align:center; }
+.arena-lobby h2,.pilot-rewards h2 { margin:0 0 10px; color:var(--cyan); font-size:15px; }
+.arena-lobby label { display:inline-flex; gap:8px; align-items:center; margin-right:12px; color:#adbdd7; }
+.arena-lobby select,.arena-lobby button,.flight-sign,.pilot-rewards button { margin:5px 4px; padding:8px 12px; border:1px solid #56edff65; border-radius:7px; color:#e8f2ff; background:#101b32; font:inherit; cursor:pointer; }
+.arena-lobby button:hover,.flight-sign:hover,.pilot-rewards button:hover { border-color:var(--pink); box-shadow:0 0 12px #ff58ce32; }
+.arena-lobby [data-arena-status],.pilot-rewards [data-reward-status] { color:#adbdd7; font-size:12px; }
+.pilot-rewards article { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px; margin:8px 0; border:1px solid #ffffff20; border-radius:9px; }
+.pilot-rewards article h3 { margin:0; font-size:12px; }
+.flight-sign { display:block; margin:10px auto; color:var(--orange); }
+.voyager-admin { position:relative; border-color:#56edff7d !important; background:radial-gradient(ellipse at 92% 8%,#281343 0,transparent 35%),linear-gradient(145deg,#060b1a,#09152a 55%,#140d22) !important; box-shadow:0 0 0 1px #ff58ce2b,0 0 35px #56edff25,0 24px 100px #000b !important; }
+.voyager-admin::before { content:''; position:absolute; inset:12px 12px auto auto; width:112px; height:112px; opacity:.12; pointer-events:none; background:url('../assets/brand/mandelblum-gate.png') center/contain no-repeat; }
+.voyager-admin nav button { background:linear-gradient(120deg,#101b32,#17152f); border-color:#56edff55; text-shadow:0 0 8px #56edff50; }
+.voyager-admin nav button[aria-selected=true] { color:#fff; background:linear-gradient(120deg,#12344a,#401d48); border-color:#ff58ce; box-shadow:0 0 16px #ff58ce3c; }
+.voyager-admin article { position:relative; border-color:#56edff38; background:linear-gradient(135deg,#102036,#171226); }
+.voyager-admin article h3 { color:#ffb65c; }
+.voyager-admin img { object-fit:cover; border:1px solid #56edff40; }
+.supporter-batch-preview { max-height:40dvh; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; padding:12px; color:#b9f5ff; background:#020712; border:1px solid #56edff38; border-radius:9px; }
+
+.voyager-admin img.ens-avatar { width:36px; height:36px; border-radius:50%; object-fit:cover; flex:none; }

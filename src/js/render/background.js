@@ -3,6 +3,10 @@
 const { VIEW } = require('./projection');
 const { getImage, backdropKeyFor } = require('./assets');
 
+const SECTOR2_TINTS = [
+    ['#05051b', '#15103f'], ['#02141c', '#074b58'], ['#120522', '#3c145f']
+];
+
 const LEVEL_TINTS = [
     ['#04040c', '#0b1430'],
     ['#03060c', '#0a2430'],
@@ -18,6 +22,7 @@ const LEVEL_TINTS = [
 
 function levelTint(levelNumber) {
     const n = Math.max(1, Math.floor(Number(levelNumber) || 1));
+    if (n >= 11) return SECTOR2_TINTS[(n - 11) % SECTOR2_TINTS.length];
     return LEVEL_TINTS[(n - 1) % LEVEL_TINTS.length];
 }
 
@@ -85,4 +90,4 @@ function createOverviewBackground() {
     };
 }
 
-module.exports = { LEVEL_TINTS, levelTint, createStarfield, drawNebula, createOverviewBackground };
+module.exports = { LEVEL_TINTS, SECTOR2_TINTS, levelTint, createStarfield, drawNebula, createOverviewBackground };

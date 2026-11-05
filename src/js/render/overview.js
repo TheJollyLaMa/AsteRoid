@@ -3,9 +3,12 @@ const { drawAsteroid, drawPickup, drawShipTop, drawPlayerBullet, drawEnemyBullet
 const { createOverviewBackground } = require('./background');
 const { getImage } = require('./assets');
 const { pixelText } = require('./font');
+const { getPlayers, playerScale } = require('./players');
+const { drawVault } = require('./vault');
 
-function drawJumpGate(ctx, y, time) {
-    const gate = getImage('gate');
+function drawJumpGate(ctx, y, time, sector2 = false) {
+    const gate = getImage(sector2 ? 'gate-sector2' : 'gate') || getImage('gate');
+    const gateColor = sector2 ? '#67faff' : '#7dff8c';
     if (gate) {
         const size = 220 + 10 * Math.sin(time * 2);
         ctx.save();
@@ -14,11 +17,11 @@ function drawJumpGate(ctx, y, time) {
         ctx.drawImage(gate, VIEW.width / 2 - size / 2, y - size / 2, size, size);
         ctx.restore();
     }
-    drawGlow(ctx, VIEW.width / 2, y, 140, '#7dff8c', 0.25 + 0.1 * Math.sin(time * 4));
+    drawGlow(ctx, VIEW.width / 2, y, 140, gateColor, 0.25 + 0.1 * Math.sin(time * 4));
     ctx.save();
     ctx.setLineDash([12, 8]);
     ctx.lineDashOffset = -time * 40;
-    ctx.strokeStyle = '#7dff8c';
+    ctx.strokeStyle = gateColor;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(0, y);
@@ -37,19 +40,20 @@ function createOverviewRenderer() {
         background(ctx, game);
 
         const exit = projectOverview({ x: 0, y: game.level.length }, scrollY);
-        if (exit.y > -160 && exit.y < VIEW.height + 160) drawJumpGate(ctx, exit.y, time);
+        if (exit.y > -160 && exit.y < VIEW.height + 160) drawJumpGate(ctx, exit.y, time, game.level.number >= 11);
 
         const onScreen = (p, margin) => p.y > -margin && p.y < VIEW.height + margin;
 
-        for (const pickup of game.pickups) {
+        for (const pickup of (game.pickups || [])) {
             const p = projectOverview(pickup, scrollY);
             if (onScreen(p, 40)) drawPickup(ctx, pickup, p.x, p.y, pickup.size, time);
         }
 
-        for (const asteroid of game.asteroids) {
+        for (const asteroid of (game.asteroids || [])) {
             const p = projectOverview(asteroid, scrollY);
-            if (onScreen(p, 80)) drawAsteroid(ctx, asteroid, p.x, p.y, asteroid.size, 1, time);
+            if (onScreen(p, 80)) drawAsteroid(ctx, asteroid, p.x, p.y, asteroid.size, 1, time, game.level.number >= 11);
         }
+        drawVault(ctx, game, scrollY, time, projectOverview, onScreen);
 
         for (const bullet of game.playerBullets) {
             const p = projectOverview(bullet, scrollY);
@@ -72,8 +76,19 @@ function createOverviewRenderer() {
         if (fx) fx.drawWorld(ctx, (pt) => projectOverview(pt, scrollY));
 
         if (game.state === 'playing' || game.state === 'paused' || game.state === 'levelComplete') {
-            const p = projectOverview(game.ship, scrollY);
-            drawShipTop(ctx, game.ship, p.x, p.y, time, fx ? fx.ripples : []);
+            const players = getPlayers(game);
+            players.forEach(({ ship, index, color }) => {
+                const p = projectOverview(ship, scrollY);
+                if (!onScreen(p, 40)) return;
+                const size = playerScale(players.length, ship);
+                ctx.save(); ctx.translate(p.x, p.y); ctx.scale(size, size);
+                const charge = Math.max(0, Math.min(1, Number(ship.charge) || 0));
+                if (charge > 0) drawGlow(ctx, 0, 0, 48 + charge * 48, ship.weapon && ship.weapon.type === 'singularity' ? '#b67aff' : '#d6a1ff', 0.45 + charge * 0.45);
+                drawGlow(ctx, 0, 0, 34, color, 0.42);
+                drawShipTop(ctx, ship, 0, 0, time, fx ? fx.ripples : []);
+                ctx.fillStyle = color; ctx.fillRect(-6, 6, 12, 4); ctx.fillRect(-10, 11, 5, 3); ctx.fillRect(5, 11, 5, 3);
+                ctx.restore();
+            });
         }
     };
 }

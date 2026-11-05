@@ -10,6 +10,7 @@ const { drawCrt } = require('./render/post');
 const { loadAssets } = require('./render/assets');
 const { renderBattleCard, previewBattleCard } = require('./render/battleCard');
 const { sampleRecord } = require('./render/cardMath');
+const { createInput } = require('./input');
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -59,7 +60,26 @@ const TITLE_DIFFICULTY_KEYS = {
     ArrowDown: 'difficultyNext', s: 'difficultyNext', S: 'difficultyNext'
 };
 
-const input = { left: false, right: false, up: false, down: false, fire: false };
+let networkMode = null;
+let localMode = 'coop';
+function syncPlayers(players = input && input.players) {
+    if (typeof game.setPlayers === 'function') game.setPlayers(players, { mode: localMode });
+}
+const input = createInput({
+    onAction: (action) => {
+        audio.unlock();
+        if (action === 'modeNext') {
+            localMode = localMode === 'coop' ? 'versus' : 'coop';
+            syncPlayers();
+            return;
+        }
+        if (typeof game.handleAction === 'function') game.handleAction(action);
+    },
+    onToast: (message) => hud.setToast(message),
+    onPlayersChanged: (players) => syncPlayers(players),
+    onPlayerLeft: (index) => dispatchGameEvent({ type: 'playerLeft', index }),
+    shouldIgnoreKeyboard: (event) => isTypingContext(event) || !isGameFocus()
+});
 
 function supportsDifficulty() {
     return typeof game.setDifficulty === 'function' && 'selectedDifficulty' in game;
@@ -100,11 +120,16 @@ document.addEventListener('keydown', (event) => {
     if (!gameFocus && (event.key === ' ' || event.key === 'Enter')) return;
     const held = HELD_KEYS[event.key];
     const action = ACTION_KEYS[event.key];
-    const isGameKey = Boolean(held || action || TITLE_DIFFICULTY_KEYS[event.key] || /^[mMcC]$/.test(event.key));
+    const isGameKey = Boolean(held || action || TITLE_DIFFICULTY_KEYS[event.key] || /^[mMcC]$/.test(event.key) || event.key === 'Tab');
     if (!isGameKey) return;
     audio.unlock();
     if (gameFocus) event.preventDefault();
-    if (held) input[held] = true;
+    if (event.key === 'Tab' && game.state === 'title') {
+        event.preventDefault();
+        localMode = localMode === 'coop' ? 'versus' : 'coop';
+        syncPlayers();
+        return;
+    }
     if (event.repeat) return;
     if (event.key === 'm' || event.key === 'M') {
         audio.toggleMute();
@@ -126,18 +151,13 @@ document.addEventListener('keydown', (event) => {
     if (action) game.handleAction(action);
 });
 
-document.addEventListener('keyup', (event) => {
-    const held = HELD_KEYS[event.key];
-    if (held) input[held] = false;
-});
-
 canvas.addEventListener('pointerdown', () => {
     audio.unlock();
     if (document.activeElement !== canvas && typeof canvas.focus === 'function') canvas.focus({ preventScroll: true });
 });
 
 window.addEventListener('blur', () => {
-    Object.keys(input).forEach((key) => { input[key] = false; });
+    input.clear();
     if (game.state === 'playing') game.handleAction('pause');
 });
 
@@ -150,11 +170,34 @@ function dispatchGameEvent(event) {
 }
 
 // Advances the simulation with hit-stop/slow-mo applied, then fans out events.
-function step(realDt, controls = input) {
-    game.update(realDt * fx.timeScale(), controls);
+function snapshotsFrom(network) {
+    if (!network || !Object.prototype.hasOwnProperty.call(network, 'snapshots')) return null;
+    const source = network.snapshots;
+    if (typeof source === 'function') return source();
+    if (Array.isArray(source)) return source.length ? source.shift() : null;
+    return source;
+}
+
+function step(realDt, controls = null) {
+    const inputs = controls ? (Array.isArray(controls) ? controls : [controls]) : input.poll(game);
+    if (networkMode) {
+        if (typeof networkMode.onInput === 'function') networkMode.onInput(inputs);
+        const snapshot = snapshotsFrom(networkMode);
+        if (snapshot && typeof game.applySnapshot === 'function') {
+            try {
+                game.applySnapshot(snapshot.vault === undefined ? { ...snapshot, vault: null } : snapshot);
+            } catch (error) {
+                window.dispatchEvent(new CustomEvent('voyager:snapshotError', { detail: { message: error.message } }));
+            }
+        }
+    } else if (typeof game.update === 'function') {
+        game.update(realDt * fx.timeScale(), inputs);
+    } else if (typeof game.step === 'function') {
+        game.step(inputs);
+    }
     const events = game.drainEvents();
     if (events.length) {
-        audio.play(events);
+        audio.play(events, game);
         fx.handle(events, game);
         events.forEach(dispatchGameEvent);
     }
@@ -162,12 +205,13 @@ function step(realDt, controls = input) {
 }
 
 function draw() {
+    audio.setSector2(Number(game.level && game.level.number) >= 11);
     const shake = fx.shakeOffset();
     ctx.save();
     ctx.translate(shake.x, shake.y);
     renderers[game.view](ctx, game, fx);
     ctx.restore();
-    fx.drawScreen(ctx);
+    fx.drawScreen(ctx, game);
     hud.drawHud(ctx, game, fx, { muted: audio.muted, crt: display.crt });
     drawOverlay(ctx, game, fx);
     if (display.crt) drawCrt(ctx, game.time || 0);
@@ -187,11 +231,35 @@ window.asteroidGame = game;
 window.asteroidDraw = draw;
 window.asteroidStep = step;
 window.AsteroidRender = { renderBattleCard, previewBattleCard, sampleRecord, loadAssets };
+function setNetworkMode(options = null) {
+    if (!options) {
+        networkMode = null;
+        return false;
+    }
+    networkMode = typeof options === 'function' ? { onInput: options } : options;
+    return true;
+}
+window.voyager = {
+    game,
+    step,
+    draw,
+    render: window.AsteroidRender,
+    input,
+    setNetworkMode,
+    onInput(fn) {
+        if (!networkMode) networkMode = {};
+        networkMode.onInput = typeof fn === 'function' ? fn : null;
+    }
+};
+window.addEventListener('voyager:pilot', (event) => {
+    const detail = event && event.detail;
+    if (detail && typeof game.setPilot === 'function') game.setPilot(detail);
+});
 window.asteroidReady = true;
 window.dispatchEvent(new CustomEvent('asteroid:ready', { detail: { game } }));
 requestAnimationFrame(frame);
 
-},{"./audio":3,"./game":7,"./render/assets":10,"./render/battleCard":12,"./render/cardMath":13,"./render/fx":16,"./render/hud":17,"./render/overview":18,"./render/post":19,"./render/pov":20,"./render/screens":22}],2:[function(require,module,exports){
+},{"./audio":3,"./game":7,"./input":8,"./render/assets":14,"./render/battleCard":16,"./render/cardMath":17,"./render/fx":20,"./render/hud":21,"./render/overview":22,"./render/post":24,"./render/pov":25,"./render/screens":27}],2:[function(require,module,exports){
 const { range } = require('./rng');
 
 const WORLD_WIDTH = 800;
@@ -203,8 +271,8 @@ function makeShape(rng) {
 }
 
 class Asteroid {
-    constructor({ x, y, size, vx = 0, vy = 0, hp, shooter = false, rng = Math.random, fireCooldown }) {
-        this.id = nextId++;
+    constructor({ x, y, size, vx = 0, vy = 0, hp, shooter = false, rng, fireCooldown, id }) {
+        this.id = id === undefined ? nextId++ : id;
         this.x = x;
         this.y = y;
         this.size = size;
@@ -213,11 +281,15 @@ class Asteroid {
         this.maxHp = hp || Math.max(1, Math.ceil(size / 14));
         this.hp = this.maxHp;
         this.shooter = shooter;
-        this.fireCooldown = fireCooldown === undefined ? range(rng, 0.5, 2.5) : fireCooldown;
-        this.rotation = range(rng, 0, Math.PI * 2);
-        this.spin = range(rng, -0.8, 0.8);
-        this.shape = makeShape(rng);
+        this.fireCooldown = fireCooldown === undefined ? range(rng || (() => 0.5), 0.5, 2.5) : fireCooldown;
+        this.rotation = range(rng || (() => 0.5), 0, Math.PI * 2);
+        this.spin = range(rng || (() => 0.5), -0.8, 0.8);
+        this.shape = makeShape(rng || (() => 0.5));
         this.active = false;
+        this.phaseRock = false;
+        this.phaseActive = false;
+        this.phaseClock = 0;
+        this.orbiting = false;
         this.fragment = false;
         this.missed = false;
         this.flash = 0;
@@ -225,6 +297,8 @@ class Asteroid {
 
     update(dt) {
         this.rotation += this.spin * dt;
+        if (this.phaseRock) { this.phaseClock += dt; this.phaseActive = this.phaseClock % 1.8 > 1.2; }
+        if (this.orbiting && this.active) { this.orbitAngle += this.orbitSpeed * dt; this.x = this.orbitCenterX + Math.cos(this.orbitAngle) * this.orbitRadius; this.y = this.orbitCenterY + Math.sin(this.orbitAngle) * this.orbitRadius; }
         this.flash = Math.max(0, this.flash - dt);
         if (!this.active) return;
         this.x += this.vx * dt;
@@ -244,7 +318,7 @@ class Asteroid {
         return this.hp <= 0;
     }
 
-    breakApart(rng = Math.random) {
+    breakApart(rng = (() => 0.5)) {
         if (this.size < 24) return [];
         return [-1, 1].map((side) => {
             const fragment = new Asteroid({
@@ -267,7 +341,7 @@ Asteroid.WORLD_WIDTH = WORLD_WIDTH;
 
 module.exports = Asteroid;
 
-},{"./rng":24}],3:[function(require,module,exports){
+},{"./rng":30}],3:[function(require,module,exports){
 // Synthesized 8-bit-meets-arcade sound effects (WebAudio only, no files).
 // The AudioContext is created lazily on the first key press (autoplay rules).
 const { normalizeEvent } = require('./render/events');
@@ -279,6 +353,8 @@ function createAudio() {
     let master = null;
     let noiseBuffer = null;
     let muted = false;
+    let futureMusic = false;
+    let futureNodes = [];
     const lastPlayed = {};
 
     function ensureContext() {
@@ -306,6 +382,30 @@ function createAudio() {
 
     function ready() {
         return Boolean(context && master && !muted);
+    }
+
+    function setSector2(enabled) {
+        const active = Boolean(enabled);
+        if (active === futureMusic) return;
+        if (active) {
+            const ctx = ensureContext();
+            if (!ctx || !master) return;
+            futureMusic = true;
+            const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 620;
+            const droneGain = ctx.createGain(); droneGain.gain.value = 0.012;
+            const first = ctx.createOscillator(); first.type = 'sawtooth'; first.frequency.value = 55;
+            const second = ctx.createOscillator(); second.type = 'triangle'; second.frequency.value = 164.81;
+            const shimmer = ctx.createOscillator(); shimmer.type = 'sine'; shimmer.frequency.value = 0.17;
+            const depth = ctx.createGain(); depth.gain.value = 240;
+            shimmer.connect(depth).connect(filter.frequency);
+            first.connect(filter); second.connect(filter); filter.connect(droneGain).connect(master);
+            first.start(); second.start(); shimmer.start();
+            futureNodes = [first, second, shimmer];
+        } else {
+            futureMusic = false;
+            futureNodes.forEach((node) => { try { node.stop(); } catch (error) { /* Already stopped. */ } });
+            futureNodes = [];
+        }
     }
 
     function throttle(key, seconds) {
@@ -400,11 +500,52 @@ function createAudio() {
             tone({ frequency: 260, endFrequency: 55, duration: 0.38, type: 'sawtooth', volume: 0.07, filter: { from: 3200, to: 200, q: 6 }, vibrato: 28 });
             tone({ frequency: 110, endFrequency: 40, duration: 0.3, type: 'sine', volume: 0.12 });
             tone({ frequency: 1800, endFrequency: 600, duration: 0.12, type: 'triangle', volume: 0.03 });
+        },
+        nova: () => {
+            noise({ duration: 0.48, volume: 0.34, from: 5000, to: 70, q: 1.4 });
+            tone({ frequency: 190, endFrequency: 28, duration: 0.72, type: 'sine', volume: 0.38 });
+            tone({ frequency: 880, endFrequency: 120, duration: 0.42, type: 'sawtooth', volume: 0.12, filter: { from: 2800, to: 100, q: 5 } });
+        },
+        prism: () => {
+            [0, 5, 9, 14].forEach((note, i) => tone({ frequency: NOTE(note + 24), endFrequency: NOTE(note + 36), duration: 0.18, type: i % 2 ? 'triangle' : 'sine', volume: 0.065, delay: i * 0.018 }));
+            noise({ duration: 0.12, volume: 0.07, from: 9000, to: 2500, type: 'highpass' });
+        },
+        singularity: () => {
+            tone({ frequency: 880, endFrequency: 24, duration: 0.5, type: 'sine', volume: 0.28, vibrato: 15 });
+            tone({ frequency: 360, endFrequency: 32, duration: 0.44, type: 'sawtooth', volume: 0.14, filter: { from: 2400, to: 40, q: 9 } });
+            noise({ duration: 0.34, volume: 0.13, from: 800, to: 50, type: 'lowpass', q: 4 });
         }
     };
 
     const sounds = {
         shot: (e) => (LASERS[e.weapon] || LASERS.blaster)(),
+        chargeStart: () => {
+            tone({ frequency: 140, endFrequency: 980, duration: 1.15, type: 'sawtooth', volume: 0.12, filter: { from: 500, to: 4200, q: 3 }, vibrato: 9 });
+            tone({ frequency: 70, endFrequency: 490, duration: 1.15, type: 'sine', volume: 0.08, delay: 0.04, vibrato: 5 });
+        },
+        chargeRelease: (e) => {
+            const charge = Math.max(0, Math.min(1, Number(e.charge) || 0));
+            tone({ frequency: 850 + charge * 450, endFrequency: 90, duration: 0.3 + charge * 0.45, type: 'sawtooth', volume: 0.15 + charge * 0.08, filter: { from: 4400, to: 90, q: 5 } });
+            if (charge > 0.7) LASERS.nova();
+        },
+        novaBlast: (e) => { LASERS.nova(); if (Number(e.charge) > 0.75) explosion(54, true); },
+        vaultSpawned: () => {
+            tone({ frequency: 460, endFrequency: 220, duration: 0.4, type: 'sawtooth', volume: 0.1, vibrato: 6 });
+            tone({ frequency: 620, endFrequency: 300, duration: 0.48, type: 'triangle', volume: 0.07, delay: 0.12 });
+            noise({ duration: 0.3, volume: 0.08, from: 1100, to: 350, type: 'bandpass', q: 4, delay: 0.1 });
+        },
+        guardDestroyed: () => { explosion(22, true); arpeggio([12, 19], { step: 0.04, type: 'triangle', volume: 0.045 }); },
+        supporterCaptured: () => {
+            arpeggio([3, 7, 10, 15, 19, 22, 27, 31], { step: 0.075, type: 'sine', volume: 0.11, length: 0.3 });
+            arpeggio([-9, -2, 3, 10, 15], { step: 0.15, type: 'triangle', volume: 0.1, length: 0.42 });
+            noise({ duration: 1.15, volume: 0.12, from: 8000, to: 1800, type: 'highpass', delay: 0.35 });
+        },
+        warpStart: () => {
+            noise({ duration: 1.35, volume: 0.28, from: 7000, to: 180, type: 'bandpass', q: 0.8 });
+            tone({ frequency: 88, endFrequency: 1400, duration: 1.25, type: 'sawtooth', volume: 0.13, filter: { from: 150, to: 5000, q: 3 }, vibrato: 18 });
+        },
+        warpEnd: () => arpeggio([0, 7, 12, 19, 24, 31], { step: 0.065, type: 'triangle', volume: 0.09, length: 0.2 }),
+        sectorUnlocked: () => arpeggio([0, 7, 12, 19, 24, 31], { step: 0.08, type: 'sine', volume: 0.08, length: 0.24 }),
         enemyShot: () => {
             if (!throttle('enemyShot', 0.06)) return;
             tone({ frequency: 640, endFrequency: 150, duration: 0.2, type: 'triangle', volume: 0.05, vibrato: 40 });
@@ -485,14 +626,20 @@ function createAudio() {
         get muted() {
             return muted;
         },
-        play(events) {
+        setSector2,
+        play(events, game = null) {
             if (!ready()) return;
+            const future = Number(game && game.level && game.level.number) >= 11;
             for (const raw of events) {
                 const event = normalizeEvent(raw);
                 const sound = sounds[event.type];
                 if (!sound) continue;
                 try {
                     sound(event);
+                    if (future && ['enemyShot', 'explode', 'shot', 'hit'].includes(event.type)) {
+                        const base = event.type === 'enemyShot' ? 110 : event.type === 'explode' ? 38 : event.type === 'hit' ? 660 : 1320;
+                        tone({ frequency: base, endFrequency: event.type === 'explode' ? 30 : base * 2.4, duration: 0.16, type: 'sawtooth', volume: 0.035, filter: { from: 5000, to: 160, q: 4 }, vibrato: 12 });
+                    }
                 } catch (error) {
                     // A failed sound must never break the game loop.
                 }
@@ -503,10 +650,10 @@ function createAudio() {
 
 module.exports = { createAudio };
 
-},{"./render/events":14}],4:[function(require,module,exports){
+},{"./render/events":18}],4:[function(require,module,exports){
 // World-space projectile. `y` is forward distance along the level.
 class Bullet {
-    constructor({ x, y, vx = 0, vy = 0, size = 3, damage = 1, pierce = false, life = 1.4, owner = 'player', color = '#fff' }) {
+    constructor({ x, y, vx = 0, vy = 0, size = 3, damage = 1, pierce = false, life = 1.4, owner = 'player', color = '#fff', radius = 0, maxRadius = 0, age = 0, playerIndex = 0, ownerWeapon = null }) {
         this.x = x;
         this.y = y;
         this.vx = vx;
@@ -517,6 +664,11 @@ class Bullet {
         this.life = life;
         this.owner = owner;
         this.color = color;
+        this.radius = radius;
+        this.maxRadius = maxRadius || radius;
+        this.age = age;
+        this.playerIndex = playerIndex;
+        this.ownerWeapon = ownerWeapon;
         this.hits = pierce ? new Set() : null;
     }
 
@@ -524,6 +676,8 @@ class Bullet {
         this.x += this.vx * dt;
         this.y += this.vy * dt;
         this.life -= dt;
+        this.age += dt;
+        if (this.maxRadius > 0) this.radius = Math.min(this.maxRadius, this.radius + dt * this.maxRadius * 2.5);
     }
 
     get alive() {
@@ -542,7 +696,7 @@ function checkCollision(obj1, obj2) {
     const distance = Math.sqrt(dx * dx + dy * dy);
 
     // Use the size of both objects for accurate detection
-    return distance < obj1.size + obj2.size;
+    return distance < (obj1.size || 0) + (obj1.radius || 0) + (obj2.size || 0);
 }
 
 module.exports = checkCollision;
@@ -716,16 +870,20 @@ const checkCollision = require('./collision');
 const Spaceship = require('./spaceship');
 const Bullet = require('./bullet');
 const { createRng, range } = require('./rng');
-const { getLevel, LEVEL_COUNT } = require('./levels');
+const { getLevel, LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('./levels');
 const { populateLevel } = require('./levelLayout');
-const { applyWeaponPickup, downgradeWeapon, fireWeapon } = require('./weapons');
+const { WEAPONS, applyWeaponPickup, downgradeWeapon, fireWeapon } = require('./weapons');
 const { DIFFICULTY_IDS, isDifficulty, getDifficulty, stepDifficulty } = require('./difficulty');
 const { LevelTracker, createTotals, mergeTotals, buildLevelRecord } = require('./stats');
+const inputLog = require('./inputlog');
+const { scaleForPlayers, createPlayerStats, awardScore, canEndLevel } = require('./multiplayer');
+const { chooseVaultLevel, createVault, markGuardDestroyed } = require('./vault');
 const {
     STORAGE_KEY,
     LEGACY_STORAGE_KEY,
     MAX_WINS,
     loadSave,
+    mergeStoredSave,
     persistSave,
     validateSave
 } = require('./save');
@@ -735,13 +893,48 @@ const FIRE_RANGE = { min: 80, max: 700 };
 const LEVEL_INTRO_TIME = 2.5;
 const LEVEL_COMPLETE_TIME = 3.5;
 const RESPAWN_TIME = 1.8;
+const FIXED_STEP = 1 / 60;
+const WARP_TIME = 2.2;
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
+function defaultSeedSource() {
+    if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
+        const value = new Uint32Array(1);
+        globalThis.crypto.getRandomValues(value);
+        return value[0];
+    }
+    return Math.floor(Math.random() * 0x100000000) >>> 0;
+}
+
 class Game {
-    constructor({ storage = null, now = () => Date.now() } = {}) {
+    constructor({ storage = null, now = () => Date.now(), seed = null, seedSource = defaultSeedSource, idFn } = {}) {
         this.storage = storage;
         this.now = now;
+        if (typeof seedSource !== 'function') throw new TypeError('seedSource must be a function.');
+        this.seedSource = seedSource;
+        this.initialSeed = Number.isInteger(seed) && seed >= 0 && seed <= 0xffffffff ? seed >>> 0 : null;
+        this.seed = this.initialSeed ?? 0;
+        this.initialSeedPending = this.initialSeed !== null;
+        this.nextRunSeed = null;
+        this.nextRunTicket = null;
+        this.runTicket = null;
+        this.idCounter = 0;
+        this.idFn = idFn || (() => `${this.seed.toString(36)}${(++this.idCounter).toString(36).padStart(4, '0')}`);
+        this.accumulator = 0;
+        this.simTime = 0;
+        this.runElapsed = 0;
+        this.runStartedAt = null;
+        this.runFrames = [];
+        this.runCaptures = [];
+        this.runRecords = [];
+        this.vaultTiersSpawned = [];
+        this.pilot = { address: null, isPilot: false };
+        this.playerCount = 1;
+        this.mode = 'coop';
+        this.playerStats = createPlayerStats(1);
+        this.ships = [];
+        this.sector2Level = null;
         this.save = loadSave(storage);
         this.selectedDifficulty = this.save.progress.lastDifficulty;
         this.difficulty = this.selectedDifficulty;
@@ -753,10 +946,12 @@ class Game {
         this.state = 'title';
         this.events = [];
         this.particles = [];
+        this.cosmeticRng = createRng((this.seed ^ 0x9e3779b9) >>> 0);
         this.time = 0;
         this.score = 0;
         this.levelStartScore = 0;
         this.ship = new Spaceship();
+        this.ships = [this.ship];
         this.level = getLevel(1, this.difficulty);
         this.resetWorld();
     }
@@ -831,17 +1026,67 @@ class Game {
         return events;
     }
 
-    startCampaign(levelNumber = 1, difficulty = this.selectedDifficulty) {
+    setNextRunSeed(seed, ticket) {
+        if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) throw new RangeError('Run seed must be an unsigned 32-bit integer.');
+        this.nextRunSeed = seed >>> 0;
+        this.nextRunTicket = ticket === undefined ? null : clone(ticket);
+    }
+
+    startCampaign(levelNumber = 1, difficulty = this.selectedDifficulty, seed) {
         getLevel(levelNumber, difficulty);
+        const difficultyId = getDifficulty(difficulty).id;
+        if (levelNumber > LEVEL_COUNT && (difficultyId !== 'ace' || !this.pilot.isPilot || !this.save.progress.byDifficulty[difficultyId].sector2Unlocked)) throw new Error('Sector II is locked for this difficulty or pilot.');
         this.finishAttempt('abandoned');
-        this.difficulty = getDifficulty(difficulty).id;
+        this.difficulty = difficultyId;
         this.selectedDifficulty = this.difficulty;
         this.save.progress.lastDifficulty = this.difficulty;
+        if (seed !== undefined) {
+            if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) throw new RangeError('Run seed must be an unsigned 32-bit integer.');
+            this.seed = seed >>> 0;
+            this.runTicket = null;
+            this.nextRunSeed = null;
+            this.nextRunTicket = null;
+            this.initialSeedPending = false;
+        } else if (this.nextRunSeed !== null) {
+            this.seed = this.nextRunSeed;
+            this.runTicket = this.nextRunTicket;
+            this.nextRunSeed = null;
+            this.nextRunTicket = null;
+            this.initialSeedPending = false;
+        } else if (this.initialSeedPending) {
+            this.seed = this.initialSeed;
+            this.runTicket = null;
+            this.initialSeedPending = false;
+        } else {
+            const generatedSeed = this.seedSource();
+            if (!Number.isInteger(generatedSeed) || generatedSeed < 0 || generatedSeed > 0xffffffff) throw new RangeError('seedSource must return an unsigned 32-bit integer.');
+            this.seed = generatedSeed >>> 0;
+            this.runTicket = null;
+        }
+        this.runStartedAt = this.now();
+        this.runElapsed = 0;
+        this.idCounter = 0;
+        this.runId = `${this.seed.toString(16)}-${this.runStartedAt.toString(36)}`;
+        this.runStartLevel = levelNumber;
+        this.runFrames = [];
+        this.runCaptures = [];
+        this.runRecords = [];
+        this.vaultTiersSpawned = [];
+        this.sector2Level = null;
         this.score = 0;
         this.runStats = createTotals();
         this.runStats.campaignsStarted = 1;
         this.save.lifetime.campaignsStarted += 1;
         this.ship = this.createShip();
+        this.ships = [this.ship];
+        this.playerStats = createPlayerStats(this.playerCount);
+        if (this.playerCount > 1) this.setPlayers(this.playerCount, { mode: this.mode });
+        if (this.difficulty === 'ace' && this.pilot.isPilot) {
+            const spawnRng = createRng((this.seed ^ 0xa53c9e17) >>> 0);
+            this.sector2Level = levelNumber <= 10 ? chooseVaultLevel(1, spawnRng) : null;
+            this.sector2VaultLevel = chooseVaultLevel(2, spawnRng);
+        }
+        this.cosmeticRng = createRng((this.seed ^ 0x9e3779b9) >>> 0);
         this.startLevel(levelNumber);
         this.saveProgress();
     }
@@ -855,23 +1100,47 @@ class Game {
     startLevel(levelNumber) {
         const level = getLevel(levelNumber, this.difficulty);
         this.finishAttempt('abandoned');
-        this.level = level;
-        this.rng = createRng(this.level.seed);
+        this.level = { ...level };
+        if (!this.runStartLevel) this.runStartLevel = levelNumber;
+        this.rng = createRng((this.seed ^ Math.imul(levelNumber, 0x9e3779b1)) >>> 0);
         this.resetWorld();
-        const layout = populateLevel(this.level, this.rng);
+        const layout = populateLevel(this.level, createRng(this.level.seed));
         this.asteroids = layout.asteroids;
         this.pickups = layout.pickups;
         this.tracker = new LevelTracker();
         this.tracker.spawned(this.asteroids.length);
-        this.levelStartedAt = this.now();
+        this.levelStartedAt = this.recordNow();
         const { lives, weapon } = this.ship;
         this.ship.reset();
         this.ship.lives = lives;
         this.ship.weapon = weapon;
         this.ship.y = this.ship.offset;
         this.ship.invulnerable = LEVEL_INTRO_TIME;
+        for (let i = 1; i < this.ships.length; i++) {
+            const current = this.ships[i];
+            const savedLives = current.lives; const savedWeapon = current.weapon;
+            current.reset(); current.lives = savedLives; current.weapon = savedWeapon;
+            current.scale = scaleForPlayers(this.playerCount); current.size = current.baseSize * current.scale;
+            current.x = 400 + (i - (this.playerCount - 1) / 2) * Math.min(42, 320 / this.playerCount);
+            current.y = current.offset; current.invulnerable = LEVEL_INTRO_TIME;
+        }
         this.levelStartScore = this.score;
         this.particles = [];
+        this.vault = null;
+        if (this.difficulty === 'ace' && this.pilot.isPilot) {
+            const tier = this.sector2Level === levelNumber ? 1 : this.sector2VaultLevel === levelNumber ? 2 : 0;
+            const eligible = tier > 0 && !this.vaultTiersSpawned.includes(tier);
+            if (eligible) {
+                const vaultRng = createRng((this.seed ^ (tier === 1 ? 0x7f4a7c15 : 0x94d049bb)) >>> 0);
+                this.vault = createVault(tier, levelNumber, vaultRng);
+                this.vaultTiersSpawned.push(tier);
+                this.asteroids = this.asteroids.filter((rock) => Math.hypot(rock.x - this.vault.x, rock.y - this.vault.y) > 260);
+                this.asteroids.push(...this.vault.guards);
+                this.tracker.spawned(this.vault.guards.length);
+                this.vault.spawned = true;
+                this.emit('vaultSpawned', { tier, x: this.vault.x, y: this.vault.y });
+            }
+        }
         this.state = 'playing';
         this.emit('levelStart', { level: levelNumber });
     }
@@ -879,7 +1148,90 @@ class Game {
     retryLevel() {
         this.score = this.levelStartScore;
         this.ship = this.createShip();
+        this.ships = [this.ship];
+        this.playerStats = createPlayerStats(this.playerCount);
+        if (this.playerCount > 1) this.setPlayers(this.playerCount, { mode: this.mode });
         this.startLevel(this.level.number);
+    }
+
+    setPilot({ address = null, isPilot = false } = {}) {
+        this.pilot = { address, isPilot: Boolean(isPilot && address) };
+        return { ...this.pilot };
+    }
+
+    setPlayers(count, { mode = 'coop' } = {}) {
+        if (!['coop', 'versus'].includes(mode)) throw new RangeError(`Unknown multiplayer mode: ${mode}`);
+        const scale = scaleForPlayers(count);
+        this.playerCount = count;
+        this.mode = mode;
+        const previous = this.ships || [this.ship];
+        const previousCount = previous.length;
+        this.ships = Array.from({ length: count }, (_, index) => {
+            const ship = index < previous.length ? previous[index] : this.createShip();
+            ship.scale = scale;
+            ship.size = ship.baseSize * scale;
+            ship.x = 400 + (index - (count - 1) / 2) * Math.min(42, 320 / count);
+            ship.y = this.scrollY + ship.offset;
+            return ship;
+        });
+        this.ship = this.ships[0];
+        this.playerStats = createPlayerStats(count);
+        for (let index = previousCount; index < count; index++) this.emit('playerJoined', { index, mode });
+        for (let index = count; index < previousCount; index++) this.emit('playerLeft', { index });
+        return this.ships;
+    }
+
+    getRunLog() {
+        return { runId: this.runId || `${this.seed.toString(16)}-unstarted`, seed: this.seed, difficulty: this.difficulty, startLevel: this.runStartLevel || 1, players: this.playerCount, mode: this.mode, pilot: { ...this.pilot }, ticket: this.runTicket == null ? null : clone(this.runTicket), frames: inputLog.encode(this.runFrames), startedAt: this.runStartedAt == null ? null : new Date(this.runStartedAt).toISOString(), version: 1 };
+    }
+
+    serialize() {
+        const plain = (value) => JSON.parse(JSON.stringify(value));
+        return plain({ version: 1, seed: this.seed, state: this.state, difficulty: this.difficulty, level: this.level, scrollY: this.scrollY, time: this.time, score: this.score, view: this.view, ship: this.ship, ships: this.ships, stateTimer: this.stateTimer, levelTime: this.levelTime, asteroids: this.asteroids, pickups: this.pickups, playerBullets: this.playerBullets.map((b) => ({ ...b, hits: b.hits ? [...b.hits] : null })), enemyBullets: this.enemyBullets, vault: this.vault ?? null, runCaptures: this.runCaptures, playerStats: this.playerStats, mode: this.mode });
+    }
+
+    applySnapshot(snapshot) {
+        if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot) || snapshot.version !== 1) throw new TypeError('Invalid game snapshot.');
+        const fields = ['seed', 'state', 'difficulty', 'level', 'scrollY', 'time', 'score', 'view', 'stateTimer', 'levelTime', 'asteroids', 'pickups', 'enemyBullets', 'runCaptures', 'playerStats', 'mode'];
+        for (const key of fields) {
+            if (snapshot[key] !== undefined && snapshot[key] !== null) this[key] = clone(snapshot[key]);
+        }
+        this.vault = snapshot.vault == null ? null : clone(snapshot.vault);
+        this.asteroids = this.asteroids || [];
+        this.pickups = this.pickups || [];
+        this.enemyBullets = this.enemyBullets || [];
+        this.runCaptures = this.runCaptures || [];
+        const snapshotShips = Array.isArray(snapshot.ships) ? snapshot.ships : snapshot.ship ? [snapshot.ship] : null;
+        if (snapshotShips && snapshotShips.length) this.ships = clone(snapshotShips);
+        if (!this.ships || !this.ships.length) this.ships = [this.ship];
+        this.ship = this.ships[0];
+        this.playerCount = this.ships.length;
+        this.playerStats = this.playerStats || createPlayerStats(this.playerCount);
+        this.playerBullets = (Array.isArray(snapshot.playerBullets) ? snapshot.playerBullets : []).map((bullet) => Object.assign(new Bullet(bullet), bullet, { hits: bullet.hits ? new Set(bullet.hits) : null }));
+        return this;
+    }
+
+    static fromSnapshot(snapshot) { return new Game().applySnapshot(snapshot); }
+
+    static replay({ seed = 0, difficulty = 'cadet', startLevel = 1, players = 1, pilot = null, frames = [], runId = null, startedAt = null, mode: replayMode = 'coop' } = {}) {
+        const baseTime = startedAt ? Date.parse(startedAt) : Date.UTC(2020, 0, 1);
+        if (!Number.isFinite(baseTime)) throw new TypeError('Replay start time is invalid.');
+        const game = new Game({ seed, now: () => baseTime });
+        if (pilot) game.setPilot(pilot);
+        const playerCount = typeof players === 'number' ? players : Array.isArray(players) ? players.length : (players.count || 1);
+        const mode = typeof players === 'object' && players.mode ? players.mode : replayMode;
+        if (playerCount > 1) game.setPlayers(playerCount, { mode });
+        game.startCampaign(startLevel, difficulty, seed);
+        if (runId) game.runId = runId;
+        const expanded = inputLog.decode(frames);
+        for (const inputs of expanded) game.step(inputs);
+        return game.summary();
+    }
+
+    recordNow() { return this.runStartedAt == null ? this.now() : this.runStartedAt + this.runElapsed * 1000; }
+
+    summary() {
+        return { runId: this.runId, seed: this.seed, difficulty: this.difficulty, state: this.state, level: this.level.number, score: this.score, records: clone(this.runRecords), captures: clone(this.runCaptures), survivors: this.ships.filter((ship) => ship.lives > 0).length, ships: this.ships.map((ship) => ({ x: ship.x, y: ship.y, power: ship.power, lives: ship.lives, weapon: { ...ship.weapon } })), playerStats: clone(this.playerStats), runStats: clone(this.runStats) };
     }
 
     handleAction(action) {
@@ -941,9 +1293,36 @@ class Game {
     }
 
     update(dt, input = {}) {
-        this.time += dt;
-        this.updateParticles(dt);
+        if (!Number.isFinite(dt) || dt < 0) return;
+        this.accumulator += dt;
+        const inputs = Array.isArray(input) ? input : [input];
+        while (this.accumulator + 1e-3 >= FIXED_STEP) {
+            this.accumulator = Math.max(0, this.accumulator - FIXED_STEP);
+            this.step(inputs);
+        }
+    }
 
+    step(inputs = []) {
+        const frame = Array.from({ length: this.playerCount }, (_, index) => inputs[index] || {});
+        this.runFrames.push(frame.map((input) => ({ ...input })));
+        this.time += FIXED_STEP;
+        this.simTime += FIXED_STEP;
+        if (this.runId) this.runElapsed += FIXED_STEP;
+        this._fixedUpdate(FIXED_STEP, frame);
+        return this;
+    }
+
+    _fixedUpdate(dt, inputs = []) {
+        const input = inputs[0] || {};
+        this.updateParticles(dt);
+        if (this.state === 'warping') {
+            this.stateTimer -= dt;
+            if (this.stateTimer <= 0) {
+                this.emit('warpEnd', { level: 11 });
+                this.startLevel(11);
+            }
+            return;
+        }
         if (this.state === 'levelComplete') {
             this.stateTimer -= dt;
             if (this.stateTimer <= 0) this.advanceLevel();
@@ -957,8 +1336,18 @@ class Game {
         this.tracker.tick(dt, ship, this.view);
 
         if (this.state === 'playing') {
-            ship.update(dt, input, this.scrollY);
-            if (input.fire && ship.cooldown <= 0) this.firePlayerWeapon();
+            for (let index = 0; index < this.ships.length; index++) {
+                const current = this.ships[index];
+                const controls = inputs[index] || {};
+                if (current.lives <= 0) continue;
+                if (current.respawnTimer > 0) {
+                    current.respawnTimer = Math.max(0, current.respawnTimer - dt);
+                    if (current.respawnTimer === 0) { current.power = current.maxPower; current.invulnerable = 2.5; this.emit('respawn', { player: index }); }
+                    continue;
+                }
+                current.update(dt, controls, this.scrollY);
+                this.updatePlayerFire(current, controls, index, dt);
+            }
         } else {
             ship.y = this.scrollY + ship.offset;
             this.stateTimer -= dt;
@@ -973,15 +1362,68 @@ class Game {
         this.trackPassing();
         this.cleanup();
 
-        if (this.state === 'playing' && this.scrollY >= this.level.length) this.completeLevel();
+        if (this.state === 'playing') {
+            if (this.playerCount === 1 && this.scrollY >= this.level.length) this.completeLevel();
+            else if (this.playerCount > 1) {
+                const gatePlayers = this.ships.map((ship, index) => {
+                    const reachedGate = ship.lives > 0 && ship.y >= this.level.length;
+                    if (this.playerStats[index]) this.playerStats[index].reachedGate = reachedGate;
+                    return { alive: ship.lives > 0, reachedGate };
+                });
+                if (canEndLevel(gatePlayers, this.mode)) this.completeLevel();
+            }
+        }
     }
 
-    firePlayerWeapon() {
-        const shot = fireWeapon(this.ship.weapon, this.ship, this.level.scrollSpeed);
+    updatePlayerFire(ship, input, playerIndex, dt) {
+        const charged = ['nova', 'singularity'].includes(ship.weapon.type);
+        // B/LT special force-releases an active charge; otherwise it grants a brief shield (8s cooldown).
+        const specialPressed = Boolean(input.special && !ship.specialWasDown);
+        ship.specialWasDown = Boolean(input.special);
+        if (specialPressed && charged && ship.charge > 0) {
+            const charge = ship.charge;
+            this.emit('chargeRelease', { player: playerIndex, charge, weapon: ship.weapon.type, forced: true });
+            this.firePlayerWeapon(ship, playerIndex, charge);
+            ship.charge = 0;
+            ship.wasFiring = false;
+            ship.suppressChargeUntilRelease = Boolean(input.fire);
+        } else if (specialPressed && ship.specialCooldown <= 0) {
+            ship.shield = Math.max(ship.shield, 2);
+            ship.specialCooldown = 8;
+            this.emit('specialUsed', { player: playerIndex, type: 'shield', duration: 2 });
+        }
+        if (ship.specialCooldown > 0) ship.specialCooldown = Math.max(0, ship.specialCooldown - dt);
+        const suppressedCharge = Boolean(ship.suppressChargeUntilRelease);
+        if (suppressedCharge) {
+            if (!input.fire) { ship.suppressChargeUntilRelease = false; ship.wasFiring = false; }
+            else ship.wasFiring = true;
+        } else if (charged) {
+            const maxCharge = 1.2 / (1 + (ship.weapon.tier - 1) * 0.2);
+            if (input.fire) {
+                if (!ship.wasFiring) this.emit('chargeStart', { player: playerIndex, weapon: ship.weapon.type });
+                ship.charge = Math.min(1, ship.charge + dt / maxCharge);
+            } else if (ship.wasFiring) {
+                this.emit('chargeRelease', { player: playerIndex, charge: ship.charge, weapon: ship.weapon.type });
+                this.firePlayerWeapon(ship, playerIndex, ship.charge);
+                ship.charge = 0;
+            }
+            ship.wasFiring = Boolean(input.fire);
+        } else if (input.fire && ship.cooldown <= 0) this.firePlayerWeapon(ship, playerIndex);
+        if (input.weaponNext && !ship.weaponNextWasDown) {
+            const types = Object.keys(WEAPONS);
+            ship.weapon = { type: types[(types.indexOf(ship.weapon.type) + 1) % types.length], tier: 1 };
+        }
+        ship.weaponNextWasDown = Boolean(input.weaponNext);
+    }
+
+    firePlayerWeapon(ship = this.ship, playerIndex = 0, charge = 0) {
+        const shot = fireWeapon(ship.weapon, ship, this.level.scrollSpeed, charge);
+        for (const bullet of shot.bullets) { bullet.playerIndex = playerIndex; bullet.ownerWeapon = ship.weapon.type; }
         this.playerBullets.push(...shot.bullets);
-        this.ship.cooldown = shot.cooldown;
-        this.tracker.shot(this.ship.weapon.type, shot.bullets.length);
-        this.emit('shot', { weapon: this.ship.weapon.type });
+        ship.cooldown = shot.cooldown;
+        this.tracker.shot(ship.weapon.type, shot.bullets.length);
+        this.playerStats[playerIndex].shotsFired += shot.bullets.length;
+        this.emit('shot', { weapon: ship.weapon.type, player: playerIndex, charge });
     }
 
     updateAsteroids(dt) {
@@ -995,14 +1437,15 @@ class Game {
             const ahead = asteroid.y - ship.y;
             if (asteroid.fireCooldown <= 0 && ahead > FIRE_RANGE.min && ahead < FIRE_RANGE.max) {
                 this.fireEnemyBullet(asteroid);
-                asteroid.fireCooldown = this.level.fireInterval * range(this.rng, 0.7, 1.3);
+                asteroid.fireCooldown = this.level.fireInterval * range(this.rng, asteroid.vaultGuard ? 3.1 : 0.7, asteroid.vaultGuard ? 4.2 : 1.3);
             }
         }
     }
 
     fireEnemyBullet(asteroid) {
         const ship = this.ship;
-        const angle = Math.atan2(ship.x - asteroid.x, ship.y - asteroid.y) + range(this.rng, -1, 1) * this.level.aimError;
+        const aimError = this.level.aimError + (asteroid.vaultGuard ? 0.38 : 0);
+        const angle = Math.atan2(ship.x - asteroid.x, ship.y - asteroid.y) + range(this.rng, -1, 1) * aimError;
         const speed = this.level.enemyBulletSpeed;
         this.enemyBullets.push(new Bullet({
             x: asteroid.x,
@@ -1024,16 +1467,27 @@ class Game {
         const spawned = [];
         for (const bullet of this.playerBullets) {
             if (!bullet.alive) continue;
+            if (bullet.ownerWeapon === 'singularity') {
+                for (const rock of this.asteroids) {
+                    if (rock.hp <= 0) continue;
+                    const dx = bullet.x - rock.x; const dy = bullet.y - rock.y; const distance = Math.hypot(dx, dy);
+                    if (distance > 220 || distance === 0) continue;
+                    const pull = (220 - distance) * 0.18; rock.vx += dx / distance * pull * FIXED_STEP; rock.vy += dy / distance * pull * FIXED_STEP;
+                }
+            }
             for (const asteroid of this.asteroids) {
-                if (asteroid.hp <= 0 || (bullet.hits && bullet.hits.has(asteroid.id))) continue;
+                if (asteroid.hp <= 0 || asteroid.phaseActive || (bullet.hits && bullet.hits.has(asteroid.id))) continue;
                 if (!checkCollision(bullet, asteroid)) continue;
                 if (bullet.hits) bullet.hits.add(asteroid.id);
                 else bullet.life = 0;
                 if (!bullet.scored) {
                     bullet.scored = true;
                     this.tracker.hit();
+                    const player = this.playerStats[bullet.playerIndex || 0];
+                    if (player) player.hits += 1;
                 }
                 if (asteroid.takeHit(bullet.damage)) {
+                    asteroid.lastPlayerIndex = bullet.playerIndex || 0;
                     spawned.push(...this.destroyAsteroid(asteroid, true, true));
                 } else {
                     this.emit('hit', { x: asteroid.x, y: asteroid.y });
@@ -1046,9 +1500,15 @@ class Game {
 
     destroyAsteroid(asteroid, awardPoints = true, byPlayerShot = false) {
         asteroid.hp = 0;
+        if (asteroid.vaultGuard && markGuardDestroyed(this.vault, asteroid)) this.emit('guardDestroyed', { tier: asteroid.vaultTier, kind: asteroid.kind, x: asteroid.x, y: asteroid.y });
         if (awardPoints) {
             const base = asteroid.shooter ? 150 : 50 + asteroid.maxHp * 25;
-            this.score += Math.round(base * (1 + (this.level.number - 1) * 0.1) * this.scoreMultiplier);
+            const points = Math.round(base * (1 + (this.level.number - 1) * 0.1) * this.scoreMultiplier);
+            const scorerIndex = asteroid.lastPlayerIndex || 0;
+            const scorer = this.playerStats[scorerIndex];
+            if (scorer) { scorer.kills += 1; if (this.mode === 'versus') scorer.score += points; }
+            if (this.mode === 'coop') { this.score += points; awardScore(this.playerStats, scorerIndex, points, 'coop'); }
+            else if (scorerIndex === 0) this.score = scorer.score;
         }
         this.tracker.destroyed(asteroid, byPlayerShot);
         this.spawnExplosion(asteroid.x, asteroid.y, asteroid.shooter ? '#ff8a5c' : '#d8d2c4', Math.round(asteroid.size));
@@ -1063,34 +1523,55 @@ class Game {
     }
 
     resolveShipHits() {
-        const ship = this.ship;
-
-        for (const bullet of this.enemyBullets) {
-            if (!bullet.alive || !checkCollision(bullet, ship)) continue;
-            bullet.life = 0;
-            bullet.struckShip = true;
-            this.damageShip(bullet.damage, bullet.x, bullet.y);
-            if (this.state !== 'playing') return;
+        const ships = this.ships;
+        for (let index = 0; index < ships.length; index++) {
+            const ship = ships[index];
+            if (ship.lives <= 0) continue;
+            for (const bullet of this.enemyBullets) {
+                if (!bullet.alive || !checkCollision(bullet, ship)) continue;
+                bullet.life = 0;
+                bullet.struckShip = true;
+                this.damageShip(bullet.damage, bullet.x, bullet.y, ship, index);
+                if (this.playerCount === 1 && this.state !== 'playing') return;
+            }
+            for (const asteroid of this.asteroids) {
+                if (asteroid.hp <= 0 || asteroid.phaseActive || !checkCollision(asteroid, ship)) continue;
+                this.tracker.collision();
+                const fragments = this.destroyAsteroid(asteroid, ship.shield > 0);
+                this.asteroids.push(...fragments);
+                this.damageShip((30 + asteroid.size) * (this.level.ramDamageMultiplier ?? 1), asteroid.x, asteroid.y, ship, index);
+                if (this.playerCount === 1 && this.state !== 'playing') return;
+            }
+            for (const pickup of this.pickups) {
+                if (pickup.collected || !checkCollision(pickup, ship)) continue;
+                pickup.collected = true;
+                this.collectPickup(pickup, ship, index);
+            }
+            if (this.vault && !this.vault.captured && !this.vault.shielded && checkCollision(this.vault, ship)) this.captureVault(index);
         }
-
-        for (const asteroid of this.asteroids) {
-            if (asteroid.hp <= 0 || !checkCollision(asteroid, ship)) continue;
-            this.tracker.collision();
-            const fragments = this.destroyAsteroid(asteroid, ship.shield > 0);
-            this.asteroids.push(...fragments);
-            this.damageShip((30 + asteroid.size) * (this.level.ramDamageMultiplier ?? 1), asteroid.x, asteroid.y);
-            if (this.state !== 'playing') return;
-        }
-
-        for (const pickup of this.pickups) {
-            if (pickup.collected || !checkCollision(pickup, ship)) continue;
-            pickup.collected = true;
-            this.collectPickup(pickup);
+        if (this.playerCount > 1 && this.ships.every((ship) => ship.lives <= 0)) {
+            this.state = 'gameOver'; this.finishAttempt('failed'); this.emit('gameOver');
         }
     }
 
-    damageShip(amount, x, y) {
-        const ship = this.ship;
+    captureVault(playerIndex = 0) {
+        if (!this.vault || this.vault.captured || this.vault.shielded) return false;
+        this.vault.captured = true;
+        const capture = { tier: this.vault.tier, prize: { ...this.vault.prize }, level: this.level.number, at: new Date(this.recordNow()).toISOString() };
+        this.runCaptures.push(capture);
+        for (const ship of this.ships) ship.power = ship.maxPower;
+        this.emit('supporterCaptured', { ...capture, player: playerIndex });
+        if (capture.tier === 1) {
+            this.save.progress.byDifficulty.ace.sector2Unlocked = true;
+            this.save.progress.byDifficulty.ace.unlocked = Math.max(this.save.progress.byDifficulty.ace.unlocked, 11);
+            this.emit('sectorUnlocked', { sector: 2, difficulty: 'ace' });
+            this.saveProgress();
+        }
+        return true;
+    }
+
+    damageShip(amount, x, y, targetShip = this.ship, playerIndex = 0) {
+        const ship = targetShip;
         if (ship.shield > 0) {
             this.tracker.shieldBlock();
             this.emit('shieldHit', { x, y });
@@ -1102,13 +1583,22 @@ class Game {
         ship.invulnerable = 0.6;
         this.tracker.damaged(before - ship.power, x, y);
         this.emit('shipHit', { x, y, power: ship.power });
-        if (ship.power <= 0) this.destroyShip();
+        if (ship.power <= 0) this.destroyShip(ship, playerIndex);
     }
 
-    destroyShip() {
-        const ship = this.ship;
+    destroyShip(ship = this.ship, playerIndex = 0) {
+        const shipIndex = this.ships.indexOf(ship);
+        if (this.playerCount > 1) {
+            ship.lives -= 1; ship.power = 0; ship.respawnTimer = ship.lives > 0 ? RESPAWN_TIME : 0;
+            if (this.playerStats[shipIndex]) { this.playerStats[shipIndex].livesLost += 1; this.playerStats[shipIndex].alive = ship.lives > 0; }
+            this.emit('playerDied', { index: shipIndex, lives: ship.lives });
+            if (this.ships.every((entry) => entry.lives <= 0)) { this.state = 'gameOver'; this.finishAttempt('failed'); this.emit('gameOver'); }
+            return;
+        }
         ship.lives -= 1;
         this.tracker.lifeLost();
+        if (this.playerStats[playerIndex]) this.playerStats[playerIndex].livesLost += 1;
+        this.emit('playerDied', { index: playerIndex, lives: ship.lives });
         this.state = 'dying';
         this.stateTimer = RESPAWN_TIME;
         this.spawnExplosion(ship.x, ship.y, '#7fd7ff', 40);
@@ -1135,8 +1625,8 @@ class Game {
         this.emit('respawn');
     }
 
-    collectPickup(pickup) {
-        const ship = this.ship;
+    collectPickup(pickup, targetShip = this.ship, playerIndex = 0) {
+        const ship = targetShip;
         if (pickup.type === 'power') {
             ship.power = Math.min(ship.maxPower, ship.power + (this.level.powerRestore ?? 40));
         } else if (pickup.type === 'shield') {
@@ -1145,7 +1635,14 @@ class Game {
             ship.weapon = applyWeaponPickup(ship.weapon, pickup.type);
         }
         this.tracker.pickup(pickup.type, pickup.x, pickup.y);
-        this.score += Math.round(100 * this.scoreMultiplier);
+        if (this.playerStats[playerIndex]) this.playerStats[playerIndex].pickups = (this.playerStats[playerIndex].pickups || 0) + 1;
+        const pickupPoints = Math.round(100 * this.scoreMultiplier);
+        if (this.mode === 'versus') {
+            if (this.playerStats[playerIndex]) this.playerStats[playerIndex].score += pickupPoints;
+            if (playerIndex === 0) this.score = this.playerStats[0].score;
+        } else {
+            this.score += pickupPoints; awardScore(this.playerStats, playerIndex, pickupPoints, 'coop');
+        }
         this.spawnExplosion(pickup.x, pickup.y, '#9effa8', 14);
         this.emit('pickup', { pickupType: pickup.type, x: pickup.x, y: pickup.y, weapon: { ...ship.weapon } });
     }
@@ -1153,7 +1650,10 @@ class Game {
     completeLevel() {
         if (this.state !== 'playing' || this.tracker.finalized) return;
         this.levelBonus = Math.round((Math.round(this.ship.power) * 10 + this.level.number * 250) * this.scoreMultiplier);
-        this.score += this.levelBonus;
+        if (this.mode === 'versus') {
+            for (const player of this.playerStats) if (player.alive) player.score += this.levelBonus;
+            this.score = this.playerStats[0] ? this.playerStats[0].score : 0;
+        } else { this.score += this.levelBonus; awardScore(this.playerStats, 0, this.levelBonus, 'coop'); }
         const levelScore = this.score - this.levelStartScore;
         const progress = this.save.progress.byDifficulty[this.difficulty];
         const key = String(this.level.number);
@@ -1166,15 +1666,18 @@ class Game {
             view: this.view,
             score: { total: this.score, level: levelScore - this.levelBonus, bonus: this.levelBonus },
             startedAt: this.levelStartedAt,
-            completedAt: this.now(),
-            durationSec: this.levelTime
+            completedAt: this.recordNow(),
+            durationSec: this.levelTime,
+            captures: this.runCaptures.filter((capture) => capture.level === this.level.number),
+            idFn: this.idFn
         });
         this.lastRecord = record;
+        this.runRecords.push(clone(record));
         this.save.wins.push(record);
         if (this.save.wins.length > MAX_WINS) this.save.wins.splice(0, this.save.wins.length - MAX_WINS);
         this.emit('levelRecord', { record: clone(record) });
         const next = this.level.number + 1;
-        if (next > LEVEL_COUNT) {
+        if (next > TOTAL_LEVEL_COUNT || (this.level.number === LEVEL_COUNT && !progress.sector2Unlocked)) {
             this.state = 'victory';
             this.runStats.victories += 1;
             this.save.lifetime.victories += 1;
@@ -1182,23 +1685,31 @@ class Game {
             this.emit('victory');
             return;
         }
-        progress.unlocked = Math.max(progress.unlocked, next);
+        if (next <= LEVEL_COUNT || progress.sector2Unlocked) progress.unlocked = Math.max(progress.unlocked, next);
         this.saveProgress();
-        this.state = 'levelComplete';
-        this.stateTimer = LEVEL_COMPLETE_TIME;
-        this.emit('levelComplete', { level: this.level.number });
+        if (this.level.number === LEVEL_COUNT && progress.sector2Unlocked && this.difficulty === 'ace' && this.pilot.isPilot) {
+            this.state = 'warping';
+            this.stateTimer = WARP_TIME;
+            this.emit('warpStart', { from: 10, to: 11 });
+        } else {
+            this.state = 'levelComplete';
+            this.stateTimer = LEVEL_COMPLETE_TIME;
+            this.emit('levelComplete', { level: this.level.number });
+        }
     }
 
     advanceLevel() {
         if (this.state !== 'levelComplete') return;
         const ship = this.ship;
-        ship.power = ship.maxPower;
+        for (const current of this.ships) current.power = current.maxPower;
         this.startLevel(this.level.number + 1);
     }
 
     saveProgress() {
         const progress = this.save.progress.byDifficulty[this.difficulty];
         progress.highScore = Math.max(progress.highScore, this.score);
+        // Keep progress written by other tabs/builds instead of overwriting it.
+        this.save = mergeStoredSave(this.storage, this.save);
         // Progress saving is optional; play continues without it.
         persistSave(this.storage, this.exportSave());
     }
@@ -1262,9 +1773,9 @@ class Game {
 
     spawnExplosion(x, y, color, count) {
         for (let i = 0; i < count; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 30 + Math.random() * 140;
-            const life = 0.4 + Math.random() * 0.6;
+            const angle = this.cosmeticRng() * Math.PI * 2;
+            const speed = 30 + this.cosmeticRng() * 140;
+            const life = 0.4 + this.cosmeticRng() * 0.6;
             this.particles.push({
                 x,
                 y,
@@ -1298,21 +1809,290 @@ class Game {
 Game.STORAGE_KEY = STORAGE_KEY;
 Game.LEGACY_STORAGE_KEY = LEGACY_STORAGE_KEY;
 Game.DIFFICULTIES = DIFFICULTY_IDS;
+Game.FIXED_STEP = FIXED_STEP;
+Game.groupPlayers = require('./multiplayer').groupPlayers;
 
 module.exports = Game;
 
-},{"./bullet":4,"./collision":5,"./difficulty":6,"./levelLayout":8,"./levels":9,"./rng":24,"./save":25,"./spaceship":26,"./stats":27,"./weapons":28}],8:[function(require,module,exports){
+},{"./bullet":4,"./collision":5,"./difficulty":6,"./inputlog":9,"./levelLayout":10,"./levels":11,"./multiplayer":12,"./rng":30,"./save":31,"./spaceship":32,"./stats":33,"./vault":34,"./weapons":35}],8:[function(require,module,exports){
+const ACTIONS = Object.freeze({
+    start: 9,
+    view: 3,
+    viewAlt: 8,
+    weaponNext: 2,
+    special: 1,
+    specialAlt: 6,
+    fire: 0,
+    fireAlt: 7
+});
+const MAX_PLAYERS = 5;
+const DEADZONE = 0.2;
+
+function axis(value) {
+    const n = Number(value) || 0;
+    if (Math.abs(n) <= DEADZONE) return 0;
+    return Math.sign(n) * Math.min(1, (Math.abs(n) - DEADZONE) / (1 - DEADZONE));
+}
+
+function createInput({
+    documentObject = typeof document === 'undefined' ? null : document,
+    windowObject = typeof window === 'undefined' ? null : window,
+    navigatorObject = typeof navigator === 'undefined' ? null : navigator,
+    onAction = () => {},
+    onToast = () => {},
+    onPlayersChanged = () => {},
+    onPlayerLeft = () => {},
+    shouldIgnoreKeyboard = () => false,
+    maxPlayers = MAX_PLAYERS
+} = {}) {
+    const keyState = { left: false, right: false, up: false, down: false, fire: false, special: false, weaponNext: false, view: false };
+    const gamepads = new Map();
+    const connected = new Map();
+    const previousButtons = new Map();
+    const slots = new Map();
+    const cap = Math.max(1, Math.min(MAX_PLAYERS, Number(maxPlayers) || MAX_PLAYERS));
+    let keyboardSlot = 0;
+    let lastInputs = [];
+
+    const keyActions = {
+        ArrowLeft: 'left', a: 'left', A: 'left',
+        ArrowRight: 'right', d: 'right', D: 'right',
+        ArrowUp: 'up', w: 'up', W: 'up',
+        ArrowDown: 'down', s: 'down', S: 'down',
+        ' ': 'fire',
+        b: 'special', B: 'special', Shift: 'special'
+    };
+
+    function updatePlayers() {
+        const count = Math.min(cap, Math.max(1, slots.size + 1));
+        onPlayersChanged(count, { mode: 'coop' });
+    }
+
+    function toast(message) {
+        try { onToast(message); } catch (error) { /* UI callbacks must not break input polling. */ }
+    }
+
+    function identify(pad, index) {
+        return pad && pad.id ? `${index}:${pad.id}` : String(index);
+    }
+
+    function connectedPad(pad, index) {
+        if (!pad || pad.connected === false) return;
+        const id = identify(pad, index);
+        if (connected.has(index)) {
+            connected.set(index, id);
+            gamepads.set(index, pad);
+            return;
+        }
+        connected.set(index, id);
+        gamepads.set(index, pad);
+        previousButtons.set(index, []);
+        toast(`Controller ${connected.size} connected`);
+    }
+
+    function disconnectedPad(index, idHint) {
+        const pad = gamepads.get(index);
+        const id = idHint || identify(pad, index);
+        const known = connected.delete(index) || Boolean(pad);
+        gamepads.delete(index);
+        previousButtons.delete(index);
+        const slot = slots.get(index);
+        if (slot !== undefined) {
+            slots.delete(index);
+            keyboardSlot = firstFreeSlot();
+            onPlayerLeft(slot);
+            updatePlayers();
+        }
+        if (known) toast(`Controller disconnected`);
+    }
+
+    function firstFreeSlot() {
+        const used = new Set(slots.values());
+        for (let i = 0; i < cap; i++) if (!used.has(i)) return i;
+        return cap - 1;
+    }
+
+    function buttonPressed(buttons, index) {
+        const button = buttons && buttons[index];
+        return Boolean(button && (button.pressed || Number(button.value) > 0.5));
+    }
+
+    function pollGamepads(game = null) {
+        if (navigatorObject && typeof navigatorObject.getGamepads === 'function') {
+            let pads = [];
+            try { pads = navigatorObject.getGamepads() || []; } catch (error) { pads = []; }
+            const seen = new Set();
+            Array.from(pads).forEach((pad, index) => {
+                if (!pad || pad.connected === false) return;
+                const id = identify(pad, index);
+                seen.add(index);
+                connectedPad(pad, index);
+                const buttons = pad.buttons || [];
+                const was = previousButtons.get(index) || [];
+                const aDown = buttonPressed(buttons, ACTIONS.fire);
+                if (aDown && !was[ACTIONS.fire] && !slots.has(index) && game && game.state === 'title' && slots.size + 1 < cap) {
+                    const slot = firstFreeSlot();
+                    slots.set(index, slot);
+                    if (slot === keyboardSlot) keyboardSlot = firstFreeSlot();
+                    toast(`Player ${slot + 1} joined`);
+                    updatePlayers();
+                }
+                const joined = slots.has(index);
+                const rising = (buttonIndex) => buttonPressed(buttons, buttonIndex) && !was[buttonIndex];
+                if (joined && rising(ACTIONS.start)) onAction(game && game.state === 'title' ? 'confirm' : 'pause');
+                if (joined && rising(ACTIONS.weaponNext) && game && game.state === 'title') onAction('modeNext');
+                if (joined && (rising(ACTIONS.view) || rising(ACTIONS.viewAlt))) onAction('toggleView');
+                previousButtons.set(index, buttons.map((button) => Boolean(button && (button.pressed || Number(button.value) > 0.5))));
+                gamepads.set(index, pad);
+            });
+            for (const [index, id] of Array.from(connected.entries())) {
+                if (!seen.has(index)) disconnectedPad(index, id);
+            }
+        }
+
+        const count = Math.max(1, keyboardSlot + 1, ...Array.from(slots.values(), (slot) => slot + 1));
+        const inputs = Array.from({ length: Math.min(cap, count) }, () => ({ left: false, right: false, up: false, down: false, fire: false, special: false, weaponNext: false, view: false, ax: 0, ay: 0 }));
+        if (inputs[keyboardSlot]) Object.assign(inputs[keyboardSlot], keyState);
+
+        for (const [index, slot] of slots) {
+            if (!inputs[slot]) continue;
+            const pad = gamepads.get(index);
+            if (!pad) continue;
+            const buttons = pad.buttons || [];
+            const axes = pad.axes || [];
+            const ax = axis(axes[0]);
+            const ay = -axis(axes[1]);
+            const left = buttonPressed(buttons, 14);
+            const right = buttonPressed(buttons, 15);
+            const up = buttonPressed(buttons, 12);
+            const down = buttonPressed(buttons, 13);
+            Object.assign(inputs[slot], {
+                left, right, up, down, ax, ay,
+                fire: buttonPressed(buttons, ACTIONS.fire) || buttonPressed(buttons, ACTIONS.fireAlt),
+                special: buttonPressed(buttons, ACTIONS.special) || buttonPressed(buttons, ACTIONS.specialAlt),
+                weaponNext: buttonPressed(buttons, ACTIONS.weaponNext),
+                view: buttonPressed(buttons, ACTIONS.view) || buttonPressed(buttons, ACTIONS.viewAlt)
+            });
+        }
+        lastInputs = inputs;
+        return inputs;
+    }
+
+    function keydown(event) {
+        if (!event || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+        if (shouldIgnoreKeyboard(event)) return;
+        const action = keyActions[event.key];
+        if (action) keyState[action] = true;
+    }
+    function keyup(event) {
+        const action = event && keyActions[event.key];
+        if (action) keyState[action] = false;
+    }
+    function clear() {
+        Object.keys(keyState).forEach((key) => { keyState[key] = false; });
+    }
+
+    if (documentObject && documentObject.addEventListener) {
+        documentObject.addEventListener('keydown', keydown);
+        documentObject.addEventListener('keyup', keyup);
+    }
+    const handleConnect = (event) => {
+        const pad = event && event.gamepad;
+        if (pad) connectedPad(pad, pad.index);
+    };
+    const handleDisconnect = (event) => {
+        const pad = event && event.gamepad;
+        if (pad) disconnectedPad(pad.index, identify(pad, pad.index));
+    };
+    if (windowObject && windowObject.addEventListener) {
+        windowObject.addEventListener('blur', clear);
+        windowObject.addEventListener('gamepadconnected', handleConnect);
+        windowObject.addEventListener('gamepaddisconnected', handleDisconnect);
+    }
+
+    return {
+        poll: pollGamepads,
+        getInputs: () => lastInputs,
+        clear,
+        get players() { return Math.min(cap, Math.max(1, slots.size + 1)); },
+        get keyboardSlot() { return keyboardSlot; },
+        get assignments() { return new Map(slots); },
+        destroy() {
+            if (documentObject && documentObject.removeEventListener) {
+                documentObject.removeEventListener('keydown', keydown);
+                documentObject.removeEventListener('keyup', keyup);
+            }
+            if (windowObject && windowObject.removeEventListener) {
+                windowObject.removeEventListener('blur', clear);
+                windowObject.removeEventListener('gamepadconnected', handleConnect);
+                windowObject.removeEventListener('gamepaddisconnected', handleDisconnect);
+            }
+        }
+    };
+}
+
+module.exports = { createInput, axis, MAX_PLAYERS, DEADZONE, ACTIONS };
+
+},{}],9:[function(require,module,exports){
+const ACTIONS = ['left', 'right', 'up', 'down', 'fire', 'special', 'weaponNext', 'view'];
+const MAX_RUN = 65535;
+
+function encodeInput(input = {}) {
+    let mask = 0;
+    ACTIONS.forEach((action, index) => { if (input[action]) mask |= 1 << index; });
+    const clampAxis = (value) => Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
+    return { mask, ax: Math.round(clampAxis(input.ax) * 127), ay: Math.round(clampAxis(input.ay) * 127) };
+}
+
+function decodeInput(encoded = {}) {
+    const input = {};
+    ACTIONS.forEach((action, index) => { input[action] = Boolean((encoded.mask || 0) & (1 << index)); });
+    if (encoded.ax) input.ax = encoded.ax / 127;
+    if (encoded.ay) input.ay = encoded.ay / 127;
+    return input;
+}
+
+function sameFrame(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+
+function encode(frames = []) {
+    const runs = [];
+    for (const frame of frames) {
+        const encoded = (Array.isArray(frame) ? frame : [frame]).map(encodeInput);
+        const last = runs[runs.length - 1];
+        if (last && last[0] < MAX_RUN && sameFrame(last[1], encoded)) last[0] += 1;
+        else runs.push([1, encoded]);
+    }
+    return { version: 1, frames: frames.length, players: runs[0] ? runs[0][1].length : 1, runs };
+}
+
+function decode(log) {
+    if (Array.isArray(log)) return log.map((frame) => (Array.isArray(frame) ? frame : [frame]).map(decodeInput));
+    if (!log || log.version !== 1 || !Array.isArray(log.runs)) throw new TypeError('Invalid input log.');
+    const frames = [];
+    for (const run of log.runs) {
+        if (!Array.isArray(run) || !Number.isInteger(run[0]) || run[0] < 1 || !Array.isArray(run[1])) throw new TypeError('Invalid input log run.');
+        const inputs = run[1].map(decodeInput);
+        for (let i = 0; i < run[0]; i++) frames.push(inputs.map((input) => ({ ...input })));
+    }
+    if (log.frames !== undefined && frames.length !== log.frames) throw new RangeError('Input log frame count mismatch.');
+    return frames;
+}
+
+module.exports = { ACTIONS, encode, decode, encodeInput, decodeInput };
+
+},{}],10:[function(require,module,exports){
 const Asteroid = require('./asteroid');
 const { range, pick } = require('./rng');
 
 const WORLD_WIDTH = Asteroid.WORLD_WIDTH;
 const SAFE_START = 520;
 const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield'];
+const FUTURE_PICKUPS = ['nova', 'prism', 'singularity'];
 
 function scatterAsteroid(level, rng, y) {
     const size = range(rng, 14, 26 + level.number * 1.6);
     const moving = rng() < level.movingChance;
-    return new Asteroid({
+    const asteroid = new Asteroid({
         x: range(rng, 40, WORLD_WIDTH - 40),
         y,
         size,
@@ -1322,6 +2102,14 @@ function scatterAsteroid(level, rng, y) {
         hp: level.scatterHpBonus ? Math.max(1, Math.ceil(size / 14)) + level.scatterHpBonus : undefined,
         rng
     });
+    if (level.futureSector) {
+        asteroid.phaseRock = level.phaseRocks && rng() < 0.2;
+        asteroid.orbiting = level.orbitingGuards && rng() < 0.18;
+        asteroid.phaseActive = false;
+        asteroid.phaseClock = range(rng, 0, 1.8);
+        if (asteroid.orbiting) { asteroid.orbitCenterX = asteroid.x; asteroid.orbitCenterY = asteroid.y; asteroid.orbitAngle = range(rng, 0, Math.PI * 2); asteroid.orbitRadius = range(rng, 24, 70); asteroid.orbitSpeed = range(rng, 1.2, 2.4); }
+    }
+    return asteroid;
 }
 
 function addWall(asteroids, level, rng, y) {
@@ -1398,7 +2186,7 @@ function populateLevel(level, rng) {
         const pattern = gauntletPattern(level, k);
         gauntletYs.push(y);
         PATTERNS[pattern](asteroids, level, rng, y);
-        const pickup = { x: range(rng, 120, WORLD_WIDTH - 120), y: y + 480, type: pick(rng, PICKUP_TYPES), size: 14 };
+        const pickup = { x: range(rng, 120, WORLD_WIDTH - 120), y: y + 480, type: pick(rng, level.futureSector ? PICKUP_TYPES.concat(FUTURE_PICKUPS) : PICKUP_TYPES), size: 14 };
         if (k % (level.gauntletPickupEvery ?? 1) === 0) pickups.push(pickup);
     }
 
@@ -1421,12 +2209,13 @@ function populateLevel(level, rng) {
     return { asteroids, pickups };
 }
 
-module.exports = { populateLevel, PICKUP_TYPES, SAFE_START };
+module.exports = { populateLevel, PICKUP_TYPES, FUTURE_PICKUPS, SAFE_START };
 
-},{"./asteroid":2,"./rng":24}],9:[function(require,module,exports){
+},{"./asteroid":2,"./rng":30}],11:[function(require,module,exports){
 const { applyDifficulty } = require('./difficulty');
 
 const LEVEL_COUNT = 10;
+const TOTAL_LEVEL_COUNT = 20;
 
 const LEVEL_NAMES = [
     'Drydock Drift',
@@ -1438,17 +2227,31 @@ const LEVEL_NAMES = [
     'Meteor Rain',
     'Ironheart Swarm',
     'Galactic Gauntlet',
-    'The Core'
+    'The Core',
+    'Faraday Frontier', 'Prism Expanse', 'Singularity Run', 'Phase Garden', 'Orbiting Citadel',
+    'The Redshift', 'Event Horizon', 'Nova Crucible', 'Last Light', 'Far Future'
 ];
 
 // Difficulty scales with the level number. Levels 1-3 have stationary rocks;
 // drift and rocks charging at the ship arrive from level 4 onward (on cadet).
 // Pilot and ace scale these knobs; see difficulty.js.
 function getBaseLevel(number) {
-    if (!Number.isInteger(number) || number < 1 || number > LEVEL_COUNT) {
-        throw new RangeError(`Level must be an integer from 1 to ${LEVEL_COUNT}`);
+    if (!Number.isInteger(number) || number < 1 || number > TOTAL_LEVEL_COUNT) {
+        throw new RangeError(`Level must be an integer from 1 to ${TOTAL_LEVEL_COUNT}`);
     }
     const n = number;
+    if (n > LEVEL_COUNT) {
+        const rank = n - LEVEL_COUNT;
+        return {
+            number: n, name: LEVEL_NAMES[n - 1], length: 8200 + rank * 700,
+            scrollSpeed: 175 + rank * 11, density: 24 + rank * 3, movingChance: Math.min(0.95, 0.62 + rank * 0.025),
+            driftSpeed: 35 + rank * 4, approachSpeed: 70 + rank * 8, shooterChance: Math.min(0.8, 0.45 + rank * 0.025),
+            fireInterval: Math.max(0.48, 1.65 - rank * 0.055), enemyBulletSpeed: 280 + rank * 18,
+            aimError: Math.max(0.015, 0.12 - rank * 0.006), bulletDamage: 22 + rank * 2,
+            gauntlets: 5 + Math.ceil(rank / 2), pickups: Math.max(2, 6 - Math.floor(rank / 3)), seed: 1000 + n * 7919,
+            phaseRocks: rank >= 2, orbitingGuards: rank >= 4, futureSector: true
+        };
+    }
     return {
         number: n,
         name: LEVEL_NAMES[n - 1],
@@ -1473,15 +2276,61 @@ function getLevel(number, difficulty = 'cadet') {
     return applyDifficulty(getBaseLevel(number), difficulty);
 }
 
-module.exports = { LEVEL_COUNT, LEVEL_NAMES, getLevel, getBaseLevel };
+module.exports = { LEVEL_COUNT, TOTAL_LEVEL_COUNT, LEVEL_NAMES, getLevel, getBaseLevel };
 
-},{"./difficulty":6}],10:[function(require,module,exports){
+},{"./difficulty":6}],12:[function(require,module,exports){
+const MAX_PLAYERS = 5;
+function scaleForPlayers(count) {
+    if (!Number.isInteger(count) || count < 1 || count > MAX_PLAYERS) throw new RangeError('Player count must be between 1 and 5.');
+    return count <= 2 ? 1 : count === 3 ? 0.8 : 0.7;
+}
+function groupPlayers(list, max = MAX_PLAYERS) {
+    if (!Number.isInteger(max) || max < 1 || max > MAX_PLAYERS) throw new RangeError('Group size must be from 1 to 5.');
+    const groups = [];
+    for (let i = 0; i < list.length; i += max) groups.push(list.slice(i, i + max));
+    return groups;
+}
+function createPlayerStats(count) {
+    return Array.from({ length: count }, (_, index) => ({ index, score: 0, shotsFired: 0, hits: 0, kills: 0, livesLost: 0, alive: true, reachedGate: false }));
+}
+function awardScore(stats, index, points, mode = 'coop') {
+    if (mode === 'versus') stats[index].score += points;
+    else stats.forEach((player) => { player.score += points; });
+    return stats;
+}
+function canEndLevel(players, mode) {
+    const alive = players.filter((player) => player.alive);
+    if (!alive.length) return true;
+    return mode === 'coop' ? alive.some((player) => player.reachedGate) : alive.every((player) => player.reachedGate);
+}
+module.exports = { MAX_PLAYERS, scaleForPlayers, groupPlayers, createPlayerStats, awardScore, canEndLevel };
+
+},{}],13:[function(require,module,exports){
+const COLLECTION = '0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B';
+const ESCROW = '0x31b07b83e99A9bdF379bf40225b8A80d3804C89d';
+const PRIZES = {
+    1: [
+        { project: 'DecentHead', version: '2.0.0', tokenId: 70, label: 'DecentHead v2.0.0 #70', metadataURI: 'ipfs://QmVGmpz63TS9XkTHMxf2sybHv5k9Vdoyr2Spi9QqZ4pzfj' },
+        { project: 'DecentMarket', version: '0.3.1', tokenId: 71, label: 'DecentMarket v0.3.1 #71', metadataURI: 'ipfs://QmUR29d2NeRH94ceLDxHqDvDi4eNdSRTNM1wZ6UPDsvWqi' }
+    ],
+    2: [
+        { project: 'DecentBusking', version: '1.0.0', tokenId: 75, label: 'DecentBusking v1.0.0 #75', metadataURI: 'ipfs://QmZroFCEhaKoctVqW682Uzv5i6WWiQtuWvTAYkQBYfH6TD' },
+        { project: 'BigNuten_Vanilla', version: '3.3.0', tokenId: 76, label: 'BigNuten_Vanilla v3.3.0 #76', metadataURI: 'ipfs://QmSrAwCU5p1ga3RzpuDHZxezsNjob76ZSFpRzCuG15yYqU' },
+        { project: 'DecentPilgrimages', version: '0.1.1', tokenId: 78, label: 'DecentPilgrimages v0.1.1 #78', metadataURI: 'ipfs://QmNe9SYSyrZYV66X29Wp4hBLbCDpQDjnJsAJLDdAytALEN' },
+        { project: 'DecentCanopy', version: '0.1.0', tokenId: 79, label: 'DecentCanopy v0.1.0 #79', metadataURI: 'ipfs://QmQqQtuSeab78F3pdBcMbvSopYZLa51zJ4JxcodQ2ugy9d' }
+    ]
+};
+module.exports = { COLLECTION, ESCROW, PRIZES };
+
+},{}],14:[function(require,module,exports){
 // Image preloader. Renderers ask for images by key and fall back to vector
 // drawing while an image is missing, still loading or failed to load.
 const BASE_URL = 'assets/game/';
 
 const ROCK_KEYS = ['rock-1', 'rock-2', 'rock-3', 'rock-4', 'rock-5', 'rock-6', 'rock-7', 'rock-8'];
+const FUTURE_ROCK_KEYS = ['future-rock-1', 'future-rock-2', 'future-rock-3', 'future-rock-4'];
 const BACKDROP_KEYS = ['bg-galaxy', 'bg-royal', 'bg-2a', 'bg-tec', 'bg-zz'];
+const SECTOR2_BACKDROP_KEYS = ['bg-sector2-lotus', 'bg-sector2-mars', 'bg-sector2-top'];
 const BREATHE_FRAMES = 8;
 
 const MANIFEST = {
@@ -1501,7 +2350,21 @@ const MANIFEST = {
     'bg-zz': 'bg-zz.jpg',
     'mars-domicile': 'mars-domicile.jpg',
     'breathe-sheet': 'breathe-sheet.png',
-    'breathe-still': 'breathe-still.png'
+    'breathe-still': 'breathe-still.png',
+    'future-rock-1': 'future-rock-1.png',
+    'future-rock-2': 'future-rock-2.png',
+    'future-rock-3': 'future-rock-3.png',
+    'future-rock-4': 'future-rock-4.png',
+    'bg-sector2-lotus': 'bg-sector2-lotus.jpg',
+    'bg-sector2-mars': 'bg-sector2-mars.jpg',
+    'bg-sector2-top': 'bg-sector2-top.jpg',
+    'gate-sector2': 'gate-sector2.png',
+    'supporter-70': 'supporter-70.jpg',
+    'supporter-71': 'supporter-71.jpg',
+    'supporter-75': 'supporter-75.jpg',
+    'supporter-76': 'supporter-76.jpg',
+    'supporter-78': 'supporter-78.jpg',
+    'supporter-79': 'supporter-79.jpg'
 };
 
 const images = {};
@@ -1557,7 +2420,17 @@ function rockKeyFor(id) {
 
 function backdropKeyFor(levelNumber) {
     const n = Math.max(1, Math.floor(Number(levelNumber) || 1));
+    if (n >= 11) return SECTOR2_BACKDROP_KEYS[(n - 11) % SECTOR2_BACKDROP_KEYS.length];
     return BACKDROP_KEYS[(n - 1) % BACKDROP_KEYS.length];
+}
+
+function futureRockKeyFor(id) {
+    return FUTURE_ROCK_KEYS[hashInt(id) % FUTURE_ROCK_KEYS.length];
+}
+
+function supporterImageKey(tokenId) {
+    const id = Number(tokenId);
+    return MANIFEST[`supporter-${id}`] ? `supporter-${id}` : null;
 }
 
 // Offscreen canvas factory that works in browsers (and returns null in Node).
@@ -1602,7 +2475,9 @@ module.exports = {
     BASE_URL,
     MANIFEST,
     ROCK_KEYS,
+    FUTURE_ROCK_KEYS,
     BACKDROP_KEYS,
+    SECTOR2_BACKDROP_KEYS,
     BREATHE_FRAMES,
     isImageReady,
     getImage,
@@ -1610,15 +2485,21 @@ module.exports = {
     hashInt,
     rockKeyFor,
     backdropKeyFor,
+    futureRockKeyFor,
+    supporterImageKey,
     makeCanvas,
     getTinted
 };
 
-},{}],11:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 // Per-level space backdrops: tinted gradient, a big Mandelblum "nebula"
 // (screen-blended so its black matte vanishes) and pixel starfield parallax.
 const { VIEW } = require('./projection');
 const { getImage, backdropKeyFor } = require('./assets');
+
+const SECTOR2_TINTS = [
+    ['#05051b', '#15103f'], ['#02141c', '#074b58'], ['#120522', '#3c145f']
+];
 
 const LEVEL_TINTS = [
     ['#04040c', '#0b1430'],
@@ -1635,6 +2516,7 @@ const LEVEL_TINTS = [
 
 function levelTint(levelNumber) {
     const n = Math.max(1, Math.floor(Number(levelNumber) || 1));
+    if (n >= 11) return SECTOR2_TINTS[(n - 11) % SECTOR2_TINTS.length];
     return LEVEL_TINTS[(n - 1) % LEVEL_TINTS.length];
 }
 
@@ -1702,11 +2584,11 @@ function createOverviewBackground() {
     };
 }
 
-module.exports = { LEVEL_TINTS, levelTint, createStarfield, drawNebula, createOverviewBackground };
+module.exports = { LEVEL_TINTS, SECTOR2_TINTS, levelTint, createStarfield, drawNebula, createOverviewBackground };
 
-},{"./assets":10,"./projection":21}],12:[function(require,module,exports){
+},{"./assets":14,"./projection":26}],16:[function(require,module,exports){
 // Collectible "battle card" renderer: a deterministic image of one cleared level.
-const { getImage, loadAssets, makeCanvas, ROCK_KEYS, backdropKeyFor, rockKeyFor } = require('./assets');
+const { getImage, loadAssets, makeCanvas, ROCK_KEYS, FUTURE_ROCK_KEYS, backdropKeyFor, rockKeyFor } = require('./assets');
 const { pixelText } = require('./font');
 const { drawGlow, drawPickup, pixelSprite, SHIP_TOP, SHIP_PALETTE } = require('./shapes');
 const { difficultyColor } = require('./hud');
@@ -1715,7 +2597,7 @@ const {
     cardLayout, mapPoint, killRadius, levelLengthOf, sampleRecord
 } = require('./cardMath');
 
-const TITLE = 'AsteRoid \u00b7 Galactic Gauntlet';
+const TITLE = 'DECENT VOYAGER \u00b7 Galactic Gauntlet';
 const CARD_ACCENTS = ['#7fd7ff', '#5fffd0', '#c78cff', '#ff6cf5', '#ffd25c', '#7dff8c', '#ff8a2c', '#5fd9ff', '#ff5a8a', '#fff4c8'];
 const list = (value) => (Array.isArray(value) ? value : []);
 const num = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
@@ -1754,7 +2636,7 @@ function drawBackdrop(ctx, record, rng, accent) {
     ctx.globalAlpha = 1;
     // Floating Mandelblum rocks in the margins.
     for (let i = 0; i < 5; i++) {
-        const img = getImage(ROCK_KEYS[Math.floor(rng() * ROCK_KEYS.length)]);
+        const img = getImage(num(record.level) >= 11 ? FUTURE_ROCK_KEYS[Math.floor(rng() * FUTURE_ROCK_KEYS.length)] : ROCK_KEYS[Math.floor(rng() * ROCK_KEYS.length)]);
         if (!img) continue;
         const size = 70 + rng() * 90;
         const x = rng() < 0.5 ? 20 + rng() * 60 : width - 80 - rng() * 60;
@@ -1823,11 +2705,15 @@ function drawHeader(ctx, record, accent) {
     const { header } = cardLayout();
     const diffId = String(record.difficulty || 'cadet');
     const diffLabel = String(record.difficultyLabel || diffId).toUpperCase();
-    pixelText(ctx, TITLE, header.x, header.y + 30, { size: 26, color: '#7fd7ff' });
+    pixelText(ctx, TITLE, header.x, header.y + 30, { size: 24, color: '#7fd7ff' });
     const levelText = `LEVEL ${String(num(record.level, 1)).padStart(2, '0')}`;
     drawGlow(ctx, header.x + 150, header.y + 78, 260, accent, 0.35);
     pixelText(ctx, levelText, header.x, header.y + 96, { size: 60, color: '#fff4c8', outline: accent });
     pixelText(ctx, String(record.levelName || '').toUpperCase(), header.x, header.y + 138, { size: 30, color: accent });
+    const captures = Array.isArray(record.captures) ? record.captures.length : (record.supporterCaptured || record.capture ? 1 : 0);
+    const sector = num(record.level) >= 11 || record.sector === 2 ? 'SECTOR II · FAR FUTURE' : 'SECTOR I · GALACTIC GAUNTLET';
+    const runBadges = `${sector}${captures ? `  ·  SUPPORTER CAPTURES ${captures}` : ''}`;
+    pixelText(ctx, runBadges, header.x + header.w, header.y + 148, { size: 13, color: num(record.level) >= 11 ? '#67faff' : captures ? '#ffe65c' : '#9fb4c8', align: 'right' });
     drawBadge(ctx, diffLabel, header.x + header.w, header.y + 2, difficultyColor(diffId));
     pixelText(ctx, 'CLEARED', header.x + header.w, header.y + 92, { size: 22, color: '#9fb4c8', align: 'right' });
     pixelText(ctx, formatUtc(record.completedAt), header.x + header.w, header.y + 124, { size: 24, color: '#e8f6ff', align: 'right' });
@@ -2168,7 +3054,7 @@ async function previewBattleCard(record) {
 
 module.exports = { renderBattleCard, previewBattleCard, latestRecord };
 
-},{"./assets":10,"./cardMath":13,"./font":15,"./hud":17,"./shapes":23}],13:[function(require,module,exports){
+},{"./assets":14,"./cardMath":17,"./font":19,"./hud":21,"./shapes":28}],17:[function(require,module,exports){
 // Pure helpers for the battle card (testable in Node).
 const WORLD_WIDTH = 800;
 
@@ -2308,7 +3194,7 @@ module.exports = {
     sampleRecord
 };
 
-},{}],14:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 // Normalises game events for presentation. Older game builds emitted pickups
 // as `{ type: 'power' }` (the pickup kind overwrote the event name); newer
 // builds emit `{ type: 'pickup', pickupType: 'power' }`.
@@ -2326,7 +3212,7 @@ function normalizeEvent(event) {
 
 module.exports = { PICKUP_TYPES, normalizeEvent };
 
-},{}],15:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 // Crisp "8-bit" text: glyphs are rasterised at a low resolution into a cached
 // offscreen canvas and scaled up with smoothing disabled, giving chunky
 // pixels without shipping a font file. Falls back to plain fillText in
@@ -2431,7 +3317,7 @@ function measurePixelText(value, { size = 14, weight = 'bold', scale = 1 } = {})
 
 module.exports = { FONT_STACK, fontFor, pixelText, measurePixelText };
 
-},{"./assets":10}],16:[function(require,module,exports){
+},{"./assets":14}],20:[function(require,module,exports){
 // Client-side juice: explosions, debris, shockwaves, thruster trails, shield
 // ripples, floating text, fireworks, screen shake, hit-stop and slow-mo.
 // Driven purely by drained game events so game.js stays deterministic.
@@ -2439,6 +3325,8 @@ const { drawGlow } = require('./shapes');
 const { pixelText } = require('./font');
 const { VIEW } = require('./projection');
 const { normalizeEvent } = require('./events');
+const { getImage } = require('./assets');
+const { drawSupporterToken } = require('./vault');
 
 const MAX_WORLD_PARTICLES = 650;
 const MAX_SCREEN_PARTICLES = 700;
@@ -2473,7 +3361,14 @@ function createFx() {
         thrustTimer: 0,
         time: 0,
         latestRecord: null,
-        kills: 0
+        kills: 0,
+        captureTime: -1,
+        captureTokenId: null,
+        warpTime: -1,
+        warpFrom: null,
+        vaultAlarm: 0,
+        charging: false,
+        charge: 0
     };
 
     function addWorld(p) {
@@ -2528,6 +3423,7 @@ function createFx() {
         const drift = game.level && game.level.scrollSpeed ? game.level.scrollSpeed * 0.6 : 0;
         for (const raw of events) {
             const e = normalizeEvent(raw);
+            const eventShip = Array.isArray(game.ships) && game.ships[e.player] ? game.ships[e.player] : ship;
             switch (e.type) {
                 case 'explode': {
                     const size = Number(e.size) || 20;
@@ -2590,8 +3486,57 @@ function createFx() {
                 case 'asteroidMissed':
                     if (e.x !== undefined) floatText(e.x, e.y + 20, 'MISS', '#8a93a6', 0.8, 11);
                     break;
+                case 'vaultSpawned':
+                    state.vaultAlarm = 1.8;
+                    state.flash = Math.max(state.flash, 0.18);
+                    state.flashColor = '#ff4fa6';
+                    floatText(e.x || ship.x, e.y || ship.y + 70, 'SUPPORTER VAULT', '#ff8ac4', 2, 15);
+                    break;
+                case 'guardDestroyed':
+                    explosion(e.x || ship.x, e.y || ship.y, Number(e.size) || 24, true, drift);
+                    break;
+                case 'chargeStart':
+                    state.charging = true;
+                    state.charge = 0;
+                    addWorld({ kind: 'ring', x: eventShip.x, y: eventShip.y, vx: 0, vy: drift, life: 1.2, maxLife: 1.2, radius: 24, grow: 80, color: '#b67aff' });
+                    break;
+                case 'chargeRelease':
+                    state.charging = false;
+                    state.charge = Math.max(0, Math.min(1, Number(e.charge) || 0));
+                    state.flash = Math.max(state.flash, 0.18 + state.charge * 0.3);
+                    state.flashColor = '#d6a1ff';
+                    addWorld({ kind: 'ring', x: e.x ?? eventShip.x, y: e.y ?? eventShip.y, vx: 0, vy: drift, life: 0.85, maxLife: 0.85, radius: 18, grow: 220 + state.charge * 180, color: '#d6a1ff' });
+                    break;
+                case 'novaBlast':
+                    addWorld({ kind: 'ring', x: e.x ?? eventShip.x, y: e.y ?? eventShip.y, vx: 0, vy: drift, life: 0.8, maxLife: 0.8, radius: 20, grow: Number(e.radius) || 260, color: '#f3bdff' });
+                    addWorld({ kind: 'flash', x: e.x ?? eventShip.x, y: e.y ?? eventShip.y, vx: 0, vy: drift, life: 0.42, maxLife: 0.42, radius: 180, color: '#f3bdff' });
+                    state.shake = Math.max(state.shake, 16);
+                    break;
+                case 'supporterCaptured':
+                    state.captureTime = 0;
+                    state.captureTokenId = e.prize && e.prize.tokenId !== undefined ? e.prize.tokenId : e.tokenId;
+                    state.flash = 0.8;
+                    state.flashColor = '#fff4c8';
+                    state.celebrateTime = 0;
+                    state.celebrateKind = 'supporter';
+                    for (let i = 0; i < 10; i++) firework(VIEW.width / 2 + rand(-180, 180), VIEW.height / 2 + rand(-120, 120), FIREWORK_COLORS[i % FIREWORK_COLORS.length], 52);
+                    break;
+                case 'warpStart':
+                    state.warpTime = 0;
+                    state.warpFrom = e.from || null;
+                    state.flash = Math.max(state.flash, 0.45);
+                    state.flashColor = '#67faff';
+                    break;
+                case 'warpEnd':
+                    state.warpTime = state.warpTime < 0 ? 1.7 : state.warpTime;
+                    state.flash = Math.max(state.flash, 0.4);
+                    state.flashColor = '#bafcff';
+                    break;
+                case 'sectorUnlocked':
+                    floatText(ship.x, ship.y + 72, 'SECTOR II UNLOCKED', '#67faff', 2.4, 17);
+                    break;
                 case 'shot':
-                    addWorld({ kind: 'flash', x: ship.x, y: ship.y + 16, vx: 0, vy: drift, life: 0.06, maxLife: 0.06, radius: 16, color: '#bff6ff' });
+                    addWorld({ kind: 'flash', x: eventShip.x, y: eventShip.y + 16, vx: 0, vy: drift, life: 0.06, maxLife: 0.06, radius: 16, color: '#bff6ff' });
                     break;
                 case 'levelComplete':
                     state.hitStop = Math.max(state.hitStop, 0.15);
@@ -2635,6 +3580,14 @@ function createFx() {
         state.slowMo = Math.max(0, state.slowMo - dt);
         state.flash = Math.max(0, state.flash - dt * 1.6);
         state.shake = Math.max(0, state.shake - dt * 30);
+        state.vaultAlarm = Math.max(0, state.vaultAlarm - dt);
+        if (state.captureTime >= 0) { state.captureTime += dt; if (state.captureTime > 4.2) state.captureTime = -1; }
+        if (state.warpTime >= 0) { state.warpTime += dt; if (state.warpTime > 2.5) state.warpTime = -1; }
+        if (game && game.ship) {
+            const charge = game.charge ?? game.ship.charge ?? game.ship.chargeAmount ?? 0;
+            state.charge = Math.max(0, Math.min(1, Number(charge) || 0));
+            state.charging = Boolean(game.charging || game.ship.charging || state.charge > 0);
+        }
         const fxDt = dt * (state.hitStop > 0 ? 0.1 : state.slowMo > 0 ? 0.35 : 1);
         for (const p of world) {
             p.life -= fxDt;
@@ -2736,7 +3689,7 @@ function createFx() {
         ctx.globalAlpha = 1;
     }
 
-    function drawScreen(ctx) {
+    function drawScreen(ctx, game = null) {
         for (const p of screen) {
             const t = Math.max(0, p.life / p.maxLife);
             if (p.kind === 'flash') {
@@ -2753,6 +3706,59 @@ function createFx() {
             }
         }
         ctx.globalAlpha = 1;
+        if (state.warpTime >= 0) {
+            const t = Math.min(1, state.warpTime / 2.5);
+            const cx = VIEW.width / 2; const cy = VIEW.height / 2;
+            const pulse = 0.5 + 0.5 * Math.sin(t * Math.PI * 10);
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.fillStyle = `rgba(3, 5, 28, ${0.38 + pulse * 0.16})`;
+            ctx.fillRect(0, 0, VIEW.width, VIEW.height);
+            for (let i = 0; i < 54; i++) {
+                const angle = (i / 54) * Math.PI * 2 + t * 1.3;
+                const inner = 20 + ((i * 47 + t * 840) % 320);
+                const outer = inner + 50 + t * 430;
+                ctx.strokeStyle = i % 3 === 0 ? '#fff4c8' : i % 2 ? '#67faff' : '#c16cff';
+                ctx.globalAlpha = Math.max(0.1, 0.75 - inner / 850);
+                ctx.lineWidth = i % 5 === 0 ? 3 : 1;
+                ctx.beginPath(); ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
+                ctx.lineTo(cx + Math.cos(angle) * outer, cy + Math.sin(angle) * outer); ctx.stroke();
+            }
+            const image = getImage('bg-sector2-lotus');
+            if (image) {
+                const size = 180 + t * 550 + pulse * 90;
+                ctx.globalAlpha = 0.2 + t * 0.38;
+                ctx.translate(cx, cy); ctx.rotate(t * 3); ctx.drawImage(image, -size / 2, -size / 2, size, size);
+            }
+            ctx.restore();
+            pixelText(ctx, t < 0.8 ? 'WARPING TO SECTOR II' : 'FAR FUTURE · ARRIVAL', cx, VIEW.height - 70, { size: 20, align: 'center', color: '#bafcff' });
+        }
+        if (state.captureTime >= 0) {
+            const t = state.captureTime;
+            const cx = VIEW.width / 2; const cy = VIEW.height / 2;
+            ctx.save(); ctx.globalCompositeOperation = 'lighter';
+            for (let i = 0; i < 40; i++) {
+                const angle = (i / 40) * Math.PI * 2 + t * (i % 2 ? 0.2 : -0.15);
+                const inner = 45 + 15 * Math.sin(t * 11 + i);
+                const reach = 200 + 260 * Math.min(1, t / 1.6) + 35 * Math.sin(t * 8 + i * 0.5);
+                ctx.strokeStyle = i % 4 === 0 ? '#fff4c8' : i % 3 === 0 ? '#ff6cf5' : '#67faff';
+                ctx.globalAlpha = Math.max(0, 0.75 - Math.max(0, t - 2.4) * 0.38);
+                ctx.lineWidth = i % 5 === 0 ? 4 : 2;
+                ctx.beginPath(); ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
+                ctx.lineTo(cx + Math.cos(angle) * reach, cy + Math.sin(angle) * reach); ctx.stroke();
+            }
+            ctx.restore();
+            const size = 88 + 14 * Math.sin(t * 7);
+            drawSupporterToken(ctx, state.captureTokenId, cx, cy - 20, size);
+            ctx.fillStyle = 'rgba(2, 3, 12, 0.72)'; ctx.fillRect(cx - 220, cy + 56, 440, 42);
+            pixelText(ctx, `SUPPORTER TOKEN CAPTURED${state.captureTokenId ? ` · #${state.captureTokenId}` : ''}`, cx, cy + 82, { size: 15, align: 'center', color: '#fff4c8' });
+            if (game && game.level && game.level.number >= 10) pixelText(ctx, 'SECTOR II UNLOCKED', cx, cy + 124, { size: 12, align: 'center', color: '#67faff' });
+        }
+        if (state.vaultAlarm > 0) {
+            ctx.save(); ctx.globalAlpha = (0.25 + 0.18 * Math.sin(state.time * 18)) * Math.min(1, state.vaultAlarm);
+            ctx.fillStyle = '#ff174f'; ctx.fillRect(0, 0, VIEW.width, 8); ctx.fillRect(0, VIEW.height - 8, VIEW.width, 8);
+            ctx.restore();
+        }
         if (state.flash > 0) {
             ctx.globalAlpha = Math.min(0.55, state.flash);
             ctx.fillStyle = state.flashColor;
@@ -2794,12 +3800,13 @@ function createFx() {
 
 module.exports = { createFx, MAX_WORLD_PARTICLES, MAX_SCREEN_PARTICLES };
 
-},{"./events":14,"./font":15,"./projection":21,"./shapes":23}],17:[function(require,module,exports){
+},{"./assets":14,"./events":18,"./font":19,"./projection":26,"./shapes":28,"./vault":29}],21:[function(require,module,exports){
 const { VIEW } = require('./projection');
 const { WEAPONS, MAX_TIER } = require('../weapons');
-const { LEVEL_COUNT } = require('../levels');
+const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('../levels');
 const { PICKUP_STYLE, SHIP_TOP, SHIP_PALETTE, pixelSprite, drawBreathe, drawGlow } = require('./shapes');
 const { pixelText } = require('./font');
+const { getPlayers, versusMode } = require('./players');
 
 const DIFFICULTY_COLORS = { cadet: '#7dff8c', pilot: '#ffd25c', ace: '#ff3c5a' };
 const POWER_SEGMENTS = 16;
@@ -2855,7 +3862,7 @@ function panelBox(ctx, x, y, w, h, color = 'rgba(127, 215, 255, 0.55)') {
 }
 
 function createHud() {
-    const view = { score: 0, lastTime: null, combo: 0, comboPop: 0, power: 1, lastLevelKey: '' };
+    const view = { score: 0, lastTime: null, combo: 0, comboPop: 0, power: 1, lastLevelKey: '', toast: '', toastUntil: 0 };
 
     function drawPower(ctx, game) {
         const ship = game.ship;
@@ -2900,18 +3907,62 @@ function createHud() {
     }
 
     function drawWeapon(ctx, game) {
-        const ship = game.ship;
-        const spec = WEAPONS[ship.weapon.type] || WEAPONS.blaster;
+        const ship = game.ship || {};
+        const weapon = ship.weapon || { type: 'blaster', tier: 1 };
+        const spec = WEAPONS[weapon.type] || WEAPONS.blaster;
         const x = 14;
         const y = VIEW.height - 92;
         panelBox(ctx, x, y, 286, 24, spec.color);
         pixelText(ctx, spec.name.toUpperCase(), x + 10, y + 17, { size: 12, color: spec.color });
         for (let i = 0; i < MAX_TIER; i++) {
             const px = x + 200 + i * 26;
-            ctx.fillStyle = i < ship.weapon.tier ? spec.color : 'rgba(255,255,255,0.12)';
+            ctx.fillStyle = i < (weapon.tier || 1) ? spec.color : 'rgba(255,255,255,0.12)';
             ctx.fillRect(px, y + 7, 20, 10);
             if (i < ship.weapon.tier) drawGlow(ctx, px + 10, y + 12, 14, spec.color, 0.3);
         }
+    }
+
+    function drawCharge(ctx, game) {
+        const ship = game.ship || {};
+        const weapon = ship.weapon || {};
+        const raw = game.charge ?? ship.charge ?? ship.chargeAmount ?? ship.weaponCharge ?? 0;
+        const charge = Math.max(0, Math.min(1, Number(raw) || 0));
+        const charging = Boolean(game.charging || ship.charging || charge > 0);
+        if (!charging && charge <= 0) return;
+        const color = (WEAPONS[weapon.type] || WEAPONS.nova || {}).color || '#b67aff';
+        const x = 14; const y = VIEW.height - 126; const w = 286;
+        panelBox(ctx, x, y, w, 12, color);
+        ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(x + 2, y + 3, w - 4, 6);
+        ctx.fillStyle = color; ctx.fillRect(x + 2, y + 3, (w - 4) * charge, 6);
+        drawGlow(ctx, x + 2 + (w - 4) * charge, y + 6, 24 + charge * 30, color, 0.3 + charge * 0.6);
+        if (charging) pixelText(ctx, `${weapon.type === 'singularity' ? 'EVENT HORIZON' : weapon.type === 'prism' ? 'PRISM CHARGE' : 'NOVA CHARGE'} ${Math.round(charge * 100)}%`, x + 4, y - 3, { size: 9, color: '#ffffff' });
+    }
+
+    function drawPlayers(ctx, game) {
+        const players = getPlayers(game);
+        if (players.length <= 1) return;
+        players.forEach(({ player, ship, index, color, score }, i) => {
+            const y = 72 + i * 27;
+            const x = VIEW.width - 188;
+            panelBox(ctx, x, y, 176, 27, color);
+            pixelText(ctx, `P${index + 1}`, x + 8, y + 15, { size: 11, color });
+            const power = Math.max(0, Math.min(1, Number(ship.power) / Math.max(1, Number(ship.maxPower) || 100)));
+            ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(x + 37, y + 8, 74, 7);
+            ctx.fillStyle = color; ctx.fillRect(x + 37, y + 8, 74 * power, 7);
+            pixelText(ctx, `♥${Math.max(0, Number(ship.lives) || 0)}`, x + 120, y + 15, { size: 10, color: '#ffffff' });
+            const playerScore = Number(player && player.score) || score || Number(game.playerStats && game.playerStats[index] && game.playerStats[index].score) || (index === 0 ? game.score : 0);
+            const charge = Math.max(0, Math.min(1, Number(ship.charge) || 0));
+            if (charge > 0) { ctx.fillStyle = color; ctx.fillRect(x + 37, y + 20, 74 * charge, 2); }
+            if (versusMode(game)) pixelText(ctx, String(playerScore), x + 168, y + 15, { size: 11, color: '#ffe65c', align: 'right' });
+        });
+        if (versusMode(game)) pixelText(ctx, 'VERSUS · INDIVIDUAL SCORE', VIEW.width - 100, 64, { size: 9, color: '#ff6cf5', align: 'right' });
+    }
+
+    function drawToast(ctx) {
+        if (!view.toast || Date.now() >= view.toastUntil) return;
+        const alpha = Math.min(1, (view.toastUntil - Date.now()) / 300);
+        panelBox(ctx, VIEW.width / 2 - 150, 66, 300, 30, '#7fd7ff');
+        pixelText(ctx, view.toast, VIEW.width / 2, 86, { size: 12, align: 'center', color: '#ffffff', alpha });
     }
 
     function drawLives(ctx, game) {
@@ -2930,7 +3981,8 @@ function createHud() {
         const width = 300;
         const x = (VIEW.width - width) / 2;
         const diff = game.difficulty;
-        const label = `LV ${game.level.number}/${LEVEL_COUNT}  ${game.level.name.toUpperCase()}`;
+        const sector = game.level.number >= 11 ? 'SECTOR II · FAR FUTURE  ' : '';
+        const label = `${sector}LV ${game.level.number}/${game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT}  ${game.level.name.toUpperCase()}`;
         pixelText(ctx, label, VIEW.width / 2, 20, { size: 13, align: 'center' });
         const segments = 30;
         const lit = Math.floor(game.levelProgress * segments);
@@ -3037,6 +4089,7 @@ function createHud() {
         const now = game.time || 0;
         const dt = view.lastTime === null ? 0 : Math.max(0, Math.min(0.1, now - view.lastTime));
         view.lastTime = now;
+        drawToast(ctx);
         if (game.state === 'title') {
             view.score = 0;
             return;
@@ -3045,7 +4098,9 @@ function createHud() {
         drawProgress(ctx, game);
         drawLives(ctx, game);
         drawWeapon(ctx, game);
+        drawCharge(ctx, game);
         drawPower(ctx, game);
+        drawPlayers(ctx, game);
         drawCombo(ctx, game, dt);
         const viewLabel = game.view === 'pov' ? 'POV' : 'MAP';
         const flags = `${opts.muted ? 'M:OFF ' : ''}${opts.crt ? 'CRT ' : ''}[V] ${viewLabel}`;
@@ -3053,20 +4108,23 @@ function createHud() {
         if (game.view === 'pov') drawRadar(ctx, game);
     }
 
-    return { drawHud, view };
+    return { drawHud, view, setToast(message, duration = 2200) { view.toast = String(message); view.toastUntil = Date.now() + duration; } };
 }
 
 module.exports = { createHud, rollUp, litSegments, difficultyColor, difficultyName, panelBox, POWER_SEGMENTS, DIFFICULTY_COLORS };
 
-},{"../levels":9,"../weapons":28,"./font":15,"./projection":21,"./shapes":23}],18:[function(require,module,exports){
+},{"../levels":11,"../weapons":35,"./font":19,"./players":23,"./projection":26,"./shapes":28}],22:[function(require,module,exports){
 const { VIEW, projectOverview } = require('./projection');
 const { drawAsteroid, drawPickup, drawShipTop, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { createOverviewBackground } = require('./background');
 const { getImage } = require('./assets');
 const { pixelText } = require('./font');
+const { getPlayers, playerScale } = require('./players');
+const { drawVault } = require('./vault');
 
-function drawJumpGate(ctx, y, time) {
-    const gate = getImage('gate');
+function drawJumpGate(ctx, y, time, sector2 = false) {
+    const gate = getImage(sector2 ? 'gate-sector2' : 'gate') || getImage('gate');
+    const gateColor = sector2 ? '#67faff' : '#7dff8c';
     if (gate) {
         const size = 220 + 10 * Math.sin(time * 2);
         ctx.save();
@@ -3075,11 +4133,11 @@ function drawJumpGate(ctx, y, time) {
         ctx.drawImage(gate, VIEW.width / 2 - size / 2, y - size / 2, size, size);
         ctx.restore();
     }
-    drawGlow(ctx, VIEW.width / 2, y, 140, '#7dff8c', 0.25 + 0.1 * Math.sin(time * 4));
+    drawGlow(ctx, VIEW.width / 2, y, 140, gateColor, 0.25 + 0.1 * Math.sin(time * 4));
     ctx.save();
     ctx.setLineDash([12, 8]);
     ctx.lineDashOffset = -time * 40;
-    ctx.strokeStyle = '#7dff8c';
+    ctx.strokeStyle = gateColor;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(0, y);
@@ -3098,19 +4156,20 @@ function createOverviewRenderer() {
         background(ctx, game);
 
         const exit = projectOverview({ x: 0, y: game.level.length }, scrollY);
-        if (exit.y > -160 && exit.y < VIEW.height + 160) drawJumpGate(ctx, exit.y, time);
+        if (exit.y > -160 && exit.y < VIEW.height + 160) drawJumpGate(ctx, exit.y, time, game.level.number >= 11);
 
         const onScreen = (p, margin) => p.y > -margin && p.y < VIEW.height + margin;
 
-        for (const pickup of game.pickups) {
+        for (const pickup of (game.pickups || [])) {
             const p = projectOverview(pickup, scrollY);
             if (onScreen(p, 40)) drawPickup(ctx, pickup, p.x, p.y, pickup.size, time);
         }
 
-        for (const asteroid of game.asteroids) {
+        for (const asteroid of (game.asteroids || [])) {
             const p = projectOverview(asteroid, scrollY);
-            if (onScreen(p, 80)) drawAsteroid(ctx, asteroid, p.x, p.y, asteroid.size, 1, time);
+            if (onScreen(p, 80)) drawAsteroid(ctx, asteroid, p.x, p.y, asteroid.size, 1, time, game.level.number >= 11);
         }
+        drawVault(ctx, game, scrollY, time, projectOverview, onScreen);
 
         for (const bullet of game.playerBullets) {
             const p = projectOverview(bullet, scrollY);
@@ -3133,15 +4192,57 @@ function createOverviewRenderer() {
         if (fx) fx.drawWorld(ctx, (pt) => projectOverview(pt, scrollY));
 
         if (game.state === 'playing' || game.state === 'paused' || game.state === 'levelComplete') {
-            const p = projectOverview(game.ship, scrollY);
-            drawShipTop(ctx, game.ship, p.x, p.y, time, fx ? fx.ripples : []);
+            const players = getPlayers(game);
+            players.forEach(({ ship, index, color }) => {
+                const p = projectOverview(ship, scrollY);
+                if (!onScreen(p, 40)) return;
+                const size = playerScale(players.length, ship);
+                ctx.save(); ctx.translate(p.x, p.y); ctx.scale(size, size);
+                const charge = Math.max(0, Math.min(1, Number(ship.charge) || 0));
+                if (charge > 0) drawGlow(ctx, 0, 0, 48 + charge * 48, ship.weapon && ship.weapon.type === 'singularity' ? '#b67aff' : '#d6a1ff', 0.45 + charge * 0.45);
+                drawGlow(ctx, 0, 0, 34, color, 0.42);
+                drawShipTop(ctx, ship, 0, 0, time, fx ? fx.ripples : []);
+                ctx.fillStyle = color; ctx.fillRect(-6, 6, 12, 4); ctx.fillRect(-10, 11, 5, 3); ctx.fillRect(5, 11, 5, 3);
+                ctx.restore();
+            });
         }
     };
 }
 
 module.exports = { createOverviewRenderer };
 
-},{"./assets":10,"./background":11,"./font":15,"./projection":21,"./shapes":23}],19:[function(require,module,exports){
+},{"./assets":14,"./background":15,"./font":19,"./players":23,"./projection":26,"./shapes":28,"./vault":29}],23:[function(require,module,exports){
+const PLAYER_COLORS = ['#7fd7ff', '#ff6cf5', '#7dff8c', '#ffe65c', '#ff8a5c'];
+
+function getPlayers(game) {
+    const candidates = Array.isArray(game && game.players) ? game.players : (Array.isArray(game && game.ships) ? game.ships : []);
+    const result = candidates.map((player, index) => ({
+        player,
+        ship: player && (player.ship || player),
+        index: Number.isInteger(player && player.index) ? player.index : index,
+        score: Number((player && (player.score ?? (player.stats && player.stats.score))) ?? (game && game.playerStats && game.playerStats[index] && game.playerStats[index].score)) || 0
+    })).filter((entry) => entry.ship && Number.isFinite(Number(entry.ship.x)) && Number.isFinite(Number(entry.ship.y)));
+    if (game && game.ship && !result.some((entry) => entry.ship === game.ship)) {
+        result.unshift({ player: game.ship, ship: game.ship, index: 0, score: Number(game.score) || 0 });
+    }
+    if (!result.length && game && game.ship) result.push({ player: game.ship, ship: game.ship, index: 0, score: Number(game.score) || 0 });
+    return result.slice(0, 5).map((entry, index) => ({ ...entry, color: PLAYER_COLORS[entry.index % PLAYER_COLORS.length] || PLAYER_COLORS[index] }));
+}
+
+function playerScale(count, ship) {
+    if (Number.isFinite(Number(ship && ship.scale))) return Number(ship.scale);
+    if (count <= 2) return 1;
+    if (count === 3) return 0.8;
+    return 0.7;
+}
+
+function versusMode(game) {
+    return Boolean(game && (game.mode === 'versus' || game.multiplayerMode === 'versus' || game.multiplayer && game.multiplayer.mode === 'versus'));
+}
+
+module.exports = { PLAYER_COLORS, getPlayers, playerScale, versusMode };
+
+},{}],24:[function(require,module,exports){
 // Optional CRT post layer: scanlines + vignette, pre-rendered once.
 const { VIEW } = require('./projection');
 const { makeCanvas } = require('./assets');
@@ -3174,11 +4275,13 @@ function drawCrt(ctx, time = 0) {
 
 module.exports = { drawCrt };
 
-},{"./assets":10,"./projection":21}],20:[function(require,module,exports){
+},{"./assets":14,"./projection":26}],25:[function(require,module,exports){
 const { VIEW, POV, povCamera, projectPov, povFade } = require('./projection');
 const { drawAsteroid, drawPickup, drawShipChase, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { levelTint, createStarfield, drawNebula } = require('./background');
 const { getImage } = require('./assets');
+const { getPlayers, playerScale } = require('./players');
+const { drawVaultPov } = require('./vault');
 
 const FLOOR_HEIGHT = -40;
 const GRID_STEP = 100;
@@ -3259,7 +4362,7 @@ function createPovRenderer() {
         if (gate && gate.depth < POV.far * 1.3) {
             const alpha = Math.max(0.25, povFade(gate.depth));
             const size = Math.min(2000, 900 * gate.scale);
-            const img = getImage('gate');
+            const img = getImage(game.level.number >= 11 ? 'gate-sector2' : 'gate') || getImage('gate');
             if (img) {
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
@@ -3267,7 +4370,7 @@ function createPovRenderer() {
                 ctx.drawImage(img, gate.x - size / 2, gate.y - size / 2, size, size);
                 ctx.restore();
             }
-            drawGlow(ctx, gate.x, gate.y, size * 0.6, '#7dff8c', alpha * 0.35);
+            drawGlow(ctx, gate.x, gate.y, size * 0.6, game.level.number >= 11 ? '#67faff' : '#7dff8c', alpha * 0.45);
             const left = projectPov({ x: 0, y: game.level.length }, camera, 160);
             const right = projectPov({ x: 800, y: game.level.length }, camera, FLOOR_HEIGHT);
             if (left && right) {
@@ -3289,11 +4392,11 @@ function createPovRenderer() {
             const p = projectPov(obj, camera, height);
             if (p && p.depth < POV.far) items.push({ kind, obj, p });
         };
-        game.asteroids.forEach((a) => add('asteroid', a));
-        game.pickups.forEach((pk) => add('pickup', pk));
-        game.enemyBullets.forEach((b) => add('enemyBullet', b));
-        game.playerBullets.forEach((b) => add('playerBullet', b));
-        game.particles.forEach((pt) => add('particle', pt));
+        (game.asteroids || []).forEach((a) => add('asteroid', a));
+        (game.pickups || []).forEach((pk) => add('pickup', pk));
+        (game.enemyBullets || []).forEach((b) => add('enemyBullet', b));
+        (game.playerBullets || []).forEach((b) => add('playerBullet', b));
+        (game.particles || []).forEach((pt) => add('particle', pt));
         items.sort((a, b) => b.p.depth - a.p.depth);
         return items;
     }
@@ -3305,7 +4408,7 @@ function createPovRenderer() {
         if (kind === 'asteroid') {
             const radius = obj.size * p.scale;
             if (radius > 1400 || p.x + radius < 0 || p.x - radius > VIEW.width) return;
-            drawAsteroid(ctx, obj, p.x, p.y, radius, alpha, time);
+            drawAsteroid(ctx, obj, p.x, p.y, radius, alpha, time, game.level.number >= 11);
         } else if (kind === 'pickup') {
             drawPickup(ctx, obj, p.x, p.y, Math.min(120, obj.size * p.scale), time, alpha);
         } else if (kind === 'enemyBullet') {
@@ -3357,17 +4460,27 @@ function createPovRenderer() {
                 return { x: p.x, y: p.y, scale: Math.min(1.8, p.scale), alpha: povFade(p.depth) * (p.scale > 1.4 ? 0.7 : 1) };
             });
         }
+        drawVaultPov(ctx, game, camera, projectPov, time);
         if (game.state === 'playing' || game.state === 'paused' || game.state === 'levelComplete') {
-            drawReticle(ctx, camera, game.ship, time);
-            const shipPoint = projectPov(game.ship, camera, 0);
-            if (shipPoint) drawShipChase(ctx, game.ship, shipPoint.x, shipPoint.y, time, fx ? fx.ripples : []);
+            const players = getPlayers(game);
+            players.forEach(({ ship, index, color }) => {
+                const shipPoint = projectPov(ship, camera, 0);
+                if (!shipPoint) return;
+                const size = playerScale(players.length, ship);
+                drawGlow(ctx, shipPoint.x, shipPoint.y, 52 * size, color, 0.35);
+                if (index === 0) drawReticle(ctx, camera, ship, time);
+                ctx.save(); ctx.translate(shipPoint.x, shipPoint.y); ctx.scale(size, size);
+                drawShipChase(ctx, ship, 0, 0, time, fx ? fx.ripples : []);
+                ctx.fillStyle = color; ctx.fillRect(-8, 3, 16, 5);
+                ctx.restore();
+            });
         }
     };
 }
 
 module.exports = { createPovRenderer };
 
-},{"./assets":10,"./background":11,"./projection":21,"./shapes":23}],21:[function(require,module,exports){
+},{"./assets":14,"./background":15,"./players":23,"./projection":26,"./shapes":28,"./vault":29}],26:[function(require,module,exports){
 const VIEW = { width: 800, height: 600 };
 
 // Overview: top-down map; the level scrolls toward the bottom of the screen.
@@ -3413,11 +4526,11 @@ function povFade(depth) {
 
 module.exports = { VIEW, OVERVIEW_SHIP_LINE, POV, projectOverview, povCamera, projectPov, povFade };
 
-},{}],22:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 // Full-screen overlays: title, intro, pause, level clear celebration,
 // victory finale and game over.
 const { VIEW } = require('./projection');
-const { LEVEL_COUNT, getLevel } = require('../levels');
+const { LEVEL_COUNT, TOTAL_LEVEL_COUNT, getLevel } = require('../levels');
 const { getImage, ROCK_KEYS } = require('./assets');
 const { pixelText } = require('./font');
 const { drawGlow, drawBreathe, pixelSprite, SHIP_TOP, SHIP_PALETTE } = require('./shapes');
@@ -3499,14 +4612,14 @@ function drawTitle(ctx, game) {
     const cx = VIEW.width / 2;
 
     drawGlow(ctx, cx, 92, 260, '#ff3c8a', 0.18 + 0.06 * Math.sin(time * 2));
-    waveText(ctx, 'ASTEROID', cx, 112, { size: 64, time, amp: 5 });
+    waveText(ctx, 'DECENT VOYAGER', cx, 110, { size: 49, time, amp: 5 });
     const shine = (time * 160) % 900 - 50;
-    pixelText(ctx, 'GALACTIC  GAUNTLET', cx, 148, { size: 18, align: 'center', color: '#ffb347' });
+    pixelText(ctx, 'GALACTIC  GAUNTLET', cx, 145, { size: 18, align: 'center', color: '#ffb347' });
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.25;
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(shine, 130, 24, 22);
+    ctx.fillRect(shine, 126, 24, 22);
     ctx.restore();
 
     // Difficulty cards.
@@ -3543,13 +4656,14 @@ function drawTitle(ctx, game) {
     if (canLeft) pixelText(ctx, '<', cx - 270 - bob, 284, { size: 22, color: '#7fd7ff' });
     if (canRight) pixelText(ctx, '>', cx + 256 + bob, 284, { size: 22, color: '#7fd7ff' });
     pixelText(ctx, `LEVEL ${level.number}: ${level.name.toUpperCase()}`, cx, 284, { size: 20, align: 'center' });
-    pixelText(ctx, `${difficultyName(game, true).toUpperCase()} UNLOCKED ${progress.unlocked}/${LEVEL_COUNT}   HI ${progress.highScore || 0}`, cx, 306, {
+    pixelText(ctx, `${difficultyName(game, true).toUpperCase()} UNLOCKED ${progress.unlocked}/${progress.sector2Unlocked ? TOTAL_LEVEL_COUNT : LEVEL_COUNT}   HI ${progress.highScore || 0}`, cx, 306, {
         size: 11, align: 'center', color: '#9fb4c8'
     });
     if (Math.floor(time * 2.5) % 2 === 0) {
         pixelText(ctx, 'PRESS ENTER TO LAUNCH', cx, 344, { size: 20, align: 'center', color: '#7dff8c' });
     }
     drawGlow(ctx, cx, 337, 160, '#7dff8c', 0.12);
+    pixelText(ctx, `TAB / X  MODE: ${(game.mode || game.multiplayerMode || 'COOP').toUpperCase()}  ·  CONTROLLER: PRESS A TO JOIN UP TO 5 DECENT PILOTS`, cx, 362, { size: 10, align: 'center', color: '#7fd7ff' });
 
     panelBox(ctx, 90, 368, 620, 214);
     const controls = [
@@ -3583,8 +4697,8 @@ function drawIntro(ctx, game) {
     ctx.fillStyle = '#ff3c8a';
     ctx.fillRect(0, cy - 72, VIEW.width, 2);
     ctx.fillRect(0, cy + 40, VIEW.width, 2);
-    pixelText(ctx, `LEVEL ${game.level.number}`, cx - slide, cy - 20, { size: 44, align: 'center', color: '#7fd7ff' });
-    pixelText(ctx, game.level.name.toUpperCase(), cx + slide, cy + 14, { size: 20, align: 'center', color: '#ffb347' });
+    pixelText(ctx, `${game.level.number >= 11 ? 'SECTOR II · FAR FUTURE' : 'LEVEL ' + game.level.number}`, cx - slide, cy - 20, { size: 44, align: 'center', color: '#7fd7ff' });
+    pixelText(ctx, game.level.number >= 11 ? `LEVEL ${game.level.number}: ${game.level.name}`.toUpperCase() : game.level.name.toUpperCase(), cx + slide, cy + 14, { size: 20, align: 'center', color: '#ffb347' });
     if (game.difficulty) {
         pixelText(ctx, `${difficultyName(game).toUpperCase()} MODE  GET READY`, cx, cy + 34, { size: 11, align: 'center', color: difficultyColor(game.difficulty) });
     }
@@ -3722,7 +4836,7 @@ function drawVictory(ctx, game, fx) {
         });
     }
     const pulse = 0.6 + 0.4 * Math.sin(time * 5);
-    pixelText(ctx, `ALL ${LEVEL_COUNT} SECTORS CLEARED`, cx, 470, { size: 16, align: 'center', color: '#7dff8c', alpha: pulse });
+    pixelText(ctx, `ALL ${game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT} LEVELS CLEARED`, cx, 470, { size: 16, align: 'center', color: '#7dff8c', alpha: pulse });
     pixelText(ctx, 'CLAIM YOUR VICTORY STAMPS IN THE VAULT', cx, 492, { size: 11, align: 'center', color: '#c9d6e3' });
     pixelText(ctx, 'ENTER  MENU', cx, VIEW.height - 30, { size: 12, align: 'center', color: '#9fb4c8' });
 }
@@ -3793,9 +4907,9 @@ function drawOverlay(ctx, game, fx) {
 
 module.exports = { drawOverlay, drawTitle, drawCover, waveText, formatTime, easeOutBack, DIFFICULTY_OPTIONS };
 
-},{"../levels":9,"./assets":10,"./font":15,"./hud":17,"./projection":21,"./shapes":23}],23:[function(require,module,exports){
+},{"../levels":11,"./assets":14,"./font":19,"./hud":21,"./projection":26,"./shapes":28}],28:[function(require,module,exports){
 const { WEAPONS } = require('../weapons');
-const { getImage, getTinted, rockKeyFor, makeCanvas, BREATHE_FRAMES } = require('./assets');
+const { getImage, getTinted, rockKeyFor, futureRockKeyFor, makeCanvas, BREATHE_FRAMES } = require('./assets');
 const { pixelText } = require('./font');
 
 const PICKUP_STYLE = {
@@ -3813,6 +4927,7 @@ const COLOR_TO_WEAPON = Object.keys(WEAPONS).reduce((map, type) => {
 
 function bulletWeaponType(bullet) {
     if (bullet.weapon && WEAPONS[bullet.weapon]) return bullet.weapon;
+    if (bullet.ownerWeapon && WEAPONS[bullet.ownerWeapon]) return bullet.ownerWeapon;
     return COLOR_TO_WEAPON[String(bullet.color || '').toLowerCase()] || 'blaster';
 }
 
@@ -3943,9 +5058,9 @@ function asteroidPath(ctx, asteroid, radius) {
     ctx.closePath();
 }
 
-function drawAsteroid(ctx, asteroid, x, y, radius, alpha = 1, time = 0) {
+function drawAsteroid(ctx, asteroid, x, y, radius, alpha = 1, time = 0, sector2 = false) {
     if (!(radius >= 0.5)) return;
-    const key = rockKeyFor(asteroid.id);
+    const key = sector2 ? futureRockKeyFor(asteroid.id) : rockKeyFor(asteroid.id);
     const img = getImage(key);
     const pulse = 0.6 + 0.4 * Math.sin(time * 7 + asteroid.id);
     const flash = asteroid.flash > 0 ? Math.min(1, asteroid.flash / 0.12) : 0;
@@ -4223,7 +5338,33 @@ function drawPlayerBullet(ctx, bullet, x, y, dx, dy, scale = 1, alpha = 1, time 
     const uy = dy / len;
     ctx.save();
     ctx.globalAlpha *= alpha;
-    if (type === 'plasma') {
+    if (type === 'singularity') {
+        const r = Math.max(4, (bullet.size || 10) * scale * 1.5);
+        const pulse = 0.82 + 0.18 * Math.sin(time * 16);
+        drawGlow(ctx, x, y, r * 9 * pulse, '#a35bff', 0.95);
+        drawGlow(ctx, x, y, r * 5, '#251044', 1);
+        ctx.fillStyle = '#020106';
+        ctx.beginPath(); ctx.arc(x, y, r * 1.45, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#d7a4ff'; ctx.lineWidth = Math.max(2, r * 0.22);
+        ctx.beginPath(); ctx.ellipse(x, y, r * 2.2, r * 0.8, time * 2, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, r * 0.08);
+        ctx.beginPath(); ctx.ellipse(x, y, r * 2.6, r * 0.95, -time * 1.5, 0, Math.PI * 1.35); ctx.stroke();
+    } else if (type === 'prism') {
+        const r = Math.max(3, (bullet.size || 6) * scale);
+        drawGlow(ctx, x, y, r * 8, '#5ffeff', 1);
+        drawGlow(ctx, x, y, r * 4, '#fa74ff', 0.9);
+        ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(uy, ux) + time * 0.15);
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(r * 2.4, 0); ctx.lineTo(-r, r); ctx.lineTo(-r * 0.5, 0); ctx.lineTo(-r, -r); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#65ffff'; ctx.lineWidth = Math.max(1, r * 0.3); ctx.stroke(); ctx.restore();
+        for (let i = 0; i < 3; i++) { ctx.strokeStyle = ['#ff6cf5', '#71ffff', '#fff36a'][i]; ctx.globalAlpha *= 0.65; ctx.lineWidth = Math.max(1, r * 0.16); ctx.beginPath(); ctx.moveTo(x - ux * r * (i + 1), y - uy * r * (i + 1)); ctx.lineTo(x - ux * r * (i + 5), y - uy * r * (i + 5) + (i - 1) * r * 1.5); ctx.stroke(); }
+    } else if (type === 'nova') {
+        const r = Math.max(3, (bullet.radius || bullet.size || 8) * scale);
+        drawGlow(ctx, x, y, r * 6, '#d6a1ff', 0.95);
+        drawGlow(ctx, x, y, r * 2.4, '#fff5ff', 0.95);
+        ctx.strokeStyle = '#d9a0ff'; ctx.lineWidth = Math.max(2, r * 0.18);
+        ctx.beginPath(); ctx.arc(x, y, r * (1.1 + 0.1 * Math.sin(time * 10)), 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, r * 0.52, 0, Math.PI * 2); ctx.fill();
+    } else if (type === 'plasma') {
         const r = Math.max(2, bullet.size * scale);
         for (let i = 4; i >= 1; i--) {
             drawGlow(ctx, x - ux * r * i * 0.9, y - uy * r * i * 0.9, r * (2.2 - i * 0.3), color, 0.3 * (1 - i / 5));
@@ -4328,7 +5469,132 @@ module.exports = {
     drawEnemyBullet
 };
 
-},{"../weapons":28,"./assets":10,"./font":15}],24:[function(require,module,exports){
+},{"../weapons":35,"./assets":14,"./font":19}],29:[function(require,module,exports){
+const { drawGlow, drawAsteroid } = require('./shapes');
+const { getImage, supporterImageKey } = require('./assets');
+const { pixelText } = require('./font');
+const { VIEW } = require('./projection');
+
+const alive = (guard) => guard && guard.alive !== false && guard.hp !== 0 && !guard.destroyed;
+const guardList = (game, vault) => (Array.isArray(vault && vault.guards) ? vault.guards : (Array.isArray(game && game.guards) ? game.guards : [])).filter(alive);
+
+function shielded(vault, guards) {
+    if (!vault) return false;
+    if (vault.shielded === false || vault.invulnerable === false) return false;
+    const generator = vault.generator || vault.shieldGenerator;
+    return Boolean(vault.shielded || vault.invulnerable || (generator && generator.active !== false) || guards.length);
+}
+
+function drawVaultGlyph(ctx, x, y, radius, time, vault, guards = []) {
+    const active = shielded(vault, guards);
+    const color = active ? '#ff5a9e' : '#ffe65c';
+    const pulse = 0.72 + Math.sin(time * 5) * 0.22;
+    drawGlow(ctx, x, y, radius * 2.8, color, 0.75 * pulse);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(time * (active ? 0.35 : 0.12));
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(2, radius * 0.08);
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 1.45, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([radius * 0.32, radius * 0.2]);
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#100a1e';
+    ctx.beginPath();
+    ctx.moveTo(0, -radius); ctx.lineTo(radius * 0.82, -radius * 0.3); ctx.lineTo(radius * 0.72, radius * 0.65);
+    ctx.lineTo(0, radius); ctx.lineTo(-radius * 0.72, radius * 0.65); ctx.lineTo(-radius * 0.82, -radius * 0.3); ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#fff4c8'; ctx.lineWidth = Math.max(1, radius * 0.045); ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.fillRect(-radius * 0.2, -radius * 0.22, radius * 0.4, radius * 0.44);
+    ctx.restore();
+    if (active) {
+        pixelText(ctx, 'SHIELDED', x, y - radius * 2.15, { size: 10, align: 'center', color: '#ff8ac4' });
+    } else {
+        pixelText(ctx, 'SUPPORTER VAULT', x, y - radius * 2.15, { size: 10, align: 'center', color: '#ffe65c' });
+    }
+}
+
+function drawGenerator(ctx, x, y, scale, time) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    drawGlow(ctx, x, y, 35 * scale, '#6ffaff', 0.9);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(-time * 1.8);
+    ctx.strokeStyle = '#b7ffff';
+    ctx.lineWidth = Math.max(1, 3 * scale);
+    ctx.beginPath(); ctx.arc(0, 0, 18 * scale, 0, Math.PI * 1.7); ctx.stroke();
+    ctx.fillStyle = '#4effff';
+    ctx.fillRect(-5 * scale, -5 * scale, 10 * scale, 10 * scale);
+    ctx.restore();
+}
+
+function drawGuards(ctx, guards, project, time, sector2 = false) {
+    guards.forEach((guard) => {
+        const point = project(guard);
+        if (!point) return;
+        drawAsteroid(ctx, { ...guard, shooter: true }, point.x, point.y, Number(guard.size) || 22, 1, time, sector2);
+    });
+}
+
+function drawVault(ctx, game, scrollY, time, project, onScreen) {
+    const vault = game && game.vault;
+    if (!vault || vault.active === false || vault.captured) return;
+    const guards = guardList(game, vault);
+    drawGuards(ctx, guards, (point) => project(point, scrollY), time, Number(game.level && game.level.number) >= 11);
+    const point = project(vault, scrollY);
+    if (!point || (onScreen && !onScreen(point, 100))) return;
+    drawVaultGlyph(ctx, point.x, point.y, Math.max(16, Number(vault.size) || 28), time, vault, guards);
+    const generator = vault.generator || vault.shieldGenerator || guards.find((guard) => guard.kind === 'generator');
+    if (generator) {
+        const genPoint = project({ x: generator.x ?? vault.x, y: generator.y ?? vault.y }, scrollY);
+        if (genPoint) drawGenerator(ctx, genPoint.x, genPoint.y, genPoint.scale || 1, time);
+    }
+}
+
+function drawVaultPov(ctx, game, camera, project, time) {
+    const vault = game && game.vault;
+    if (!vault || vault.active === false || vault.captured) return;
+    const guards = guardList(game, vault);
+    drawGuards(ctx, guards, (point) => project(point, camera), time, Number(game.level && game.level.number) >= 11);
+    const point = project(vault, camera);
+    if (point) {
+        const scale = Math.min(20, Math.max(0.35, point.scale));
+        drawVaultGlyph(ctx, point.x, point.y, Math.max(9, (Number(vault.size) || 24) * scale), time, vault, guards);
+        const generator = vault.generator || vault.shieldGenerator || guards.find((guard) => guard.kind === 'generator');
+        const genPoint = generator && project(generator, camera);
+        if (genPoint) drawGenerator(ctx, genPoint.x, genPoint.y, Math.min(8, genPoint.scale), time);
+    }
+}
+
+function drawSupporterToken(ctx, tokenId, x, y, size) {
+    const key = supporterImageKey(tokenId);
+    const image = key && getImage(key);
+    if (image) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.shadowColor = '#fff4c8';
+        ctx.shadowBlur = 20;
+        ctx.drawImage(image, x - size / 2, y - size / 2, size, size);
+        ctx.restore();
+        return true;
+    }
+    drawGlow(ctx, x, y, size * 0.8, '#ffe65c', 0.8);
+    ctx.fillStyle = '#100a1e';
+    ctx.strokeStyle = '#fff4c8';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(x, y, size * 0.36, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    pixelText(ctx, 'D', x, y + size * 0.12, { size: Math.max(14, size * 0.46), color: '#ffe65c', align: 'center' });
+    return false;
+}
+
+module.exports = { drawVault, drawVaultPov, drawVaultGlyph, drawSupporterToken, guardList, shielded };
+
+},{"./assets":14,"./font":19,"./projection":26,"./shapes":28}],30:[function(require,module,exports){
 // Small seeded RNG so each level's map is the same every time it is played.
 function createRng(seed) {
     let state = seed >>> 0;
@@ -4351,9 +5617,9 @@ function pick(rng, items) {
 
 module.exports = { createRng, range, pick };
 
-},{}],25:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 // Save format, validation, legacy migration and quota-tolerant persistence.
-const { LEVEL_COUNT } = require('./levels');
+const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('./levels');
 const { DIFFICULTY_IDS, isDifficulty, difficultyLabel } = require('./difficulty');
 const {
     WEAPON_TYPES,
@@ -4369,6 +5635,7 @@ const SAVE_APP = 'asteroid-galactic-gauntlet';
 const SAVE_VERSION = 1;
 const STORAGE_KEY = 'asteroid-galactic-gauntlet-save';
 const LEGACY_STORAGE_KEY = 'asteroid-galactica-progress';
+const BACKUP_KEY = 'asteroid-galactic-gauntlet-save-unreadable';
 const MAX_WINS = 200;
 const MAX_IMPORT_WINS = 2000;
 const MAX_SAVE_CHARS = 10 * 1024 * 1024;
@@ -4376,7 +5643,7 @@ const MAX_SCORE = 1e10;
 const MAX_STRING = 200;
 
 function createProgress() {
-    return { unlocked: 1, highScore: 0, bestLevelScores: {} };
+    return { unlocked: 1, highScore: 0, bestLevelScores: {}, sector2Unlocked: false };
 }
 
 function createEmptySave() {
@@ -4457,15 +5724,15 @@ function validateProgress(progress) {
         const label = difficultyLabel(id);
         if (!isPlainObject(entry)) fail(`${label} progress must be an object.`);
         const unlocked = entry.unlocked;
-        if (!Number.isInteger(unlocked) || unlocked < 1 || unlocked > LEVEL_COUNT) {
-            fail(`${label} progress: unlocked level must be a whole number from 1 to ${LEVEL_COUNT}.`);
+        if (!Number.isInteger(unlocked) || unlocked < 1 || unlocked > TOTAL_LEVEL_COUNT) {
+            fail(`${label} progress: unlocked level must be a whole number from 1 to ${TOTAL_LEVEL_COUNT}.`);
         }
         const bestIn = entry.bestLevelScores ?? {};
         if (!isPlainObject(bestIn)) fail(`${label} progress: best level scores must be an object.`);
         const bestLevelScores = {};
         for (const [level, score] of Object.entries(bestIn)) {
             const n = Number(level);
-            if (!Number.isInteger(n) || n < 1 || n > LEVEL_COUNT || String(n) !== level) {
+            if (!Number.isInteger(n) || n < 1 || n > TOTAL_LEVEL_COUNT || String(n) !== level) {
                 fail(`${label} progress: "${level.slice(0, 10)}" is not a level number.`);
             }
             bestLevelScores[level] = num(score, `${label} best score for level ${level}`);
@@ -4473,8 +5740,11 @@ function validateProgress(progress) {
         byDifficulty[id] = {
             unlocked,
             highScore: num(entry.highScore ?? 0, `${label} high score`),
-            bestLevelScores
+            bestLevelScores,
+            sector2Unlocked: entry.sector2Unlocked === true
         };
+        if (typeof entry.sector2Unlocked !== 'boolean' && entry.sector2Unlocked !== undefined) fail(`${label} progress: Sector II unlock must be true or false.`);
+        if (unlocked > LEVEL_COUNT && !byDifficulty[id].sector2Unlocked) fail(`${label} progress: Sector II level progress requires an unlock.`);
     }
     return { lastDifficulty, byDifficulty };
 }
@@ -4509,12 +5779,23 @@ function tuples(list, where, cap, shape) {
     });
 }
 
+function validateCaptures(captures, where) {
+    if (!Array.isArray(captures) || captures.length > 2) fail(`${where} must be a list of at most two captures.`);
+    return captures.map((capture, index) => {
+        const label = `${where} #${index + 1}`;
+        if (!isPlainObject(capture) || !isPlainObject(capture.prize)) fail(`${label} is malformed.`);
+        const tier = num(capture.tier, `${label} tier`, { min: 1, max: 2, integer: true });
+        if (!Number.isInteger(capture.level) || capture.level < 1 || capture.level > TOTAL_LEVEL_COUNT) fail(`${label} level is invalid.`);
+        return { tier, level: capture.level, at: isoDate(capture.at, `${label} date`), prize: { project: str(capture.prize.project, `${label} project`, 100), tokenId: num(capture.prize.tokenId, `${label} token ID`, { integer: true }), label: str(capture.prize.label, `${label} label`, 160), version: str(capture.prize.version, `${label} version`, 40), metadataURI: str(capture.prize.metadataURI, `${label} metadata URI`, 300) } };
+    });
+}
+
 function validateLevelRecord(record, where = 'Level record') {
     if (!isPlainObject(record)) fail(`${where} must be an object.`);
     if (record.schema !== RECORD_SCHEMA) fail(`${where} uses an unsupported schema (expected ${RECORD_SCHEMA}).`);
     if (!isDifficulty(record.difficulty)) fail(`${where} has an unknown difficulty.`);
     const level = record.level;
-    if (!Number.isInteger(level) || level < 1 || level > LEVEL_COUNT) fail(`${where}: level must be 1–${LEVEL_COUNT}.`);
+    if (!Number.isInteger(level) || level < 1 || level > TOTAL_LEVEL_COUNT) fail(`${where}: level must be 1–${TOTAL_LEVEL_COUNT}.`);
     const score = record.score;
     if (!isPlainObject(score)) fail(`${where} is missing its score.`);
     const ship = record.ship;
@@ -4531,6 +5812,14 @@ function validateLevelRecord(record, where = 'Level record') {
     const completedAt = isoDate(record.completedAt, `${where} completedAt`);
     if (Date.parse(completedAt) < Date.parse(startedAt)) fail(`${where} completion date is before its start date.`);
     const s = `${where} stats`;
+    const extendNewCounters = (source, fields) => {
+        if (!isPlainObject(source)) return source;
+        const result = { ...source };
+        for (const field of fields) if (result[field] === undefined) result[field] = 0;
+        return result;
+    };
+    const shotsByWeapon = extendNewCounters(stats.shotsByWeapon, ['nova', 'prism', 'singularity']);
+    const pickupsCollected = extendNewCounters(stats.pickupsCollected, ['nova', 'prism', 'singularity']);
     const count = (key) => num(key === 'volleys' ? (stats[key] ?? 0) : stats[key], `${s}.${key}`, {
         max: 1e9, integer: !['damageTaken', 'timeInPov', 'timeInOverview'].includes(key)
     });
@@ -4540,6 +5829,7 @@ function validateLevelRecord(record, where = 'Level record') {
         game: str(record.game, `${where} game`),
         gameVersion: str(record.gameVersion, `${where} gameVersion`, 20),
         level,
+        captures: validateCaptures(record.captures ?? [], `${where} captures`),
         levelName: str(record.levelName, `${where} levelName`, 60),
         difficulty: record.difficulty,
         difficultyLabel: str(record.difficultyLabel, `${where} difficultyLabel`, 20),
@@ -4565,7 +5855,7 @@ function validateLevelRecord(record, where = 'Level record') {
         stats: {
             shotsFired: count('shotsFired'),
             volleys: count('volleys'),
-            shotsByWeapon: counters(stats.shotsByWeapon, WEAPON_TYPES, `${s}.shotsByWeapon`, true),
+            shotsByWeapon: counters(shotsByWeapon, WEAPON_TYPES, `${s}.shotsByWeapon`, true),
             hits: count('hits'),
             accuracy: num(stats.accuracy, `${s}.accuracy`, { max: 1 }),
             asteroidsSpawned: count('asteroidsSpawned'),
@@ -4579,7 +5869,7 @@ function validateLevelRecord(record, where = 'Level record') {
             collisions: count('collisions'),
             shieldBlocks: count('shieldBlocks'),
             damageTaken: count('damageTaken'),
-            pickupsCollected: counters(stats.pickupsCollected, PICKUP_TYPES, `${s}.pickupsCollected`, true),
+            pickupsCollected: counters(pickupsCollected, PICKUP_TYPES, `${s}.pickupsCollected`, true),
             pickupsMissed: count('pickupsMissed'),
             maxCombo: count('maxCombo'),
             timeInPov: count('timeInPov'),
@@ -4661,19 +5951,73 @@ function readJson(storage, key) {
 }
 
 // Loads the current save, migrating the pre-difficulty progress format into cadet.
-// Corrupt or unavailable storage falls back to a fresh save.
+// Corrupt or unavailable storage falls back to a fresh save; an unreadable save (for example one
+// written by a newer build) is copied to BACKUP_KEY first so it is never silently destroyed.
 function loadSave(storage) {
     const current = readJson(storage, STORAGE_KEY);
     if (current) {
         try {
             return validateSave(current);
         } catch (error) {
-            // Fall through to legacy/fresh.
+            try {
+                if (storage && !storage.getItem(BACKUP_KEY)) storage.setItem(BACKUP_KEY, storage.getItem(STORAGE_KEY));
+            } catch (backupError) {
+                // Best effort only.
+            }
         }
     }
     const legacy = readJson(storage, LEGACY_STORAGE_KEY);
     if (isLegacyShape(legacy)) return migrateLegacy(legacy);
     return createEmptySave();
+}
+
+const maxMap = (a = {}, b = {}) => {
+    const out = { ...a };
+    for (const [key, value] of Object.entries(b)) out[key] = Math.max(out[key] ?? 0, value);
+    return out;
+};
+
+// Combines two valid saves so that progress made in another tab (or by an older build that later
+// wrote over it) is kept: wins are unioned by id and progress/lifetime counters take the maximum.
+function mergeSaves(stored, incoming) {
+    const byDifficulty = {};
+    for (const id of DIFFICULTY_IDS) {
+        const a = stored.progress.byDifficulty[id] || createProgress();
+        const b = incoming.progress.byDifficulty[id] || createProgress();
+        byDifficulty[id] = {
+            unlocked: Math.max(a.unlocked, b.unlocked),
+            highScore: Math.max(a.highScore, b.highScore),
+            bestLevelScores: maxMap(a.bestLevelScores, b.bestLevelScores),
+            sector2Unlocked: Boolean(a.sector2Unlocked || b.sector2Unlocked)
+        };
+    }
+    const lifetime = { ...incoming.lifetime };
+    for (const key of TOTALS_COUNTER_FIELDS) lifetime[key] = Math.max(stored.lifetime[key] ?? 0, incoming.lifetime[key] ?? 0);
+    lifetime.shotsByWeapon = maxMap(stored.lifetime.shotsByWeapon, incoming.lifetime.shotsByWeapon);
+    lifetime.pickupsCollected = maxMap(stored.lifetime.pickupsCollected, incoming.lifetime.pickupsCollected);
+    lifetime.maxCombo = Math.max(stored.lifetime.maxCombo ?? 0, incoming.lifetime.maxCombo ?? 0);
+    const seen = new Map();
+    for (const record of [...stored.wins, ...incoming.wins]) seen.set(record.id, record);
+    const wins = [...seen.values()]
+        .sort((x, y) => Date.parse(x.completedAt) - Date.parse(y.completedAt))
+        .slice(-MAX_WINS);
+    return {
+        ...incoming,
+        progress: { lastDifficulty: incoming.progress.lastDifficulty, byDifficulty },
+        lifetime,
+        wins
+    };
+}
+
+// Returns `save` merged with whatever valid save is currently stored (or `save` unchanged).
+function mergeStoredSave(storage, save) {
+    const stored = readJson(storage, STORAGE_KEY);
+    if (!stored) return save;
+    try {
+        return mergeSaves(validateSave(stored), save);
+    } catch (error) {
+        return save;
+    }
 }
 
 function stripBattleLog(record) {
@@ -4716,7 +6060,10 @@ module.exports = {
     SAVE_VERSION,
     STORAGE_KEY,
     LEGACY_STORAGE_KEY,
+    BACKUP_KEY,
     MAX_WINS,
+    mergeSaves,
+    mergeStoredSave,
     createEmptySave,
     createProgress,
     migrateLegacy,
@@ -4726,7 +6073,7 @@ module.exports = {
     persistSave
 };
 
-},{"./difficulty":6,"./levels":9,"./stats":27}],26:[function(require,module,exports){
+},{"./difficulty":6,"./levels":11,"./stats":33}],32:[function(require,module,exports){
 const { createWeapon } = require('./weapons');
 
 const MIN_X = 20;
@@ -4737,7 +6084,14 @@ const MAX_OFFSET = 280;
 // The ship flies at the scroll position plus a player-controlled forward offset.
 class Spaceship {
     constructor() {
-        this.size = 12;
+        this.baseSize = 12;
+        this.size = this.baseSize;
+        this.scale = 1;
+        this.charge = 0;
+        this.wasFiring = false;
+        this.specialWasDown = false;
+        this.specialCooldown = 0;
+        this.suppressChargeUntilRelease = false;
         this.maxPower = 100;
         this.lives = 3;
         this.weapon = createWeapon();
@@ -4750,6 +6104,11 @@ class Spaceship {
         this.y = 0;
         this.power = this.maxPower;
         this.cooldown = 0;
+        this.charge = 0;
+        this.wasFiring = false;
+        this.specialWasDown = false;
+        this.specialCooldown = 0;
+        this.suppressChargeUntilRelease = false;
         this.invulnerable = 0;
         this.shield = 0;
         this.bank = 0;
@@ -4759,11 +6118,10 @@ class Spaceship {
 
     update(dt, input, scrollY) {
         let steer = 0;
-        if (input.left) steer -= 1;
-        if (input.right) steer += 1;
+        steer = Math.max(-1, Math.min(1, (input.ax || 0) + (input.left ? -1 : 0) + (input.right ? 1 : 0)));
         this.x = Math.min(MAX_X, Math.max(MIN_X, this.x + steer * this.lateralSpeed * dt));
-        if (input.up) this.offset += this.forwardSpeed * dt;
-        if (input.down) this.offset -= this.forwardSpeed * dt;
+        const forward = Math.max(-1, Math.min(1, (input.ay || 0) + (input.up ? 1 : 0) - (input.down ? 1 : 0)));
+        this.offset += forward * this.forwardSpeed * dt;
         this.offset = Math.min(MAX_OFFSET, Math.max(MIN_OFFSET, this.offset));
         this.y = scrollY + this.offset;
         this.bank += (steer - this.bank) * Math.min(1, dt * 8);
@@ -4779,7 +6137,7 @@ class Spaceship {
 
 module.exports = Spaceship;
 
-},{"./weapons":28}],27:[function(require,module,exports){
+},{"./weapons":35}],33:[function(require,module,exports){
 // Per-level stats, combo tracking, battle log sampling and LevelRecord building.
 //
 // Definitions:
@@ -4797,8 +6155,8 @@ module.exports = Spaceship;
 //   the previous kill, without the ship losing power in between. maxCombo is the level best.
 // - closestCall: smallest gap in px between the ship's and a dodged enemy bullet's edges
 //   (-1 when no enemy bullet was dodged).
-const WEAPON_TYPES = ['blaster', 'spread', 'rapid', 'plasma'];
-const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield'];
+const WEAPON_TYPES = ['blaster', 'spread', 'rapid', 'plasma', 'nova', 'prism', 'singularity'];
+const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield', 'nova', 'prism', 'singularity'];
 const COMBO_WINDOW = 2;
 const RECORD_SCHEMA = 'asteroid-level-record/1';
 const GAME_NAME = 'AsteRoid: Galactic Gauntlet';
@@ -5031,7 +6389,8 @@ function randomSuffix() {
     return Math.floor(Math.random() * 36 ** 6).toString(36).padStart(6, '0');
 }
 
-function buildLevelRecord({ level, tracker, ship, view, score, startedAt, completedAt, durationSec, suffix = randomSuffix() }) {
+function buildLevelRecord({ level, tracker, ship, view, score, startedAt, completedAt, durationSec, captures = [], idFn = randomSuffix, suffix }) {
+    suffix = suffix === undefined ? idFn() : suffix;
     const completedIso = new Date(completedAt).toISOString();
     return {
         schema: RECORD_SCHEMA,
@@ -5039,6 +6398,7 @@ function buildLevelRecord({ level, tracker, ship, view, score, startedAt, comple
         game: GAME_NAME,
         gameVersion: GAME_VERSION,
         level: level.number,
+        captures: captures.map((capture) => ({ ...capture })),
         levelName: level.name,
         difficulty: level.difficulty,
         difficultyLabel: level.difficultyLabel,
@@ -5077,7 +6437,39 @@ module.exports = {
     buildLevelRecord
 };
 
-},{}],28:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
+const { pick, range } = require('./rng');
+const { PRIZES } = require('./prizes');
+const Asteroid = require('./asteroid');
+
+function chooseVaultLevel(tier, rng) { return tier === 1 ? pick(rng, [9, 10]) : pick(rng, [19, 20]); }
+function createVault(tier, level, rng) {
+    const x = range(rng, 300, 500);
+    const y = range(rng, 1700, 2400);
+    const prize = pick(rng, PRIZES[tier]);
+    const guards = Array.from({ length: 8 }, (_, index) => {
+        const angle = index * Math.PI / 4;
+        const guard = new Asteroid({
+            id: `vault-${tier}-${level}-${index}`, x: x + Math.cos(angle) * 80, y: y + Math.sin(angle) * 80,
+            size: index === 0 ? 26 : 20, hp: index === 0 ? 8 : 5, shooter: true,
+            fireCooldown: range(rng, 0.25, 0.8), rng
+        });
+        guard.kind = index === 0 ? 'generator' : 'guard';
+        guard.vaultGuard = true;
+        guard.vaultTier = tier;
+        return guard;
+    });
+    return { tier, level, x, y, size: 36, prize, guards, captured: false, spawned: false, shielded: true };
+}
+function markGuardDestroyed(vault, guard) {
+    if (!vault || !guard.vaultGuard || guard.destroyNotified) return false;
+    guard.destroyNotified = true;
+    if (vault.guards.every((entry) => entry.hp <= 0)) vault.shielded = false;
+    return true;
+}
+module.exports = { chooseVaultLevel, createVault, markGuardDestroyed };
+
+},{"./asteroid":2,"./prizes":13,"./rng":30}],35:[function(require,module,exports){
 const Bullet = require('./bullet');
 
 const MAX_TIER = 3;
@@ -5118,6 +6510,9 @@ const WEAPONS = {
         pierce: false,
         pattern: [[[0, 0]], [[0, -7], [0, 7]], [[-0.03, -10], [0, 0], [0.03, 10]]]
     },
+    nova: { name: 'Nova Charger', color: '#b67aff', cooldown: [0.8, 0.72, 0.64], speed: 310, damage: [3, 5, 7], size: [10, 14, 18], pierce: false, pattern: [[[0, 0]], [[0, 0]], [[0, 0]]] },
+    prism: { name: 'Prism Splitter', color: '#67faff', cooldown: [0.42, 0.36, 0.3], speed: 520, damage: [2, 2, 3], size: [5, 6, 7], pierce: false, pattern: [[[0, 0]], [[-0.18, 0], [0, 0], [0.18, 0]], [[-0.28, 0], [-0.14, 0], [0, 0], [0.14, 0], [0.28, 0]]] },
+    singularity: { name: 'Singularity', color: '#531c8a', cooldown: [0.9, 0.82, 0.74], speed: 270, damage: [4, 6, 8], size: [12, 16, 20], pierce: false, pattern: [[[0, 0]], [[0, 0]], [[0, 0]]] },
     plasma: {
         name: 'Plasma Lance',
         color: '#ff6cf5',
@@ -5147,17 +6542,21 @@ function downgradeWeapon(weapon) {
     return createWeapon('blaster');
 }
 
-function fireWeapon(weapon, ship, scrollSpeed) {
+function fireWeapon(weapon, ship, scrollSpeed, charge = 0) {
     const spec = WEAPONS[weapon.type];
     const tierIndex = weapon.tier - 1;
-    const bullets = spec.pattern[tierIndex].map(([angle, offset]) => new Bullet({
+    const chargeScale = weapon.type === 'nova' || weapon.type === 'singularity' ? 0.5 + Math.max(0, Math.min(1, charge)) * 1.5 : 1;
+    const pattern = spec.pattern[tierIndex];
+    const bullets = pattern.map(([angle, offset]) => new Bullet({
         x: ship.x + offset,
         y: ship.y + ship.size,
         vx: Math.sin(angle) * spec.speed,
         vy: Math.cos(angle) * spec.speed + scrollSpeed,
         size: spec.size[tierIndex],
-        damage: spec.damage[tierIndex],
-        pierce: spec.pierce,
+        damage: Math.round(spec.damage[tierIndex] * chargeScale),
+        pierce: (weapon.type !== 'nova' && weapon.type !== 'singularity' && spec.pierce) || charge >= 0.85,
+        radius: 0,
+        maxRadius: weapon.type === 'nova' || weapon.type === 'singularity' ? spec.size[tierIndex] * chargeScale : 0,
         life: 1.4,
         owner: 'player',
         color: spec.color

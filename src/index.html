@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#080d20">
-  <meta name="description" content="AsteRoid: Galactic Gauntlet. An eight-bit space shooter with Mandelblum art, optional IPFS flight backups, Base victory stamps, and DBusk radio.">
-  <title>AsteRoid · Galactic Gauntlet</title>
+  <meta name="description" content="Decent Voyager: Galactic Gauntlet. Fly Sector I freely; Decent Pilots can unlock Sector II, Supporter Vaults, flight stamps, and multiplayer.">
+  <title>Decent Voyager · Galactic Gauntlet</title>
   <link rel="icon" type="image/png" href="./assets/brand/mandelblum-gate.png">
   <link rel="stylesheet" href="./css/site.css">
   <script src="./decent-head.config.js"></script>
@@ -14,24 +14,45 @@
   <a class="skip-link" href="#flight-deck">Skip to flight deck</a>
   <div class="space-gate" aria-hidden="true"></div>
   <div class="site-header">
-    <decent-header aria-label="AsteRoid tools"></decent-header>
+    <decent-header aria-label="Decent Voyager tools"></decent-header>
     <section class="radio-dock" aria-label="Flight deck radio">
       <a href="https://github.com/A-Decent-Agency/DBuskRadio" target="_blank" rel="noopener noreferrer" class="radio-label">♫ DBusk / cockpit radio</a>
       <div id="dbusk-radio"></div>
     </section>
   </div>
   <main id="flight-deck" tabindex="-1">
-    <div class="deck-label"><span>▰ GALACTIC GAUNTLET</span><span>10 sectors · 3 difficulties</span></div>
-    <div class="canvas-frame"><canvas id="gameCanvas" width="800" height="600" tabindex="0" aria-label="AsteRoid game canvas. Enter launches; arrows or WASD move, Space fires, P pauses."></canvas></div>
-    <p class="flight-note">No wallet needed to fly. Click <strong>AsteRoid</strong> above for the flight manual.</p>
+    <div class="deck-label"><span>▰ GALACTIC GAUNTLET</span><span>Sector I · levels 1–10 · Sector II unlockable</span></div>
+    <div class="canvas-frame"><canvas id="gameCanvas" width="800" height="600" tabindex="0" aria-label="Decent Voyager game canvas. Enter launches; arrows or WASD move, Space fires, P pauses."></canvas></div>
+    <p class="flight-note">No wallet needed for Sector I (levels 1–10). Click <strong>Decent Voyager</strong> above for the flight manual.</p>
+    <p id="pilot-note" class="pilot-note" role="status">No wallet needed to fly Sector I. Not on the Decent Pilots list? Ask to join in the DecentAgency Discord.</p>
+    <div class="flight-actions"><button id="flight-sign" class="flight-sign" type="button" hidden>Sign flight log</button><button id="flight-retry" class="flight-sign" type="button" hidden>Retry signed outbox</button><span id="flight-status" role="status" aria-live="polite"></span></div>
+    <section id="arena-lobby" class="arena-lobby" aria-labelledby="arena-title">
+      <h2 id="arena-title">✦ Arena · couch free / online $10 USDC</h2>
+      <label>Ships <select name="arena-players"><option value="2">2 ships</option><option value="3">3 ships</option><option value="4">4 ships</option><option value="5">5 ships</option></select></label>
+      <label>Difficulty <select name="arena-difficulty"><option value="cadet">Cadet</option><option value="pilot">Pilot</option><option value="ace">Ace</option></select></label>
+      <label>Mode <select name="arena-mode"><option value="coop">Co-op</option><option value="versus">Versus</option></select></label>
+      <button type="button" data-arena-couch>Start free couch group</button>
+      <button type="button" data-arena-online>Create $10 online round</button>
+      <label>Round ID <input name="arena-round-id" inputmode="numeric" placeholder="Existing round" aria-label="Existing paid round ID"></label><button type="button" data-arena-join>Join paid round</button>
+      <button type="button" data-arena-start>Start online round</button>
+      <button type="button" data-arena-claim>Claim round payout</button>
+      <button type="button" data-arena-refund>Claim refund</button>
+      <button type="button" data-arena-reset>Leave arena</button>
+      <p data-arena-status role="status" aria-live="polite">Free local couch play is ready. Online arena appears when the referee and contracts are configured.</p>
+    </section>
+    <section id="pilot-rewards" class="pilot-rewards" aria-labelledby="reward-title"><h2 id="reward-title">Pilot vouchers</h2><p data-reward-status role="status" aria-live="polite">Voucher claims are available to Decent Pilots after a signed flight log.</p><div data-reward-list></div></section>
   </main>
   <footer>
     <p class="controls-legend">Arrows / WASD move · Space fire · Enter launch / continue · V overview / POV · P pause · M mute · C CRT<br>Title: ← / → level · ↑ / ↓ difficulty</p>
-    <nav aria-label="Project links"><a href="https://github.com/TheJollyLaMa/AsteRoid">Source</a><a href="https://github.com/TheJollyLaMa/AsteRoid/issues">Flight reports</a><a href="https://github.com/TheJollyLaMa/DecentCanopy">Decent ecosystem</a></nav>
-    <p class="credit">Mandelblum art · TheJollyLaMa <span aria-hidden="true">✦</span> Your wallet. Your flight. Your choice.</p>
+    <nav aria-label="Project links"><a href="https://github.com/TheJollyLaMa/AsteRoid">Source</a><a href="https://github.com/TheJollyLaMa/AsteRoid/issues">Flight reports</a><a href="https://decentmarket.io">DecentMarket supporter listings</a><a href="https://discord.gg/tkBfwT3YMN">DecentAgency Discord · ask to join</a><a href="https://github.com/TheJollyLaMa/DecentCanopy">Decent ecosystem</a></nav>
+    <p class="credit">Mandelblum art · TheJollyLaMa <span aria-hidden="true">✦</span> Sector I is free for all. Your wallet. Your flight. Your choice.</p>
   </footer>
   <script src="bundle.js"></script>
   <script type="module" src="./js/shell/main.mjs"></script>
+  <script type="module" src="./js/pilots/whitelist.mjs"></script>
+  <script type="module" src="./js/pilots/flight-log.mjs"></script>
+  <script type="module" src="./js/pilots/rewards.mjs"></script>
+  <script type="module" src="./js/arena/lobby.mjs"></script>
   <script type="module" src="js/dnft/claims.mjs"></script>
   <script type="module" src="js/admin/admin-panel.mjs"></script>
 </body>

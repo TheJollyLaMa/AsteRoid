@@ -9,6 +9,7 @@ const { drawCrt } = require('./render/post');
 const { loadAssets } = require('./render/assets');
 const { renderBattleCard, previewBattleCard } = require('./render/battleCard');
 const { sampleRecord } = require('./render/cardMath');
+const { createInput } = require('./input');
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -58,7 +59,26 @@ const TITLE_DIFFICULTY_KEYS = {
     ArrowDown: 'difficultyNext', s: 'difficultyNext', S: 'difficultyNext'
 };
 
-const input = { left: false, right: false, up: false, down: false, fire: false };
+let networkMode = null;
+let localMode = 'coop';
+function syncPlayers(players = input && input.players) {
+    if (typeof game.setPlayers === 'function') game.setPlayers(players, { mode: localMode });
+}
+const input = createInput({
+    onAction: (action) => {
+        audio.unlock();
+        if (action === 'modeNext') {
+            localMode = localMode === 'coop' ? 'versus' : 'coop';
+            syncPlayers();
+            return;
+        }
+        if (typeof game.handleAction === 'function') game.handleAction(action);
+    },
+    onToast: (message) => hud.setToast(message),
+    onPlayersChanged: (players) => syncPlayers(players),
+    onPlayerLeft: (index) => dispatchGameEvent({ type: 'playerLeft', index }),
+    shouldIgnoreKeyboard: (event) => isTypingContext(event) || !isGameFocus()
+});
 
 function supportsDifficulty() {
     return typeof game.setDifficulty === 'function' && 'selectedDifficulty' in game;
@@ -99,11 +119,16 @@ document.addEventListener('keydown', (event) => {
     if (!gameFocus && (event.key === ' ' || event.key === 'Enter')) return;
     const held = HELD_KEYS[event.key];
     const action = ACTION_KEYS[event.key];
-    const isGameKey = Boolean(held || action || TITLE_DIFFICULTY_KEYS[event.key] || /^[mMcC]$/.test(event.key));
+    const isGameKey = Boolean(held || action || TITLE_DIFFICULTY_KEYS[event.key] || /^[mMcC]$/.test(event.key) || event.key === 'Tab');
     if (!isGameKey) return;
     audio.unlock();
     if (gameFocus) event.preventDefault();
-    if (held) input[held] = true;
+    if (event.key === 'Tab' && game.state === 'title') {
+        event.preventDefault();
+        localMode = localMode === 'coop' ? 'versus' : 'coop';
+        syncPlayers();
+        return;
+    }
     if (event.repeat) return;
     if (event.key === 'm' || event.key === 'M') {
         audio.toggleMute();
@@ -125,18 +150,13 @@ document.addEventListener('keydown', (event) => {
     if (action) game.handleAction(action);
 });
 
-document.addEventListener('keyup', (event) => {
-    const held = HELD_KEYS[event.key];
-    if (held) input[held] = false;
-});
-
 canvas.addEventListener('pointerdown', () => {
     audio.unlock();
     if (document.activeElement !== canvas && typeof canvas.focus === 'function') canvas.focus({ preventScroll: true });
 });
 
 window.addEventListener('blur', () => {
-    Object.keys(input).forEach((key) => { input[key] = false; });
+    input.clear();
     if (game.state === 'playing') game.handleAction('pause');
 });
 
@@ -149,11 +169,34 @@ function dispatchGameEvent(event) {
 }
 
 // Advances the simulation with hit-stop/slow-mo applied, then fans out events.
-function step(realDt, controls = input) {
-    game.update(realDt * fx.timeScale(), controls);
+function snapshotsFrom(network) {
+    if (!network || !Object.prototype.hasOwnProperty.call(network, 'snapshots')) return null;
+    const source = network.snapshots;
+    if (typeof source === 'function') return source();
+    if (Array.isArray(source)) return source.length ? source.shift() : null;
+    return source;
+}
+
+function step(realDt, controls = null) {
+    const inputs = controls ? (Array.isArray(controls) ? controls : [controls]) : input.poll(game);
+    if (networkMode) {
+        if (typeof networkMode.onInput === 'function') networkMode.onInput(inputs);
+        const snapshot = snapshotsFrom(networkMode);
+        if (snapshot && typeof game.applySnapshot === 'function') {
+            try {
+                game.applySnapshot(snapshot.vault === undefined ? { ...snapshot, vault: null } : snapshot);
+            } catch (error) {
+                window.dispatchEvent(new CustomEvent('voyager:snapshotError', { detail: { message: error.message } }));
+            }
+        }
+    } else if (typeof game.update === 'function') {
+        game.update(realDt * fx.timeScale(), inputs);
+    } else if (typeof game.step === 'function') {
+        game.step(inputs);
+    }
     const events = game.drainEvents();
     if (events.length) {
-        audio.play(events);
+        audio.play(events, game);
         fx.handle(events, game);
         events.forEach(dispatchGameEvent);
     }
@@ -161,12 +204,13 @@ function step(realDt, controls = input) {
 }
 
 function draw() {
+    audio.setSector2(Number(game.level && game.level.number) >= 11);
     const shake = fx.shakeOffset();
     ctx.save();
     ctx.translate(shake.x, shake.y);
     renderers[game.view](ctx, game, fx);
     ctx.restore();
-    fx.drawScreen(ctx);
+    fx.drawScreen(ctx, game);
     hud.drawHud(ctx, game, fx, { muted: audio.muted, crt: display.crt });
     drawOverlay(ctx, game, fx);
     if (display.crt) drawCrt(ctx, game.time || 0);
@@ -186,6 +230,30 @@ window.asteroidGame = game;
 window.asteroidDraw = draw;
 window.asteroidStep = step;
 window.AsteroidRender = { renderBattleCard, previewBattleCard, sampleRecord, loadAssets };
+function setNetworkMode(options = null) {
+    if (!options) {
+        networkMode = null;
+        return false;
+    }
+    networkMode = typeof options === 'function' ? { onInput: options } : options;
+    return true;
+}
+window.voyager = {
+    game,
+    step,
+    draw,
+    render: window.AsteroidRender,
+    input,
+    setNetworkMode,
+    onInput(fn) {
+        if (!networkMode) networkMode = {};
+        networkMode.onInput = typeof fn === 'function' ? fn : null;
+    }
+};
+window.addEventListener('voyager:pilot', (event) => {
+    const detail = event && event.detail;
+    if (detail && typeof game.setPilot === 'function') game.setPilot(detail);
+});
 window.asteroidReady = true;
 window.dispatchEvent(new CustomEvent('asteroid:ready', { detail: { game } }));
 requestAnimationFrame(frame);

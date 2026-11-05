@@ -3,7 +3,9 @@
 const BASE_URL = 'assets/game/';
 
 const ROCK_KEYS = ['rock-1', 'rock-2', 'rock-3', 'rock-4', 'rock-5', 'rock-6', 'rock-7', 'rock-8'];
+const FUTURE_ROCK_KEYS = ['future-rock-1', 'future-rock-2', 'future-rock-3', 'future-rock-4'];
 const BACKDROP_KEYS = ['bg-galaxy', 'bg-royal', 'bg-2a', 'bg-tec', 'bg-zz'];
+const SECTOR2_BACKDROP_KEYS = ['bg-sector2-lotus', 'bg-sector2-mars', 'bg-sector2-top'];
 const BREATHE_FRAMES = 8;
 
 const MANIFEST = {
@@ -23,7 +25,21 @@ const MANIFEST = {
     'bg-zz': 'bg-zz.jpg',
     'mars-domicile': 'mars-domicile.jpg',
     'breathe-sheet': 'breathe-sheet.png',
-    'breathe-still': 'breathe-still.png'
+    'breathe-still': 'breathe-still.png',
+    'future-rock-1': 'future-rock-1.png',
+    'future-rock-2': 'future-rock-2.png',
+    'future-rock-3': 'future-rock-3.png',
+    'future-rock-4': 'future-rock-4.png',
+    'bg-sector2-lotus': 'bg-sector2-lotus.jpg',
+    'bg-sector2-mars': 'bg-sector2-mars.jpg',
+    'bg-sector2-top': 'bg-sector2-top.jpg',
+    'gate-sector2': 'gate-sector2.png',
+    'supporter-70': 'supporter-70.jpg',
+    'supporter-71': 'supporter-71.jpg',
+    'supporter-75': 'supporter-75.jpg',
+    'supporter-76': 'supporter-76.jpg',
+    'supporter-78': 'supporter-78.jpg',
+    'supporter-79': 'supporter-79.jpg'
 };
 
 const images = {};
@@ -79,7 +95,17 @@ function rockKeyFor(id) {
 
 function backdropKeyFor(levelNumber) {
     const n = Math.max(1, Math.floor(Number(levelNumber) || 1));
+    if (n >= 11) return SECTOR2_BACKDROP_KEYS[(n - 11) % SECTOR2_BACKDROP_KEYS.length];
     return BACKDROP_KEYS[(n - 1) % BACKDROP_KEYS.length];
+}
+
+function futureRockKeyFor(id) {
+    return FUTURE_ROCK_KEYS[hashInt(id) % FUTURE_ROCK_KEYS.length];
+}
+
+function supporterImageKey(tokenId) {
+    const id = Number(tokenId);
+    return MANIFEST[`supporter-${id}`] ? `supporter-${id}` : null;
 }
 
 // Offscreen canvas factory that works in browsers (and returns null in Node).
@@ -124,7 +150,9 @@ module.exports = {
     BASE_URL,
     MANIFEST,
     ROCK_KEYS,
+    FUTURE_ROCK_KEYS,
     BACKDROP_KEYS,
+    SECTOR2_BACKDROP_KEYS,
     BREATHE_FRAMES,
     isImageReady,
     getImage,
@@ -132,6 +160,8 @@ module.exports = {
     hashInt,
     rockKeyFor,
     backdropKeyFor,
+    futureRockKeyFor,
+    supporterImageKey,
     makeCanvas,
     getTinted
 };
