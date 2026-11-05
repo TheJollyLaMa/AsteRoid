@@ -1,0 +1,8 @@
+# Enforce with owner review requirements in branch protection.
+/.github/ @TheJollyLaMa
+/scripts/ @TheJollyLaMa
+/contributor-accounts.json @TheJollyLaMa
+/payroll-*.json @TheJollyLaMa
+/bounty-bot-config.json @TheJollyLaMa
+/victory-stamps.json @TheJollyLaMa
+/src/js/admin/ @TheJollyLaMa

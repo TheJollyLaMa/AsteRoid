@@ -1,0 +1,40 @@
+name: Victory Stamp Queue
+on:
+  issues:
+    types: [opened, edited, labeled]
+permissions: {}
+concurrency:
+  group: asteroid-ledger-main
+  cancel-in-progress: false
+jobs:
+  queue:
+    if: contains(github.event.issue.labels.*.name, 'victory-stamp') || contains(github.event.issue.body, '### Claim JSON')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Parse untrusted claim as data only
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/queueVictoryStamp.js
+      - name: Validate claim queue
+        run: node --test tests/dnft.test.mjs
+      - name: Persist reviewed automation ledger
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add victory-stamps.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "chore: queue victory stamp claim" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+          git push origin HEAD:main
+      - name: Comment persisted queue result
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/queueVictoryStamp.js --comment

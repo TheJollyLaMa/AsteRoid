@@ -1,0 +1,21 @@
+{
+  "schema": "asteroid-contributors/1",
+  "contributors": [
+    {
+      "github": "TheJollyLaMa",
+      "displayName": "TheJollyLaMa",
+      "role": "owner",
+      "walletAddress": "0x807061DF657A7697c04045dA7d16D941861cAABc",
+      "whitelisted": true,
+      "totalEarnedByCurrency": {
+        "ART": "0",
+        "USDC": "0"
+      },
+      "pendingBalanceByCurrency": {
+        "ART": "0",
+        "USDC": "0"
+      },
+      "issuesClosed": []
+    }
+  ]
+}

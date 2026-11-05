@@ -1,19 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asteroid Game</title>
-    <style>
-        canvas {
-            display: block;
-            margin: 0 auto;
-            background-color: black;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080d20">
+  <meta name="description" content="AsteRoid: Galactic Gauntlet. An eight-bit space shooter with Mandelblum art, optional IPFS flight backups, Base victory stamps, and DBusk radio.">
+  <title>AsteRoid · Galactic Gauntlet</title>
+  <link rel="icon" type="image/png" href="./assets/brand/mandelblum-gate.png">
+  <link rel="stylesheet" href="./css/site.css">
+  <script src="./decent-head.config.js"></script>
 </head>
 <body>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <script src="bundle.js"></script> <!-- This will be our browserified output -->
+  <a class="skip-link" href="#flight-deck">Skip to flight deck</a>
+  <div class="space-gate" aria-hidden="true"></div>
+  <div class="site-header">
+    <decent-header aria-label="AsteRoid tools"></decent-header>
+    <section class="radio-dock" aria-label="Flight deck radio">
+      <a href="https://github.com/A-Decent-Agency/DBuskRadio" target="_blank" rel="noopener noreferrer" class="radio-label">♫ DBusk / cockpit radio</a>
+      <div id="dbusk-radio"></div>
+    </section>
+  </div>
+  <main id="flight-deck" tabindex="-1">
+    <div class="deck-label"><span>▰ GALACTIC GAUNTLET</span><span>10 sectors · 3 difficulties</span></div>
+    <div class="canvas-frame"><canvas id="gameCanvas" width="800" height="600" tabindex="0" aria-label="AsteRoid game canvas. Enter launches; arrows or WASD move, Space fires, P pauses."></canvas></div>
+    <p class="flight-note">No wallet needed to fly. Click <strong>AsteRoid</strong> above for the flight manual.</p>
+  </main>
+  <footer>
+    <p class="controls-legend">Arrows / WASD move · Space fire · Enter launch / continue · V overview / POV · P pause · M mute · C CRT<br>Title: ← / → level · ↑ / ↓ difficulty</p>
+    <nav aria-label="Project links"><a href="https://github.com/TheJollyLaMa/AsteRoid">Source</a><a href="https://github.com/TheJollyLaMa/AsteRoid/issues">Flight reports</a><a href="https://github.com/TheJollyLaMa/DecentCanopy">Decent ecosystem</a></nav>
+    <p class="credit">Mandelblum art · TheJollyLaMa <span aria-hidden="true">✦</span> Your wallet. Your flight. Your choice.</p>
+  </footer>
+  <script src="bundle.js"></script>
+  <script type="module" src="./js/shell/main.mjs"></script>
+  <script type="module" src="js/dnft/claims.mjs"></script>
+  <script type="module" src="js/admin/admin-panel.mjs"></script>
 </body>
 </html>

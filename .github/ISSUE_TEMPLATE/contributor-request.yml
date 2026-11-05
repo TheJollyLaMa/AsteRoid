@@ -1,0 +1,17 @@
+name: Contributor Whitelist Request
+description: Request direct owner onboarding for repository work
+title: "Contributor onboarding: "
+labels: [whitelist-request]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Only the owner can whitelist a worker. Do not submit a self-registration PR.
+        Never post keys, identity documents, contact details, or other private information publicly.
+  - type: textarea
+    id: work
+    attributes:
+      label: Proposed repository work
+      description: Link public GitHub work or relevant issues. The owner will arrange direct onboarding.
+    validations:
+      required: true

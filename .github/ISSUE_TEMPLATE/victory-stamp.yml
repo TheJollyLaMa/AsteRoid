@@ -1,0 +1,18 @@
+name: Victory Stamp Request
+description: Submit pinned victory metadata for owner-reviewed Base minting
+title: "Victory stamp: "
+labels: [victory-stamp]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Paste the Victory Vault claim JSON. This requests review; it does not mint an NFT.
+        All IPFS metadata and claimant addresses are public. Do not include keys or private information.
+  - type: textarea
+    id: claim
+    attributes:
+      label: Claim JSON
+      description: The asteroid-dnft-claim/1 object copied from the Victory Vault
+      render: json
+    validations:
+      required: true

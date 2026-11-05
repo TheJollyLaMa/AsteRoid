@@ -1,0 +1,38 @@
+name: Bounty Label
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Open issue number
+        required: true
+        type: string
+      amount:
+        description: Positive decimal token amount
+        required: true
+        type: string
+      currency:
+        description: Base bounty currency
+        required: true
+        type: choice
+        options: [ART, USDC]
+permissions: {}
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Apply validated bounty label
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
+          INPUT_AMOUNT: ${{ inputs.amount }}
+          INPUT_CURRENCY: ${{ inputs.currency }}
+        run: node scripts/labelBounty.js
