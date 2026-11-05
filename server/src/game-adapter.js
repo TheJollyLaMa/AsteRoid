@@ -50,6 +50,8 @@ function replayRun(run) {
     startLevel: run.startLevel,
     players,
     pilot: run.pilot,
+    runId: run.runId,
+    startedAt: run.startedAt,
     frames: normalizeFrames(run.frames)
   });
 }

@@ -4,6 +4,7 @@
     "version": "1"
   },
   "types": {
+    "RewardBundle": "RewardBundle(bytes32 gameId,address player,address nftContract,uint256 tokenId,uint256 nftAmount,address paymentToken,uint256 tokenAmount,uint256 nativeAmount,bytes32 awardId,bytes32 claimId,bytes32 recordId,uint256 deadline)",
     "Settle": "Settle(uint256 roundId,bytes32 survivorsHash,uint256 nonce,uint256 deadline)",
     "PrizeVoucher": "PrizeVoucher(address player,address nftContract,uint256 tokenId,uint8 tier,bytes32 runId,uint256 deadline)",
     "StampVoucher": "StampVoucher(address player,bytes32 recordId,uint16 level,uint8 difficulty,string metadataURI,uint256 deadline)"

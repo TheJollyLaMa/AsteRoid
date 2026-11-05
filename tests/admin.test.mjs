@@ -2,8 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_ADMIN, isAdmin, adminConfig } from '../src/js/admin/config.mjs';
 import { splitMintBatches, buildProducts, parseQueue, verifyContract, reconcileReceipt } from '../src/js/admin/batch.mjs';
-import { parseWorkers, loadLedger } from '../src/js/admin/admin-panel.mjs';
+import { parseWorkers, loadLedger, assertLegacySupporterRelease } from '../src/js/admin/admin-panel.mjs';
 const claim = { schema: 'asteroid-dnft-claim/1', recordId: 'test-L1', tokenURI: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3t67vyk7hedwhkcx7o7a7lbpi', image: 'ipfs://bafybeihs45httneokxvobxm3outngl2w677gssgkjxzklgqxafj32c42pi', claimant: DEFAULT_ADMIN, level: 1, difficulty: 'cadet', completedAt: '2026-11-05T18:00:00Z', requestedAt: '2026-11-05T18:00:01Z', score: { total: 1, level: 1, bonus: 0 } };
+test('legacy admin release cannot split an atomic reward bundle', () => {
+  assert.doesNotThrow(() => assertLegacySupporterRelease([{ tokenId: '70' }]));
+  assert.throws(() => assertLegacySupporterRelease([{ protocol: 'reward-bundle/1', tokenId: '76' }]), /omit signed assets/);
+  assert.throws(() => assertLegacySupporterRelease([{ tokenId: '76', bonus: { amount: '100' } }]), /omit signed assets/);
+});
 test('admin gating is exact, case insensitive and configurable', () => { assert.equal(isAdmin(DEFAULT_ADMIN.toLowerCase()), true); assert.equal(isAdmin(null), false); assert.equal(isAdmin('0x0000000000000000000000000000000000000001'), false); assert.equal(adminConfig({ royaltyFeeBps: 0 }).royaltyFeeBps, 0); });
 test('batch splitting is limited to twenty; tuples fix recipient/one-of-one/royalty', () => {
   assert.deepEqual(splitMintBatches(Array.from({ length: 43 }, (_, i) => i)).map(batch => batch.length), [20, 20, 3]);

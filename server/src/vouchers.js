@@ -20,7 +20,7 @@ function jsonSafe(value) {
   return value;
 }
 
-function makeVoucherService({ privateKey, chainId = 84532, arenaAddress, stampsAddress, prizesAddress, nftAddress }) {
+function makeVoucherService({ privateKey, chainId = 84532, arenaAddress, stampsAddress, prizesAddress, rewardsAddress, nftAddress }) {
   const signer = privateKey ? new Wallet(privateKey) : null;
   const domainFor = (verifyingContract) => ({
     ...DOMAIN,
@@ -71,6 +71,16 @@ function makeVoucherService({ privateKey, chainId = 84532, arenaAddress, stampsA
         deadline: BigInt(deadline)
       };
       return sign('PrizeVoucher', value, prizesAddress);
+    },
+    async bundle({ player, nftContract = nftAddress, tokenId = 0, nftAmount = 1, runId, awardId, recordId, bonus, nativeAmount = 0, deadline }) {
+      return sign('RewardBundle', {
+        gameId: keccak256(toUtf8Bytes('decent-voyager')), player: getAddress(player),
+        nftContract: getAddress(nftContract), tokenId: BigInt(tokenId), nftAmount: BigInt(nftAmount),
+        paymentToken: bonus ? getAddress(bonus.token) : ZeroAddress,
+        tokenAmount: bonus ? BigInt(bonus.amount) : 0n, nativeAmount: BigInt(nativeAmount),
+        awardId: keccak256(toUtf8Bytes(awardId)), claimId: keccak256(toUtf8Bytes(runId)),
+        recordId: keccak256(toUtf8Bytes(recordId)), deadline: BigInt(deadline)
+      }, rewardsAddress);
     },
     async settle({ roundId, survivors, nonce, deadline }) {
       const sorted = sortAddresses(survivors);

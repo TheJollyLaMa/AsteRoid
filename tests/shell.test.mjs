@@ -103,7 +103,7 @@ test('static shell preserves bundle/canvas and host-module ordering for relative
 test('about content covers rewards, tutorials and the multiplayer walkthrough without dropdowns', () => {
   const source=readFileSync(new URL('../src/js/shell/about-modal.mjs',import.meta.url),'utf8');
   assert.doesNotMatch(source,/<details/);
-  for (const title of ['Level-pass DNFT','Supporter Vaults','Sector II · Far Future','Arena pot']) assert.ok(ABOUT.rewards.some(item => item.title===title));
+  for (const title of ['Level-pass DNFT','Guarded Supporter pickups','Marathon and Perfect awards','Sector II · Far Future','Arena pot']) assert.ok(ABOUT.rewards.some(item => item.title===title));
   assert.ok(ABOUT.couch.length>=3); assert.ok(ABOUT.online.length>=5);
   assert.match(source,/Coming soon/); assert.match(source,/purchaseWithToken/);
   const html=readFileSync(new URL('../src/index.html',import.meta.url),'utf8');

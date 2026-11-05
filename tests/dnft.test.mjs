@@ -31,7 +31,7 @@ test('metadata and claims reject unsafe data, invalid wallet, missing pin', () =
 });
 test('claim validation is strict and strips untrusted extras', () => {
   const input = claim(); assert.deepEqual(validateClaim(input), input);
-  for (const patch of [{ schema: 'x' }, { tokenURI: 'https://bad' }, { image: 'ipfs://../bad' }, { claimant: `0x${'0'.repeat(40)}` }, { level: 0 }, { level: 11 }, { difficulty: 'easy' }, { completedAt: 'never' }, { requestedAt: '2020-01-01T00:00:00Z' }, { score: { total: -1, level: 0, bonus: 0 } }]) assert.throws(() => validateClaim({ ...input, ...patch }));
+  for (const patch of [{ schema: 'x' }, { tokenURI: 'https://bad' }, { image: 'ipfs://../bad' }, { claimant: `0x${'0'.repeat(40)}` }, { level: 0 }, { level: 21 }, { level: 11, difficulty: 'cadet' }, { difficulty: 'easy' }, { completedAt: 'never' }, { requestedAt: '2020-01-01T00:00:00Z' }, { score: { total: -1, level: 0, bonus: 0 } }]) assert.throws(() => validateClaim({ ...input, ...patch }));
   assert.equal(validateClaim({ ...input, command: 'danger' }).command, undefined);
 });
 test('issue parser accepts form/plain/fence and rejects ambiguous or executable text', () => {

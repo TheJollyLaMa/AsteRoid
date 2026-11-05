@@ -137,13 +137,19 @@ test('special force-releases charge or grants a short shield', () => {
     assert.ok(game.drainEvents().some((event) => event.type === 'specialUsed'));
 });
 
-test('vaults require an Ace pilot and guard destruction unlocks Sector II', () => {
+test('vaults require a whitelisted Pilot or Ace and guard destruction unlocks Sector II', () => {
     const unauthorized = activeGame('ace', false, 44);
     unauthorized.startLevel(9);
     assert.equal(unauthorized.vault, null);
-    const nonAcePilot = activeGame('pilot', true, 44);
-    nonAcePilot.startLevel(9);
-    assert.equal(nonAcePilot.vault, null);
+    const cadet = activeGame('cadet', true, 44);
+    cadet.startLevel(9);
+    assert.equal(cadet.vault, null);
+    const pilot = activeGame('pilot', true, 44);
+    pilot.sector2Level = 9;
+    pilot.startLevel(9);
+    pilot.vault.shielded = false;
+    pilot.captureVault();
+    assert.equal(pilot.save.progress.byDifficulty.pilot.sector2Unlocked, true);
     const game = activeGame('ace', true, 44);
     game.sector2Level = 9;
     game.startLevel(9);

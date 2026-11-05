@@ -209,6 +209,7 @@ function validateLevelRecord(record, where = 'Level record') {
         game: str(record.game, `${where} game`),
         gameVersion: str(record.gameVersion, `${where} gameVersion`, 20),
         level,
+        ...(record.marathon === undefined ? {} : { marathon: validateMarathon(record, where) }),
         captures: validateCaptures(record.captures ?? [], `${where} captures`),
         levelName: str(record.levelName, `${where} levelName`, 60),
         difficulty: record.difficulty,
@@ -266,6 +267,47 @@ function validateLevelRecord(record, where = 'Level record') {
             misses: tuples(log.misses, `${where} misses`, BATTLE_LOG_CAPS.misses, ['n', 'n'])
         }
     };
+}
+
+function validateMarathon(record, where) {
+    const marathon = record.marathon;
+    if (!isPlainObject(marathon) || marathon.schema !== 'voyager-marathon/1' ||
+        record.level !== 20 || record.difficulty === 'cadet' || marathon.difficulty !== record.difficulty ||
+        marathon.startLevel !== 1 || marathon.finalLevel !== 20 || typeof marathon.perfect !== 'boolean' ||
+        !Array.isArray(marathon.levels) || marathon.levels.length !== 20 ||
+        !Array.isArray(marathon.awards) || marathon.awards.length > 4) fail(`${where} has an invalid marathon receipt.`);
+    const levels = marathon.levels.map((entry, index) => {
+        if (!isPlainObject(entry) || entry.level !== index + 1) fail(`${where} marathon levels must be ordered 1–20.`);
+        const checked = validateLevelRecord({
+            ...record, ...entry, id: entry.recordId, marathon: undefined, captures: [],
+            battleLog: { levelLength: 1, worldWidth: 800, path: [], kills: [], hitsTaken: [], pickups: [], misses: [] }
+        }, `${where} marathon level ${index + 1}`);
+        return { recordId: checked.id, level: checked.level, startedAt: checked.startedAt, completedAt: checked.completedAt,
+            durationSec: checked.durationSec, score: checked.score, ship: checked.ship, stats: checked.stats };
+    });
+    const awards = marathon.awards.map((award) => {
+        if (!isPlainObject(award) || !['guarded-pickup', 'marathon-completion', 'perfect-ace', 'perfect-pilot'].includes(award.kind) ||
+            award.chainId !== 8453 || !/^0x[0-9a-f]{40}$/i.test(award.nftContract || '') ||
+            !/^\d+$/.test(award.tokenId) || award.quantity !== 1) fail(`${where} has an invalid marathon award.`);
+        let bonus;
+        if (award.bonus !== undefined) {
+            const { PILOT_BONUS } = require('./prizes');
+            if (award.kind !== 'perfect-pilot' || !isPlainObject(award.bonus) ||
+                Object.entries(PILOT_BONUS).some(([key, value]) => award.bonus[key] !== value)) fail(`${where} has an invalid Pilot bonus.`);
+            bonus = { ...PILOT_BONUS };
+        }
+        return { kind: award.kind, level: num(award.level, 'Award level', { min: 1, max: 20, integer: true }),
+            tier: num(award.tier, 'Award tier', { min: 1, max: 2, integer: true }),
+            earnedAt: isoDate(award.earnedAt, 'Award earned date'), chainId: 8453, nftContract: award.nftContract,
+            tokenId: award.tokenId, project: str(award.project, 'Award project', 100),
+            metadataURI: str(award.metadataURI, 'Award metadata', 300), quantity: 1,
+            ...(bonus ? { bonus } : {}), status: str(award.status, 'Award status', 100) };
+    });
+    return { schema: marathon.schema, runId: str(marathon.runId, 'Marathon run ID', 200),
+        seed: num(marathon.seed, 'Marathon seed', { max: 4294967295, integer: true }),
+        startLevel: 1, finalLevel: 20, difficulty: record.difficulty, perfect: marathon.perfect,
+        startedAt: isoDate(marathon.startedAt, 'Marathon start'), completedAt: isoDate(marathon.completedAt, 'Marathon end'),
+        totals: validateLifetime(marathon.totals), levels, awards };
 }
 
 function assertJsonData(value, depth = 0, ancestors = new Set()) {

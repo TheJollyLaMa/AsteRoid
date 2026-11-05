@@ -40,6 +40,8 @@ export function mountRewards() {
         const { kind, voucher } = entry, title = kind === 'stamp' ? `Level-pass DNFT · level ${voucher.level ?? voucher.voucher?.level ?? '—'}` : `Supporter Prize · token ${voucher.tokenId ?? voucher.voucher?.tokenId ?? '—'}`;
         const row = document.createElement('article'); row.append(document.createElement('h3'));
         row.firstChild.textContent = title;
+        if (voucher.awardKind) row.append(node('p', voucher.awardKind.replaceAll('-', ' ')));
+        if (voucher.bonus) row.append(node('p', 'Perfect Pilot bonus: this single atomic claim transfers the BigNuten Supporter DNFT and 100 BNut together. If either transfer fails, neither is paid.'));
         const claim = document.createElement('button'); claim.type = 'button'; claim.textContent = 'Claim on Base';
         claim.addEventListener('click', () => void claimVoucher(kind, voucher));
         row.append(claim); list.append(row);
@@ -55,7 +57,8 @@ export function mountRewards() {
       const contractsResponse = await fetch('./js/chain/addresses.json', { cache: 'no-store' });
       if (!contractsResponse.ok) throw new Error('Claim contracts are not configured');
       const book = await contractsResponse.json();
-      const contractName = kind === 'stamp' ? 'VoyagerStamps' : 'VoyagerPrizes';
+      const bundle = kind === 'prize' && voucher.protocol === 'reward-bundle/1';
+      const contractName = kind === 'stamp' ? 'VoyagerStamps' : bundle ? 'VoyagerRewards' : 'VoyagerPrizes';
       const target = contractAddress(book, contractName);
       if (!ADDRESS.test(target || '')) throw new Error(`${contractName} address is not configured`);
       const provider = await wallet.ensureChain(BASE), ethers = window.ethers || await (await import('../../vendor/decent-head/2.0.0/js/wallet.js')).loadEthers();
@@ -63,15 +66,18 @@ export function mountRewards() {
       if ((await signer.getAddress()).toLowerCase() !== pilot.address.toLowerCase()) throw new Error('Connected wallet no longer matches the Decent Pilot address');
       const abi = kind === 'stamp'
         ? ['function mintWithVoucher(bytes32 gameId,(address player,bytes32 recordId,uint16 level,uint8 difficulty,string metadataURI,uint256 deadline) voucher,bytes signature)']
-        : ['function claim(bytes32 gameId,(address player,address nftContract,uint256 tokenId,uint8 tier,bytes32 runId,uint256 deadline) voucher,bytes signature)'];
+        : bundle
+          ? ['function claim((bytes32 gameId,address player,address nftContract,uint256 tokenId,uint256 nftAmount,address paymentToken,uint256 tokenAmount,uint256 nativeAmount,bytes32 awardId,bytes32 claimId,bytes32 recordId,uint256 deadline) reward,bytes signature)']
+          : ['function claim(bytes32 gameId,(address player,address nftContract,uint256 tokenId,uint8 tier,bytes32 runId,uint256 deadline) voucher,bytes signature)'];
       const contract = new ethers.Contract(target, abi, signer), method = kind === 'stamp' ? 'mintWithVoucher' : 'claim';
       if (typeof contract[method] !== 'function') throw new Error(`${contractName}.${method} is unavailable in this chain ABI`);
       const signature = voucher.signature || voucher.sig;
       if (!signature) throw new Error('Voucher signature is missing');
       const args = voucher.voucher || voucher, gameId = ethers.id('decent-voyager');
-      const estimate = await contract[method].estimateGas(gameId, args, signature);
+      const parameters = bundle ? [args, signature] : [gameId, args, signature];
+      const estimate = await contract[method].estimateGas(...parameters);
       if (!window.confirm(`Submit ${method} on Base? Estimated gas: ${estimate}. Your wallet will show the final transaction.`)) return;
-      const tx = await contract[method](gameId, args, signature, { gasLimit: estimate * 120n / 100n });
+      const tx = await contract[method](...parameters, { gasLimit: estimate * 120n / 100n });
       message(`Submitted ${tx.hash}; waiting for confirmation.`); await tx.wait(); message('Claimed! It is in your wallet now.'); await load();
     } catch (error) { message(error.message); }
   }

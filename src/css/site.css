@@ -13,7 +13,7 @@ decent-header { display:block; --dh-orbit-size:64px; --dh-orbit-size-mobile:56px
 #dbusk-radio { flex:1; min-width:0; --dbusk-background:transparent; --dbusk-color:#e8f2ff; --dbusk-border-width:0px; --dbusk-accent:var(--cyan); --dbusk-padding:0px; --dbusk-max-width:100%; }
 main { flex:1; min-height:0; display:flex; padding:0; }
 .stage { position:relative; flex:1; min-height:0; container-type:size; display:grid; place-items:center; }
-canvas { display:block; width:100cqw; height:100cqh; object-fit:contain; background:#000; border-radius:0; box-shadow:0 0 0 1px #56edff22,0 0 60px #56edff14,0 0 140px #7dff8c0c; image-rendering:auto; }
+canvas { display:block; width:100cqw; height:100cqh; object-fit:contain; background:#000; border-radius:0; box-shadow:0 0 0 1px #56edff22,0 0 60px #56edff14,0 0 140px #7dff8c0c; image-rendering:crisp-edges; image-rendering:pixelated; }
 .launch-pad { position:absolute; left:50%; bottom:max(14px,2.5cqh); transform:translateX(-50%); z-index:5; width:max-content; max-width:calc(100% - 20px); display:flex; gap:14px; flex-wrap:wrap; justify-content:center; animation:pad-in .5s cubic-bezier(.2,.8,.2,1); }
 .launch-pad button { display:inline-flex; align-items:center; gap:10px; padding:13px 24px; border-radius:14px; cursor:pointer; font:800 15px/1 ui-monospace,Menlo,monospace; letter-spacing:.06em; color:#e8f6ff; border:1px solid #56edff80; background:linear-gradient(135deg,#0d2440ee,#081426ee); box-shadow:0 0 24px #56edff26,inset 0 0 18px #56edff14; transition:transform .2s,box-shadow .2s,border-color .2s; }
 .launch-pad button span { color:var(--green); }

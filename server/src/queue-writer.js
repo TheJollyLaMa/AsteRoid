@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 
 function createQueueWriter({ repoRoot, token = '', repo = '', ref = 'main', fetchImpl = global.fetch, localFiles = {} }) {
+  let localWrite = Promise.resolve();
   const files = {
     stamps: localFiles.stamps || 'victory-stamps.json',
     prizes: localFiles.prizes || 'payroll-queue.json'
@@ -42,11 +43,42 @@ function createQueueWriter({ repoRoot, token = '', repo = '', ref = 'main', fetc
     if (existing && existing.player && item.player && existing.player.toLowerCase() !== item.player.toLowerCase()) {
       throw new Error('Queue identity is already assigned to a different player.');
     }
+
     if (!existing || existing.runId !== item.runId) throw new Error('Queue identity is already assigned to a different run.');
     if (existing.runHash && item.runHash && existing.runHash !== item.runHash) {
       throw new Error('Queue already contains this runId with a different run hash.');
     }
     return { status: 'already-queued', file, item: existing };
+  }
+
+  function assertStock(doc, item, reservation) {
+    if (!reservation) return;
+    if (!Number.isSafeInteger(reservation.stock) || reservation.stock < 0) throw new Error('Invalid verified reward stock.');
+    const pending = Array.isArray(doc) ? doc : doc.pending;
+    const active = pending.filter((entry) => entry.signature && Number(entry.voucher?.deadline) > Date.now() / 1000);
+    const nftAmount = BigInt(item.voucher?.nftAmount ?? 1);
+    const reserved = active.filter((entry) => String(entry.tokenId) === String(item.tokenId))
+      .reduce((sum, entry) => sum + BigInt(entry.voucher?.nftAmount ?? 1), 0n);
+    if (nftAmount > 0n && reserved + nftAmount > BigInt(reservation.stock)) {
+      throw new Error(`Supporter token ${item.tokenId} has no unreserved funded inventory.`);
+    }
+    const tokenAmount = BigInt(item.voucher?.tokenAmount || '0');
+    if (tokenAmount > 0n) {
+      if (!/^\d+$/.test(reservation.tokenBalance || '') ||
+          reservation.paymentToken?.toLowerCase() !== item.voucher.paymentToken?.toLowerCase()) {
+        throw new Error('Verified ERC-20 reward inventory is required.');
+      }
+      const committed = active.filter((entry) =>
+        entry.voucher?.paymentToken?.toLowerCase() === item.voucher.paymentToken.toLowerCase())
+        .reduce((sum, entry) => sum + BigInt(entry.voucher.tokenAmount), 0n);
+      if (committed + tokenAmount > BigInt(reservation.tokenBalance)) throw new Error('Insufficient unreserved ERC-20 reward inventory.');
+    }
+    const nativeAmount = BigInt(item.voucher?.nativeAmount || '0');
+    if (nativeAmount > 0n) {
+      if (!/^\d+$/.test(reservation.nativeBalance || '')) throw new Error('Verified native reward inventory is required.');
+      const committed = active.reduce((sum, entry) => sum + BigInt(entry.voucher?.nativeAmount || '0'), 0n);
+      if (committed + nativeAmount > BigInt(reservation.nativeBalance)) throw new Error('Insufficient unreserved native reward inventory.');
+    }
   }
 
   async function writeRemote(file, data, sha) {
@@ -57,7 +89,7 @@ function createQueueWriter({ repoRoot, token = '', repo = '', ref = 'main', fetc
     if (!response.ok) throw new Error(`Could not update ${file} on GitHub (${response.status}).`);
   }
 
-  async function appendRemote(kind, item) {
+  async function appendRemote(kind, item, reservation) {
     const file = files[kind];
     for (let attempt = 0; attempt < 3; attempt++) {
       const { data: current, sha } = await readRemote(file);
@@ -66,6 +98,7 @@ function createQueueWriter({ repoRoot, token = '', repo = '', ref = 'main', fetc
       if (!Array.isArray(pending)) throw new Error(`${file} does not contain a pending queue array.`);
       const existing = findEntry(allEntries(doc, kind), item, kind);
       if (existing) return existingResult(existing, item, file);
+      assertStock(doc, item, reservation);
       pending.push(item);
       try {
         await writeRemote(file, doc, sha);
@@ -76,7 +109,7 @@ function createQueueWriter({ repoRoot, token = '', repo = '', ref = 'main', fetc
     }
   }
 
-  async function appendLocal(kind, item) {
+  async function appendLocal(kind, item, reservation) {
     const file = path.join(repoRoot, files[kind]);
     let doc;
     try { doc = JSON.parse(await fs.readFile(file, 'utf8')); }
@@ -88,19 +121,22 @@ function createQueueWriter({ repoRoot, token = '', repo = '', ref = 'main', fetc
     if (!Array.isArray(pending)) throw new Error(`${files[kind]} does not contain a pending queue array.`);
     const existing = findEntry(allEntries(doc, kind), item, kind);
     if (existing) return existingResult(existing, item, files[kind]);
+    assertStock(doc, item, reservation);
     pending.push(item);
     await fs.writeFile(file, JSON.stringify(doc, null, 2) + '\n', 'utf8');
     return { status: 'queued', file: files[kind] };
   }
 
   return {
-    async append(kind, item) {
+    async append(kind, item, reservation) {
       if (!Object.hasOwn(files, kind)) throw new Error(`Unknown queue: ${kind}`);
       if (token) {
         if (!repo) throw new Error('GITHUB_REPO is required when GITHUB_TOKEN is set.');
-        return appendRemote(kind, item);
+        return appendRemote(kind, item, reservation);
       }
-      return appendLocal(kind, item);
+      const task = localWrite.then(() => appendLocal(kind, item, reservation));
+      localWrite = task.catch(() => {});
+      return task;
     },
     async read(kind) {
       if (!Object.hasOwn(files, kind)) throw new Error(`Unknown queue: ${kind}`);

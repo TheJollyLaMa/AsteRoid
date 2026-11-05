@@ -204,26 +204,35 @@ function step(realDt, controls = null) {
     fx.update(realDt, game);
 }
 
-// The world stays 800×600; the view widens to the page's aspect and the backing store scales so it stays sharp.
+// Match the contained image to device pixels without changing the logical world.
 const LOGICAL = { width: canvas.width, height: canvas.height };
-let renderScale = 1;
+let renderScaleX = 1;
+let renderScaleY = 1;
+let renderPixelRatio = 0;
 function fitBacking() {
     const rect = canvas.getBoundingClientRect();
     const logicalWidth = setViewWidth(rect.width && rect.height ? LOGICAL.height * rect.width / rect.height : LOGICAL.width);
     const shown = Math.min(rect.width || logicalWidth, (rect.height || LOGICAL.height) * logicalWidth / LOGICAL.height);
-    const scale = Math.min(2, Math.max(1, Math.round((shown * (window.devicePixelRatio || 1) / logicalWidth) * 4) / 4));
-    if (scale === renderScale && canvas.width === Math.round(logicalWidth * scale) && canvas.height === Math.round(LOGICAL.height * scale)) return;
-    renderScale = scale;
-    canvas.width = Math.round(logicalWidth * scale);
-    canvas.height = Math.round(LOGICAL.height * scale);
+    renderPixelRatio = window.devicePixelRatio || 1;
+    const width = Math.max(1, Math.round(shown * renderPixelRatio));
+    const height = Math.max(1, Math.round(shown * LOGICAL.height / logicalWidth * renderPixelRatio));
+    renderScaleX = width / logicalWidth;
+    renderScaleY = height / LOGICAL.height;
+    if (canvas.width === width && canvas.height === height) return;
+    canvas.width = width;
+    canvas.height = height;
 }
 if (typeof ResizeObserver === 'function') new ResizeObserver(fitBacking).observe(canvas);
+window.addEventListener('resize', fitBacking);
 fitBacking();
 
 function draw() {
+    if (renderPixelRatio !== (window.devicePixelRatio || 1)) fitBacking();
     audio.setSector2(Number(game.level && game.level.number) >= 11);
     const shake = fx.shakeOffset();
-    ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+    ctx.setTransform(renderScaleX, 0, 0, renderScaleY, 0, 0);
+    // Resizing resets context state; apply nearest-neighbour sampling every frame.
+    ctx.imageSmoothingEnabled = false;
     ctx.save();
     ctx.translate(shake.x, shake.y);
     renderers[game.view](ctx, game, fx);

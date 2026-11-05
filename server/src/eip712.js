@@ -6,6 +6,14 @@ const path = require('node:path');
 const CHAIN_DEFINITIONS_PATH = path.resolve(__dirname, '../../src/js/chain/eip712.json');
 const DOMAIN_FALLBACK = { name: 'DecentVoyager', version: '1' };
 const FALLBACK_TYPES = {
+  RewardBundle: [
+    { name: 'gameId', type: 'bytes32' }, { name: 'player', type: 'address' },
+    { name: 'nftContract', type: 'address' }, { name: 'tokenId', type: 'uint256' },
+    { name: 'nftAmount', type: 'uint256' }, { name: 'paymentToken', type: 'address' },
+    { name: 'tokenAmount', type: 'uint256' }, { name: 'nativeAmount', type: 'uint256' },
+    { name: 'awardId', type: 'bytes32' }, { name: 'claimId', type: 'bytes32' },
+    { name: 'recordId', type: 'bytes32' }, { name: 'deadline', type: 'uint256' }
+  ],
   Settle: [
     { name: 'roundId', type: 'uint256' },
     { name: 'survivorsHash', type: 'bytes32' },

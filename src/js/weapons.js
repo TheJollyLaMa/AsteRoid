@@ -7,9 +7,9 @@ const WEAPONS = {
     blaster: {
         name: 'Blaster',
         color: '#9ff3ff',
-        cooldown: [0.26, 0.22, 0.18],
-        speed: 540,
-        damage: [1, 1, 1],
+        cooldown: [0.14, 0.12, 0.1],
+        speed: 700,
+        damage: [2, 2, 2],
         size: [3, 3, 3],
         pierce: false,
         pattern: [[[0, 0]], [[-0.05, -6], [0.05, 6]], [[-0.09, -8], [0, 0], [0.09, 8]]]
@@ -17,8 +17,8 @@ const WEAPONS = {
     spread: {
         name: 'Spread Cannon',
         color: '#5fffd0',
-        cooldown: [0.34, 0.3, 0.27],
-        speed: 480,
+        cooldown: [0.18, 0.15, 0.13],
+        speed: 660,
         damage: [1, 1, 1],
         size: [3, 3, 3],
         pierce: false,
@@ -44,9 +44,9 @@ const WEAPONS = {
     plasma: {
         name: 'Plasma Lance',
         color: '#d8e4ef',
-        cooldown: [0.55, 0.48, 0.42],
-        speed: 400,
-        damage: [3, 4, 5],
+        cooldown: [0.24, 0.2, 0.17],
+        speed: 680,
+        damage: [4, 5, 6],
         size: [7, 9, 11],
         pierce: true,
         pattern: [[[0, 0]], [[0, 0]], [[-0.06, -10], [0.06, 10]]]

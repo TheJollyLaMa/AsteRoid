@@ -1,0 +1,38 @@
+.mobile-controls { display:none; }
+#flight-deck:fullscreen { width:100%; height:100%; background:#040814; }
+@media (pointer:coarse), (max-width:760px) {
+    .cockpit { min-height:650px; }
+    #flight-deck { flex-direction:column; }
+    #flight-deck .stage { min-height:240px; width:100%; }
+    .mobile-controls { display:block; flex:none; width:100%; padding:8px max(10px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left)); background:#080f22; border-top:1px solid #56edff44; }
+    .mobile-controls button { min-height:44px; min-width:44px; padding:7px 10px; border:1px solid #56edff70; border-radius:10px; background:#0d2340; color:#e8f2ff; font:700 12px/1.2 ui-monospace,Menlo,monospace; cursor:pointer; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+    .mobile-controls button:disabled { opacity:.45; cursor:default; }
+    .mobile-controls button:active,.mobile-controls button.is-held,.mobile-controls button[aria-pressed=true] { background:#23516b; border-color:#7dff8c; }
+    .mobile-toolbar { display:flex; flex-wrap:wrap; gap:5px; justify-content:space-between; }
+    .mobile-toolbar button { flex:1; font-size:11px; }
+    .mobile-flight { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:7px 0; }
+    .mobile-dpad { display:grid; grid-template-columns:repeat(3,44px); grid-template-rows:repeat(2,44px); gap:4px; }
+    .mobile-dpad [data-mobile-held=up] { grid-area:1 / 2; }
+    .mobile-dpad [data-mobile-held=left] { grid-area:2 / 1; }
+    .mobile-dpad [data-mobile-held=down] { grid-area:2 / 2; }
+    .mobile-dpad [data-mobile-held=right] { grid-area:2 / 3; }
+    .mobile-weapons { display:grid; grid-template-columns:minmax(65px,1fr) minmax(65px,1fr); gap:5px; max-width:225px; }
+    .mobile-weapons .mobile-fire { grid-row:span 2; color:#04101a; background:#7dff8c; min-height:92px; }
+    .mobile-fire small { font-size:10px; }
+    .mobile-motion { display:flex; align-items:center; flex-wrap:wrap; gap:5px; }
+    .mobile-motion span { flex:1; min-width:110px; color:#aabed2; font-size:10px; line-height:1.3; }
+    .mobile-controls [data-mobile-status] { margin:5px 0 0; color:#bcd1e6; font-size:10px; line-height:1.35; }
+    #flight-deck:fullscreen .stage { min-height:0; }
+}
+@media (orientation:landscape) and (max-height:600px) and (pointer:coarse), (orientation:landscape) and (max-height:600px) and (max-width:760px) {
+    .cockpit { min-height:100dvh; height:auto; }
+    #flight-deck { min-height:300px; flex-direction:row; }
+    #flight-deck .stage { min-height:300px; min-width:0; width:auto; }
+    .mobile-controls { display:block; flex:0 0 255px; width:255px; border-top:0; border-left:1px solid #56edff44; }
+    .mobile-flight { gap:6px; flex-wrap:wrap; justify-content:center; }
+    .mobile-dpad { grid-template-columns:repeat(3,44px); }
+    .mobile-weapons { grid-template-columns:75px 75px; }
+    .mobile-weapons .mobile-fire { min-height:60px; }
+    #flight-deck:fullscreen { min-height:0; }
+    #flight-deck:fullscreen .stage { min-height:0; }
+}

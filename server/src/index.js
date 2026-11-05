@@ -12,8 +12,8 @@ const { createQueueWriter } = require('./queue-writer');
 const { normalizeAddress, runHash, verifyRun } = require('./run-verifier');
 const { makeVoucherService } = require('./vouchers');
 const { createTicketService } = require('./tickets');
-let prizeDefinitions = {};
-try { prizeDefinitions = require('../../src/js/prizes.js'); } catch { /* Core prize data has not landed yet. */ }
+const { createRewardInventory } = require('./reward-inventory');
+const prizeDefinitions = require('../../src/js/prizes.js');
 
 const REPO_ROOT = path.resolve(__dirname, '../..');
 const DEFAULT_NFT_ADDRESS = prizeDefinitions.COLLECTION || '0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B';
@@ -80,6 +80,7 @@ function createService(options = {}) {
     arenaAddress: env.VOYAGER_ARENA_ADDRESS,
     stampsAddress: env.VOYAGER_STAMPS_ADDRESS,
     prizesAddress: env.VOYAGER_PRIZES_ADDRESS,
+    rewardsAddress: env.VOYAGER_REWARDS_ADDRESS,
     nftAddress: env.SUPPORTER_NFT_ADDRESS || DEFAULT_NFT_ADDRESS,
     adminAddresses: parseCsv(env.ADMIN_ADDRESS).map((address) => {
       try { return getAddress(address).toLowerCase(); } catch { return null; }
@@ -111,6 +112,7 @@ function createService(options = {}) {
     arenaAddress: config.arenaAddress,
     stampsAddress: config.stampsAddress,
     prizesAddress: config.prizesAddress,
+    rewardsAddress: config.rewardsAddress,
     nftAddress: config.nftAddress
   });
   const verifyPaidJoin = options.verifyPaidJoin || createPaidJoinVerifier({
@@ -120,6 +122,11 @@ function createService(options = {}) {
     chainId: config.chainId
   });
   const rateLimit = options.rateLimit || createRateLimiter({ limit: config.rateLimit, windowMs: config.rateWindowMs });
+  const rewardInventory = options.rewardInventory || createRewardInventory({
+    rpcUrl: env.BASE_RPC_URL || env.BASE_SEPOLIA_RPC_URL,
+    chainId: config.chainId, nftAddress: config.nftAddress,
+    prizesAddress: config.rewardsAddress, legacyPrizesAddress: config.prizesAddress
+  });
   const voucherBook = new Map();
   const idempotency = new Map();
   const usedTickets = new Map();
@@ -149,6 +156,8 @@ function createService(options = {}) {
       if (req.method === 'GET' && url.pathname === '/health') {
         return response(res, 200, {
           status: 'ok',
+          ruleset: require('../../src/js/ruleset'),
+          rewardsAddress: config.rewardsAddress,
           replayApi: typeof require('./game-adapter').Game.replay === 'function',
           signerConfigured: Boolean(vouchers.address),
           queueMode: env.GITHUB_TOKEN ? (env.GITHUB_REPO ? 'github' : 'misconfigured') : 'local',
@@ -221,7 +230,7 @@ function createService(options = {}) {
         const [stamps, prizes] = await Promise.all([queues.read('stamps'), queues.read('prizes')]);
         const persisted = [
           ...[...(stamps.pending || []), ...(stamps.minted || [])].filter((item) => item.player && item.player.toLowerCase() === address && item.signature).map((item) => ({ kind: 'stamp', recordId: item.recordId || item.record && item.record.id, voucher: item.voucher, signature: item.signature, digest: item.digest })),
-          ...[...(prizes.pending || []), ...(prizes.settled || [])].filter((item) => item.player && item.player.toLowerCase() === address && item.signature).map((item) => ({ kind: 'prize', tokenId: item.tokenId, voucher: item.voucher, signature: item.signature, digest: item.digest }))
+          ...[...(prizes.pending || []), ...(prizes.settled || [])].filter((item) => item.player && item.player.toLowerCase() === address && item.signature).map((item) => ({ kind: 'prize', protocol: item.protocol, tokenId: item.tokenId, awardKind: item.awardKind, bonus: item.bonus, voucher: item.voucher, signature: item.signature, digest: item.digest }))
         ];
         const combined = [...persisted, ...(voucherBook.get(address) || [])];
         const unique = [...new Map(combined.map((item) => [`${item.kind}:${item.digest || item.recordId || item.tokenId}`, item])).values()];
@@ -256,6 +265,7 @@ function createService(options = {}) {
     const pinResults = [];
     for (const record of records) {
       if (!record || typeof record.id !== 'string') throw new Error('Replay produced a level record without an id.');
+      if (run.difficulty === 'cadet') continue;
       const card = run.battleCards && run.battleCards[record.id] || (records.length === 1 ? run.battleCard || run.card : null);
       const pinning = await pinata.pinRecord(record, card);
       const voucher = await vouchers.stamp({ player: address, record, metadataURI: pinning.metadataURI, deadline });
@@ -272,28 +282,61 @@ function createService(options = {}) {
       pinResults.push({ recordId: record.id, status: pinning.status, metadataURI: pinning.metadataURI, ...(pinning.reason ? { reason: pinning.reason } : {}) });
     }
     for (const capture of captures) {
-      const prizeList = prizeDefinitions.PRIZES && prizeDefinitions.PRIZES[capture.tier] || [];
+      const completion = capture.kind === 'marathon-completion';
+      const perfect = capture.kind === 'perfect-ace' || capture.kind === 'perfect-pilot';
+      if (capture.kind && !completion && !perfect) throw new Error('Replay produced an unsupported award kind.');
+      if ((completion || perfect) && (run.players !== 1 || run.difficulty === 'cadet' || run.startLevel !== 1 ||
+          verified.result.state !== 'victory' || records.length !== 20 ||
+          !records.every((record, index) => record.level === index + 1 && record.difficulty === run.difficulty) ||
+          !records[19].marathon)) {
+        throw new Error('Completion awards require a verified full marathon.');
+      }
+      if (completion && run.difficulty !== 'ace') throw new Error('Voyager Supporter award requires Ace difficulty.');
+      if (perfect && (capture.kind !== `perfect-${run.difficulty}` ||
+          verified.result.runStats?.livesLost !== 0 ||
+          ![1, 2].every((tier) => captures.some((entry) => entry.tier === tier && !entry.kind)))) {
+        throw new Error('Perfect awards require zero lives lost and both guarded pickups.');
+      }
+      const prizeList = completion ? [prizeDefinitions.MARATHON_PRIZE] :
+        perfect ? [prizeDefinitions.PERFECT_PRIZES[run.difficulty]] : prizeDefinitions.PRIZES[capture.tier] || [];
       const canonicalPrize = prizeList.find((entry) => String(entry.tokenId) === String((capture.prize && capture.prize.tokenId) ?? capture.tokenId ?? ''));
-      const prize = capture.prize || canonicalPrize || capture;
-      if (!prize || prize.tokenId == null) throw new Error('Replay produced a supporter capture without a token id.');
-      const voucher = await vouchers.prize({
+      if (!canonicalPrize) throw new Error('Replay produced an unsupported Supporter award.');
+      const prize = canonicalPrize;
+      const bonus = capture.kind === 'perfect-pilot' ? prizeDefinitions.PILOT_BONUS : null;
+      const receiptRecord = completion || perfect ? records[19] : records.find((record) => record.level === capture.level);
+      if (!receiptRecord) throw new Error('Supporter award is missing its verified level receipt.');
+      const inventory = await rewardInventory.read(address, prize.tokenId, bonus);
+      if (inventory.claimed) {
+        queued.push({ kind: 'prize', tokenId: String(prize.tokenId), status: 'already-claimed' });
+        continue;
+      }
+      if (inventory.stock === 0) {
+        throw new Error(`Supporter token ${prize.tokenId} is unfunded; no claim voucher issued. Keep the signed run for retry after funding.`);
+      }
+      const voucher = await vouchers.bundle({
         player: address,
         nftContract: prize.nftContract || capture.nftContract || env.SUPPORTER_NFT_ADDRESS || DEFAULT_NFT_ADDRESS,
         tokenId: prize.tokenId,
-        tier: capture.tier,
+        awardId: `supporter:${config.nftAddress.toLowerCase()}:${prize.tokenId}`,
+        recordId: receiptRecord.id, bonus,
         // Each capture needs its own replay key: VoyagerPrizes consumes the voucher runId on claim.
-        runId: `${run.runId}:tier${Number(capture.tier)}`,
+        runId: completion || perfect ? `${run.runId}:${capture.kind}` : `${run.runId}:tier${Number(capture.tier)}`,
         deadline
       });
       const item = {
         kind: 'supporter-prize', runId: run.runId, runHash: verified.runHash, player: getAddress(address), tier: Number(capture.tier),
+        protocol: 'reward-bundle/1',
         project: prize.project || '', tokenId: String(prize.tokenId), label: prize.label || '',
+        metadataURI: prize.metadataURI,
+        awardKind: capture.kind || 'guarded-pickup',
+        receiptRecordId: receiptRecord.id,
+        ...(bonus ? { bonus: { ...bonus, status: 'atomic-with-nft' } } : {}),
         voucher: voucher.value, signature: voucher.signature, digest: voucher.digest,
         queuedAt: new Date().toISOString(), status: 'pending'
       };
-      const queue = await queues.append('prizes', item);
+      const queue = await queues.append('prizes', item, inventory);
       const storedPrize = queue.item || item;
-      voucherEntries.push({ kind: 'prize', tokenId: String(prize.tokenId), voucher: storedPrize.voucher, signature: storedPrize.signature, digest: storedPrize.digest });
+      voucherEntries.push({ kind: 'prize', protocol: storedPrize.protocol, tokenId: String(prize.tokenId), awardKind: storedPrize.awardKind, bonus: storedPrize.bonus, voucher: storedPrize.voucher, signature: storedPrize.signature, digest: storedPrize.digest });
       queued.push({ kind: 'prize', status: queue.status });
     }
     const addressKey = address.toLowerCase();
@@ -326,7 +369,7 @@ function createService(options = {}) {
   });
   const timer = setInterval(() => arena.tick().catch(() => {}), 1000 / 60);
   timer.unref();
-  server.on('close', () => clearInterval(timer));
+  server.on('close', () => { clearInterval(timer); rewardInventory.close?.(); });
 
   return { server, arena, config, voucherBook, idempotency, usedTickets, ticketService, processRun, authorizeAdmin };
 }

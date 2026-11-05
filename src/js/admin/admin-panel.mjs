@@ -13,9 +13,14 @@ const SUPPORTER_PRIZES = {
   '71': { project: 'DecentMarket', label: 'DecentMarket v0.3.1 #71', tier: 1, metadataURI: 'ipfs://QmUR29d2NeRH94ceLDxHqDvDi4eNdSRTNM1wZ6UPDsvWqi' },
   '75': { project: 'DecentBusking', label: 'DecentBusking v1.0.0 #75', tier: 2, metadataURI: 'ipfs://QmZroFCEhaKoctVqW682Uzv5i6WWiQtuWvTAYkQBYfH6TD' },
   '76': { project: 'BigNuten_Vanilla', label: 'BigNuten_Vanilla v3.3.0 #76', tier: 2, metadataURI: 'ipfs://QmSrAwCU5p1ga3RzpuDHZxezsNjob76ZSFpRzCuG15yYqU' },
+  '77': { project: 'DecentCalendar', label: 'DecentCalendar v0.1.0 #77', tier: 2, metadataURI: 'ipfs://QmPqCy2g53t4BaffprtfjfM4L5imACB1nWZK63HyN9o3Tj' },
   '78': { project: 'DecentPilgrimages', label: 'DecentPilgrimages v0.1.1 #78', tier: 2, metadataURI: 'ipfs://QmNe9SYSyrZYV66X29Wp4hBLbCDpQDjnJsAJLDdAytALEN' },
   '79': { project: 'DecentCanopy', label: 'DecentCanopy v0.1.0 #79', tier: 2, metadataURI: 'ipfs://QmQqQtuSeab78F3pdBcMbvSopYZLa51zJ4JxcodQ2ugy9d' },
+  '80': { project: 'DecentVoyager', label: 'DecentVoyager v1.0.0 #80', tier: 2, metadataURI: 'ipfs://QmacnQSJCxmqjWnMxDqhkLXCJv1zqp1EKoeF7nY782rGpe' },
 };
+export function assertLegacySupporterRelease(entries) {
+  if (entries.some(entry => entry.protocol || entry.bonus)) throw new Error('Atomic rewards must be claimed through VoyagerRewards; legacy NFT release would omit signed assets.');
+}
 export async function loadLedger(name, fetchImpl = globalThis.fetch) {
   for (const url of [RAW + name, new URL(`../../../${name}`, import.meta.url).href]) {
     try { const response = await fetchImpl(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) }); if (response.ok) return await response.json(); } catch { /* Fall back to host copy or an explicit import. */ }
@@ -120,11 +125,12 @@ export function mountAdmin() {
         const icon = node('img', '', { src: artwork ? gatewayUrl(artwork, config.gateway) : './assets/brand/mandelblum-gate.png', alt: `${entry.project || 'Supporter'} token artwork`, loading: 'lazy' });
         icon.onerror = () => { icon.src = './assets/game/gate.png'; };
         card.append(icon, node('h3', entry.label || `${entry.project || 'Supporter NFT'} · #${entry.tokenId}`), node('p', `Tier ${entry.tier ?? '—'} · token ${entry.tokenId ?? '—'} · recipient ${entry.player || entry.claimant || 'unassigned'}`));
+        if (entry.protocol === 'reward-bundle/1') card.append(node('p', `${entry.awardKind || 'Atomic reward'} · player claims from VoyagerRewards${entry.bonus ? ' · includes 100 BNut in the same transaction' : ''}. Never release through the legacy NFT-only batch.`));
         const metadataURI = entry.metadataURI || entry.tokenURI || entry.uri;
         if (metadataURI) card.append(link('Prize metadata', gatewayUrl(metadataURI, config.gateway)));
         if (artwork) card.append(link('Token artwork', gatewayUrl(artwork, config.gateway)));
         const check = node('input', '', { type: 'checkbox', 'aria-label': `Select ${entry.label || `token ${entry.tokenId}`}` });
-        check.checked = selected.has(`prize:${index}`); check.disabled = preview || !authorized(); check.addEventListener('change', () => { if (check.checked) selected.add(`prize:${index}`); else selected.delete(`prize:${index}`); });
+        check.checked = selected.has(`prize:${index}`); check.disabled = preview || !authorized() || Boolean(entry.protocol || entry.bonus); check.addEventListener('change', () => { if (check.checked) selected.add(`prize:${index}`); else selected.delete(`prize:${index}`); });
         card.prepend(check); prizeCards.append(card);
         const recipient = entry.player || entry.claimant;
         if (recipient && validAddress(recipient)) {
@@ -167,6 +173,7 @@ export function mountAdmin() {
       if (preview || !authorized()) throw new Error('Admin wallet required; preview cannot send transactions.');
       const selectedEntries = prizeQueue.filter((_, index) => selected.has(`prize:${index}`)).map(entry => ({ ...(SUPPORTER_PRIZES[String(entry.tokenId)] || {}), ...entry, nftContract: entry.nftContract || entry.nft || SUPPORTER_NFT }));
       if (!selectedEntries.length) throw new Error('Select at least one supporter prize');
+      assertLegacySupporterRelease(selectedEntries);
       const response = await fetch(window.DECENT_CONFIG?.voyager?.contracts?.addressesUrl || './js/chain/addresses.json', { cache: 'no-store' });
       if (!response.ok) throw new Error('VoyagerPrizes and escrow addresses are not configured');
       const book = await response.json(), contracts = book.contracts || book;

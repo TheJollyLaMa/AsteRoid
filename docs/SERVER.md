@@ -15,6 +15,44 @@ The Node 20 service in `server/` verifies signed run logs by replaying them thro
 
 `CORS_ORIGINS` is a comma-separated exact-origin allowlist. HTTP requests are rate-limited per source IP (defaults: 20/minute). WebSocket upgrades use the same origin list.
 
+## Marathon and finite prize reservations
+
+New Pilot and Ace guarded pickups use tier-scoped bundle claim IDs. Full solo
+level-1-to-20 runs additionally record `record.marathon`: all 20 level-stat summaries,
+run totals, difficulty and ordered award references. A full Ace completion adds
+token 80 with claim ID `keccak256("<runId>:marathon-completion")`.
+Zero lives lost plus both guarded pickups adds token 75 for Perfect Ace or token 76
+for Perfect Pilot, using `keccak256("<runId>:perfect-ace")` or
+`keccak256("<runId>:perfect-pilot")`. These do not collide with either pickup claim.
+The replay, not submitted stats or final life count, determines eligibility.
+`RewardBundle` signs game ID, recipient, NFT/quantity, ERC-20/amount, native amount,
+award ID, claim ID, win-record ID and expiry. `VoyagerRewards.claim(bundle, signature)`
+transfers all signed assets atomically. Legacy persisted `PrizeVoucher` entries still
+route to the original NFT-only contract, not the new escrow.
+Cadet runs create no stamp or prize vouchers.
+
+Before issuing a prize, the referee checks the configured chain, NFT custody
+balance and `claimedToken(player, nftContract, tokenId)` (plus the legacy claim map). An already claimed token is reported
+as `already-claimed`. Unfunded inventory is an explicit error, leaving the signed
+run in the browser outbox for retry while its ticket remains valid. GitHub writes
+reserve stock against unexpired pending vouchers inside the Contents API
+compare-and-swap retry; local writes are serialized. Pending vouchers for already
+claimed items remain conservatively reserved until reconciled, so stock may be
+under-offered rather than oversubscribed. An admin withdrawal of reserved custody
+can still invalidate claims: do not withdraw stock backing outstanding vouchers.
+
+Perfect Pilot queue entries include `protocol: "reward-bundle/1"` and `bonus`
+(100 BNut in 18-decimal raw units) with `status: "atomic-with-nft"`, plus the
+level-20 `receiptRecordId`. Both NFT units and outstanding unexpired BNut
+voucher amounts are reserved before publishing a claim. A shortfall in either
+asset prevents issuance; an on-chain transfer failure rolls back the entire claim.
+Do not enable this award until its 10,000-BNut budget and NFT custody are funded.
+A 710-NFT reserve plan is not a funded pool.
+
+Deploy frontend/referee as one rule-version change after existing flight tickets
+drain; Calendar's addition and removal of the rare random prizes change seeded
+replay selection. Configure the new escrow only after deployment and custody checks.
+
 ## Environment
 
 | Variable | Required | Purpose |
@@ -26,6 +64,7 @@ The Node 20 service in `server/` verifies signed run logs by replaying them thro
 | `VOYAGER_ARENA_ADDRESS` | Paid settlement | EIP-712 verifying contract for `Settle`. |
 | `VOYAGER_STAMPS_ADDRESS` | Stamp vouchers | EIP-712 verifying contract for `StampVoucher`. |
 | `VOYAGER_PRIZES_ADDRESS` | Prize vouchers | EIP-712 verifying contract for `PrizeVoucher`. |
+| `VOYAGER_REWARDS_ADDRESS` | New reward bundles | Multi-asset escrow; EIP-712 verifying contract for `RewardBundle`. |
 | `SUPPORTER_NFT_ADDRESS` | No | Prize NFT contract; defaults to the Base collection address. |
 | `GITHUB_TOKEN` | Production queue | GitHub Contents API read/write token; without it the service uses local queue files. |
 | `GITHUB_REPO` | With token | Queue/pilot source, e.g. `TheJollyLaMa/DecentVoyager`. |
@@ -34,7 +73,7 @@ The Node 20 service in `server/` verifies signed run logs by replaying them thro
 | `PINATA_JWT` | No | Pinata JWT; absence skips pinning and is reported in each run response. |
 | `CORS_ORIGINS` | Production | Comma-separated exact browser origins; no wildcard matching. |
 | `ADMIN_ADDRESS` | Recommended | Comma-separated admin wallet allowlist for `/queue`. |
-| `BASE_RPC_URL` / `BASE_SEPOLIA_RPC_URL` | Paid rounds | Read-only RPC used to check on-chain round membership. |
+| `BASE_RPC_URL` / `BASE_SEPOLIA_RPC_URL` | Paid rounds and prize vouchers | Read-only RPC used to check on-chain round membership, prize custody and already-claimed tokens; chain must match `CHAIN_ID`. |
 | `ARENA_JOINED_METHOD` | No | Membership view name; defaults to `hasJoined`. |
 | `ARENA_FINAL_LEVEL` | No | Last level before paid settlement (defaults to 10; valid range 1–20). |
 | `RATE_LIMIT_MAX` | No | Requests per IP per window (default 20). |

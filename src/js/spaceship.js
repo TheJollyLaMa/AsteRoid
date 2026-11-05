@@ -19,6 +19,7 @@ class Spaceship {
         this.maxPower = 100;
         this.lives = 3;
         this.weapon = createWeapon();
+        this.weaponTiers = { blaster: 1 };
         this.reset();
     }
 
@@ -36,7 +37,7 @@ class Spaceship {
         this.invulnerable = 0;
         this.shield = 0;
         this.bank = 0;
-        this.lateralSpeed = 280;
+        this.lateralSpeed = 360;
         this.forwardSpeed = 190;
     }
 
@@ -48,7 +49,7 @@ class Spaceship {
         this.offset += forward * this.forwardSpeed * dt;
         this.offset = Math.min(MAX_OFFSET, Math.max(MIN_OFFSET, this.offset));
         this.y = scrollY + this.offset;
-        this.bank += (steer - this.bank) * Math.min(1, dt * 8);
+        this.bank += (steer - this.bank) * Math.min(1, dt * 24);
         this.cooldown = Math.max(0, this.cooldown - dt);
         this.invulnerable = Math.max(0, this.invulnerable - dt);
         this.shield = Math.max(0, this.shield - dt);

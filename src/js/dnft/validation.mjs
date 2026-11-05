@@ -13,7 +13,7 @@ export function assertJsonSafe(value, depth = 0) {
 const finiteRange = (value, min, max) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
 export function validateRecord(record) {
   assertJsonSafe(record);
-  if (record?.schema !== 'asteroid-level-record/1' || typeof record.id !== 'string' || !/^[\w:.+-]{1,180}$/.test(record.id) || !Number.isInteger(record.level) || record.level < 1 || record.level > 10 || !['cadet', 'pilot', 'ace'].includes(record.difficulty)) throw new Error('Invalid level record identity');
+  if (record?.schema !== 'asteroid-level-record/1' || typeof record.id !== 'string' || !/^[\w:.+-]{1,180}$/.test(record.id) || !Number.isInteger(record.level) || record.level < 1 || record.level > 20 || (record.level > 10 && record.difficulty === 'cadet') || !['cadet', 'pilot', 'ace'].includes(record.difficulty)) throw new Error('Invalid level record identity');
   if (typeof record.levelName !== 'string' || !record.levelName || typeof record.game !== 'string' || typeof record.gameVersion !== 'string' || !Number.isFinite(Date.parse(record.completedAt)) || !Number.isFinite(Date.parse(record.startedAt)) || !finiteRange(record.durationSec, 0, Number.MAX_SAFE_INTEGER)) throw new Error('Invalid level record details');
   if (!record.ship || typeof record.ship !== 'object' || Array.isArray(record.ship) || !record.stats || typeof record.stats !== 'object' || Array.isArray(record.stats) || !finiteRange(record.stats.accuracy, 0, 1) || !record.score || !['total', 'level', 'bonus'].every(key => finiteRange(record.score[key], 0, Number.MAX_SAFE_INTEGER))) throw new Error('Invalid level record statistics');
   return record;
@@ -24,7 +24,7 @@ export function validateClaim(input) {
   if (typeof input.recordId !== 'string' || !/^[\w:.+-]{1,180}$/.test(input.recordId)) throw new Error('Invalid recordId');
   if (!validIpfs(input.tokenURI) || !validIpfs(input.image)) throw new Error('Metadata and image must be ipfs://CID URIs');
   if (!validAddress(input.claimant)) throw new Error('Invalid claimant wallet address');
-  if (!Number.isInteger(input.level) || input.level < 1 || input.level > 10) throw new Error('Level must be 1–10');
+  if (!Number.isInteger(input.level) || input.level < 1 || input.level > 20 || (input.level > 10 && input.difficulty === 'cadet')) throw new Error('Level must be 1–20 (Cadet: 1–10)');
   if (!['cadet', 'pilot', 'ace'].includes(input.difficulty)) throw new Error('Unknown difficulty');
   for (const key of ['completedAt', 'requestedAt']) {
     if (typeof input[key] !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(input[key]) || !finiteRange(Date.parse(input[key]), 0, 8640000000000000)) throw new Error(`Invalid ${key}`);

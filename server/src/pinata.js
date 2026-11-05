@@ -27,13 +27,21 @@ function createPinata({ jwt, fetchImpl = global.fetch }) {
         imageURI = `ipfs://${pinnedImage.IpfsHash}`;
       }
       const metadata = {
-        name: `Decent Voyager level ${record.level} victory stamp`,
-        description: `Verified Decent Voyager ${record.difficulty} run record for level ${record.level}.`,
+        name: record.marathon ? `Decent Voyager ${record.difficulty} marathon victory · levels 1–20` : `Decent Voyager level ${record.level} victory stamp`,
+        description: `Verified Decent Voyager ${record.difficulty} run record for level ${record.level}. Award references record earned eligibility, not proof of transfer; each funded claim has its own Base transaction.`,
         ...(imageURI ? { image: imageURI } : {}),
         attributes: [
           { trait_type: 'Level', value: Number(record.level) },
           { trait_type: 'Difficulty', value: String(record.difficulty) },
-          { trait_type: 'Score', value: Number(record.score && record.score.total || 0) }
+          { trait_type: 'Score', value: Number(record.score && record.score.total || 0) },
+          ...(record.marathon ? [
+            { trait_type: 'Marathon', value: 'Levels 1–20' },
+            { trait_type: 'Perfect', value: record.marathon.perfect },
+            { trait_type: 'Marathon lives lost', value: record.marathon.totals.livesLost },
+            { trait_type: 'Marathon shots fired', value: record.marathon.totals.shotsFired },
+            { trait_type: 'Marathon asteroids destroyed', value: record.marathon.totals.asteroidsDestroyed },
+            { trait_type: 'Marathon asteroids missed', value: record.marathon.totals.asteroidsMissed }
+          ] : [])
         ],
         properties: { record }
       };

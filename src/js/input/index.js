@@ -29,6 +29,8 @@ function createInput({
     maxPlayers = MAX_PLAYERS
 } = {}) {
     const keyState = { left: false, right: false, up: false, down: false, fire: false, special: false, weaponNext: false, view: false };
+    const heldKeys = new Map();
+    const virtualSources = new Map();
     const gamepads = new Map();
     const connected = new Map();
     const previousButtons = new Map();
@@ -43,7 +45,8 @@ function createInput({
         ArrowUp: 'up', w: 'up', W: 'up',
         ArrowDown: 'down', s: 'down', S: 'down',
         ' ': 'fire',
-        b: 'special', B: 'special', Shift: 'special'
+        b: 'special', B: 'special', Shift: 'special',
+        e: 'weaponNext', E: 'weaponNext'
     };
 
     function updatePlayers() {
@@ -136,6 +139,17 @@ function createInput({
         const count = Math.max(1, keyboardSlot + 1, ...Array.from(slots.values(), (slot) => slot + 1));
         const inputs = Array.from({ length: Math.min(cap, count) }, () => ({ left: false, right: false, up: false, down: false, fire: false, special: false, weaponNext: false, view: false, ax: 0, ay: 0 }));
         if (inputs[keyboardSlot]) Object.assign(inputs[keyboardSlot], keyState);
+        for (const [source, entry] of virtualSources) {
+            const controls = inputs[keyboardSlot];
+            if (!controls) continue;
+            for (const action of Object.keys(keyState)) {
+                controls[action] = controls[action] || Boolean(entry.state[action]) || entry.pending.has(action);
+            }
+            controls.ax = Math.max(-1, Math.min(1, controls.ax + entry.state.ax));
+            controls.ay = Math.max(-1, Math.min(1, controls.ay + entry.state.ay));
+            entry.pending.clear();
+            if (!Object.values(entry.state).some(Boolean)) virtualSources.delete(source);
+        }
 
         for (const [index, slot] of slots) {
             if (!inputs[slot]) continue;
@@ -165,19 +179,44 @@ function createInput({
         if (!event || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
         if (shouldIgnoreKeyboard(event)) return;
         const action = keyActions[event.key];
-        if (action) keyState[action] = true;
+        if (action) {
+            heldKeys.set(event.code || String(event.key).toLowerCase(), action);
+            keyState[action] = true;
+        }
     }
     function keyup(event) {
         const action = event && keyActions[event.key];
-        if (action) keyState[action] = false;
+        const token = event && (event.code || String(event.key).toLowerCase());
+        const heldAction = heldKeys.get(token) || action;
+        heldKeys.delete(token);
+        if (heldAction) keyState[heldAction] = Array.from(heldKeys.values()).includes(heldAction);
+    }
+    function setVirtualState(source, state) {
+        if (!state) { virtualSources.delete(source); return; }
+        const previous = virtualSources.get(source);
+        const pending = previous ? previous.pending : new Set();
+        const next = { ax: 0, ay: 0 };
+        for (const action of Object.keys(keyState)) {
+            next[action] = Boolean(state[action]);
+            // Preserve a tap shorter than one animation frame, but never latch steering.
+            if (['fire', 'special', 'weaponNext'].includes(action) && next[action] && !previous?.state[action]) pending.add(action);
+        }
+        for (const axis of ['ax', 'ay']) next[axis] = Number.isFinite(state[axis]) ? Math.max(-1, Math.min(1, state[axis])) : 0;
+        virtualSources.set(source, { state: next, pending });
     }
     function clear() {
+        heldKeys.clear();
+        virtualSources.clear();
         Object.keys(keyState).forEach((key) => { keyState[key] = false; });
     }
+    const visibilityChanged = () => { if (documentObject.hidden) clear(); };
+    const focusChanged = (event) => { if (shouldIgnoreKeyboard(event)) clear(); };
 
     if (documentObject && documentObject.addEventListener) {
         documentObject.addEventListener('keydown', keydown);
         documentObject.addEventListener('keyup', keyup);
+        documentObject.addEventListener('visibilitychange', visibilityChanged);
+        documentObject.addEventListener('focusin', focusChanged);
     }
     const handleConnect = (event) => {
         const pad = event && event.gamepad;
@@ -196,14 +235,18 @@ function createInput({
     return {
         poll: pollGamepads,
         getInputs: () => lastInputs,
+        setVirtualState,
         clear,
         get players() { return Math.min(cap, Math.max(1, slots.size + 1)); },
         get keyboardSlot() { return keyboardSlot; },
         get assignments() { return new Map(slots); },
         destroy() {
+            clear();
             if (documentObject && documentObject.removeEventListener) {
                 documentObject.removeEventListener('keydown', keydown);
                 documentObject.removeEventListener('keyup', keyup);
+                documentObject.removeEventListener('visibilitychange', visibilityChanged);
+                documentObject.removeEventListener('focusin', focusChanged);
             }
             if (windowObject && windowObject.removeEventListener) {
                 windowObject.removeEventListener('blur', clear);
