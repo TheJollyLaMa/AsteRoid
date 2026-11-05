@@ -12,7 +12,13 @@ unlock **Sector II** (levels 11–20), win Supporter DNFTs, earn on-chain victor
 - Base contracts: see `contracts/deployments/base.json` and `contracts/deployments/base-rewards.json`.
   Supporter DNFT v1.0.0: token 80 on `0xe63E…439B`, replacement DecentMarket escrow listing 18
   (900 × 10 USDC at reserve cutover; 100 held for game rewards). Frozen mint evidence records original listing 10.
-- Current ENS snapshot after the repo rename: `bafybeihtlxezj7l5i36bb6qxnbvag4pgbubmi2rdkgreztml33vi6iurlm` (frontend from commit `df2d08d`). The on-chain contenthash is verified; the `eth.limo` gateway currently fails during TLS setup, so use the Pages link above.
+- Current mobile/reward ENS snapshot: `bafybeighqehjm3pfqovsdrqghdwxgjxrpzhglzibv5qwp3w622yhpqapdy`
+  (frontend from merge `fdac2a6`). The pinned bundle SHA-256 matches Pages:
+  `f69025c28cffb4582b3f1bacf7eea220f96e01ac973fbc1c41e4414ef370822a`.
+  [ENS contenthash update](https://etherscan.io/tx/0x462dbd26468ac0e8ecf99008fe902b3f8596f24e4e82778691184864ff988dcd)
+  is confirmed. Public HTML gateway availability remains unreliable (rate limits,
+  Pinata public-gateway HTML restrictions and earlier eth.limo TLS failures);
+  Pages is the verified play route.
 
 The repository was renamed from `AsteRoid` to `DecentVoyager`. Frozen v1.0.0 Supporter metadata and source archives retain their original repository identity; GitHub redirects the old repository links. Historical payroll references, save keys and record schemas remain compatible. New issue links and payroll entries use `DecentVoyager`.
 
@@ -129,6 +135,14 @@ stats and win records are saved per difficulty in `localStorage`, and can be bac
   [src/assets/game/CREDITS.md](src/assets/game/CREDITS.md).
 
 ### Reward rollout boundary
+
+The matching frontend and referee are live on ruleset
+`voyager-1.1-handling-rewards`. Render deployment `dep-dbmgkurm8hqs73962pt0`
+reports GitHub-backed queues, configured pinning and the new reward address.
+All 145 gameplay, 17 referee and 21 contract tests pass. Production Chromium
+mobile input moves the actual bundled ship; emulated sensor tests also pass.
+Physical MetaMask/iPhone testing and a legitimately earned wallet claim remain
+manual acceptance, not completed by synthetic test wins.
 
 The funded reserve is 710 NFTs: Head 100, Market 100, Calendar 100, Canopy 100,
 Pilgrimages 100, Voyager 100, Busking 10 and BigNuten 100. Perfect Pilot's matching
