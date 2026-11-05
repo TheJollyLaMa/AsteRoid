@@ -1,0 +1,13 @@
+AsteRoid receiving need: optional wallet, opt-in progress backups, About, and stopped-by-default cockpit radio, served under relative static/IPFS paths.
+
+DecentHead 2.0.0: TheJollyLaMa/DecentHead @ 8542720.
+Exact docs/ADOPTING.md vendor manifest copied to decent-head/2.0.0/ without modifications. The unchanged docs/ADOPTING.md and docs/IPFS-HOST.md are also shipped because the donor controls link to the local storage setup guide.
+Host contract: docs/IPFS-HOST.md; adaptation in ../../js/shell/ipfs-save.mjs.
+Apache-2.0 LICENSE, NOTICE, CC-BY-4.0 art license, and ethers license retained.
+
+DBuskRadio 0.2.0: A-Decent-Agency/DBuskRadio @ 6b67e02.
+Exact widget.js -> widget/radio-widget.js (mount) -> js/radio-client.mjs closure copied to dbusk-radio/0.2.0/ without modifications.
+Apache-2.0 LICENSE, NOTICE, CC-BY-4.0 license retained. Streaming/station rights remain separate; origin permission and live availability are not guaranteed.
+
+Choice: vendor existing independent components; adapt only receiving host config/styles/save controls. No shared abstraction extraction, wallet signing, actual upload or automatic playback. Canopy's curated agency map consulted as a lead, not a current runtime index.
+Receiving validation: tests/shell.test.mjs and browser dialog/render/no-autoplay checks. Synthetic sessions are not live pin-retention or RPC evidence.

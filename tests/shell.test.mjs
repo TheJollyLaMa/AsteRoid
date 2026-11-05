@@ -1,0 +1,91 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, statSync } from 'node:fs';
+import vm from 'node:vm';
+import { createSaveService, CID_KEY, validCID, validateSnapshot } from '../src/js/shell/ipfs-save.mjs';
+
+const cid = 'bafybeiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const fixture = (overrides = {}) => {
+  const records = new Map();
+  const calls = [];
+  const snapshot = { schema:'asteroid-save/1', progress:{ level:3 }, records:[] };
+  const game = { exportSave:() => snapshot, importSave:value => { calls.push(['import',value]); } };
+  const session = { upload:async value => { calls.push(['upload',value]); return cid; }, restore:async value => { calls.push(['restore',value]); return snapshot; } };
+  const storage = { getItem:key => records.get(key), setItem:(key,value) => records.set(key,value) };
+  const service = createSaveService({ getGame:() => game, getSession:() => session, storage, redraw:() => calls.push(['draw']), ...overrides });
+  return { service, game, session, storage, calls, snapshot };
+};
+test('save exports only core progress and remembers a validated receipt CID', async () => {
+  const { service, calls, storage, snapshot } = fixture();
+  assert.equal(service.available(),true);
+  await assert.rejects(service.save(),/Confirm/);
+  assert.equal(calls.length,0);
+  assert.deepEqual(await service.save({ consent:true }),{ cid, remembered:true });
+  assert.deepEqual(calls,[['upload',snapshot]]);
+  assert.equal(storage.getItem(CID_KEY),cid);
+  assert.equal(service.lastCID(),cid);
+});
+test('restore requires consent and a CID, validates JSON then delegates core validation', async () => {
+  const { service, calls, game, snapshot } = fixture();
+  await assert.rejects(service.restore(cid),/Confirm/);
+  await assert.rejects(service.restore('https://ipfs.io/ipfs/'+cid,{ consent:true }),/valid IPFS CID/);
+  assert.equal(calls.length,0);
+  assert.deepEqual(await service.restore(` ${cid} `,{ consent:true }),{ cid });
+  assert.deepEqual(calls,[['restore',cid],['import',snapshot],['draw']]);
+  game.importSave = () => { throw new Error('Unsupported save schema'); };
+  await assert.rejects(service.restore(cid,{ consent:true }),/Unsupported save schema/);
+});
+test('missing game or provider APIs fail clearly without network or success', async () => {
+  const { service } = fixture({ getGame:() => null });
+  assert.equal(service.available(),false);
+  await assert.rejects(service.save({ consent:true }),/unavailable/);
+  const absent = fixture({ getSession:() => null }).service;
+  assert.equal(absent.available(),false);
+  await assert.rejects(absent.restore(cid,{ consent:true }),/session is unavailable/);
+});
+test('invalid receipts and imported values cannot overwrite CID memory', async () => {
+  const { service, session, storage, calls } = fixture();
+  storage.setItem(CID_KEY,cid);
+  session.upload = async () => 'bad';
+  await assert.rejects(service.save({ consent:true }),/invalid CID/);
+  assert.equal(service.lastCID(),cid);
+  session.restore = async () => [];
+  await assert.rejects(service.restore(cid,{ consent:true }),/JSON object/);
+  assert.equal(calls.length,0);
+});
+test('browser storage failure retains a copyable CID and operations are locked', async () => {
+  const { service, session } = fixture({ storage:{ getItem:() => { throw Error('blocked'); }, setItem:() => { throw Error('quota'); } } });
+  assert.equal(service.lastCID(),'');
+  assert.deepEqual(await service.save({ consent:true }),{ cid, remembered:false });
+  let finish;
+  session.upload = () => new Promise(resolve => { finish=resolve; });
+  const pending = service.save({ consent:true });
+  await Promise.resolve();
+  await assert.rejects(service.restore(cid,{ consent:true }),/already running/);
+  finish(cid); await pending;
+});
+test('snapshot boundary rejects non-object, cyclic and excessive progress', () => {
+  for (const value of [null, [], 'save', 42]) assert.throws(() => validateSnapshot(value),/JSON object/);
+  const cyclic={}; cyclic.self=cyclic;
+  assert.throws(() => validateSnapshot(cyclic),/JSON-safe/);
+  assert.throws(() => validateSnapshot({ data:'x'.repeat(4*1024*1024) }),/4 MB/);
+  assert.equal(validCID('b'+'a'.repeat(200)),false);
+});
+test('header config is public Base-only with HTTPS project links and small local art', () => {
+  const source=readFileSync(new URL('../src/decent-head.config.js',import.meta.url),'utf8');
+  const context={ window:{} }; vm.runInNewContext(source,context);
+  const config=context.window.DECENT_CONFIG;
+  assert.equal(config.appName,'AsteRoid'); assert.equal(config.chain.chainId,8453);
+  assert.equal(config.providers.default,'pinata'); assert.equal(config.ens.enabled,true); assert.equal(config.supporterDnft,null);
+  for (const link of [...config.links,...config.relatedDapps]) assert.match(link.url,/^https:\/\//);
+  for (const section of ['How to play','Difficulties','Victory stamps','Save to IPFS','Mandelblum art','Open source']) assert.ok(config.about.sections.some(entry => entry.title===section));
+  assert.doesNotMatch(source,/\b(jwt|apiKey|apiSecret|privateKey)\s*:/);
+  assert.ok(statSync(new URL('../src/assets/brand/mandelblum-gate.png',import.meta.url)).size<=100000);
+});
+test('static shell preserves bundle/canvas and host-module ordering for relative deployment', () => {
+  const html=readFileSync(new URL('../src/index.html',import.meta.url),'utf8');
+  assert.match(html,/<canvas id="gameCanvas" width="800" height="600"/);
+  assert.ok(html.indexOf('decent-head.config.js')<html.indexOf('js/shell/main.mjs'));
+  for (const path of ['js/dnft/claims.mjs','js/admin/admin-panel.mjs']) assert.ok(html.indexOf('bundle.js')<html.indexOf(path));
+  assert.doesNotMatch(html,/(?:src|href)="\/(?!\/)/);
+});

@@ -1,16 +1,22 @@
 const { VIEW } = require('./projection');
 const { WEAPONS, MAX_TIER } = require('../weapons');
-const { LEVEL_COUNT, getLevel } = require('../levels');
-const { PICKUP_STYLE } = require('./shapes');
+const { LEVEL_COUNT } = require('../levels');
+const { PICKUP_STYLE, SHIP_TOP, SHIP_PALETTE, pixelSprite, drawBreathe, drawGlow } = require('./shapes');
+const { pixelText } = require('./font');
 
-const FONT = 'monospace';
+const DIFFICULTY_COLORS = { cadet: '#7dff8c', pilot: '#ffd25c', ace: '#ff3c5a' };
+const POWER_SEGMENTS = 16;
 
-function text(ctx, value, x, y, { size = 14, color = '#e8f6ff', align = 'left', weight = 'bold' } = {}) {
-    ctx.font = `${weight} ${size}px ${FONT}`;
-    ctx.textAlign = align;
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = color;
-    ctx.fillText(value, x, y);
+function difficultyColor(id) {
+    return DIFFICULTY_COLORS[id] || '#9fb4c8';
+}
+
+function difficultyName(game, selected = false) {
+    const id = selected ? game.selectedDifficulty : game.difficulty;
+    const label = selected ? game.selectedDifficultyLabel : game.difficultyLabel;
+    if (label) return String(label);
+    if (id) return String(id).charAt(0).toUpperCase() + String(id).slice(1);
+    return '';
 }
 
 function powerColor(fraction) {
@@ -19,206 +25,238 @@ function powerColor(fraction) {
     return '#ff5a3c';
 }
 
-function drawPowerBar(ctx, ship, time) {
-    const x = 16;
-    const y = VIEW.height - 34;
-    const width = 220;
-    const fraction = ship.power / ship.maxPower;
-    text(ctx, 'POWER', x, y - 6, { size: 12, color: '#9fb4c8' });
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.fillRect(x, y, width, 14);
-    const lowPulse = fraction <= 0.3 && Math.floor(time * 4) % 2 === 0;
-    ctx.fillStyle = lowPulse ? '#ffffff' : powerColor(fraction);
-    ctx.fillRect(x, y, width * fraction, 14);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-    ctx.strokeRect(x + 0.5, y + 0.5, width, 14);
-    if (ship.shield > 0) {
-        text(ctx, `SHIELD ${ship.shield.toFixed(1)}s`, x + width + 12, y + 12, { size: 12, color: PICKUP_STYLE.shield.color });
-    }
+// Number of lit segments for a power fraction (0..1), never 0 while alive.
+function litSegments(fraction, segments = POWER_SEGMENTS) {
+    const f = Math.max(0, Math.min(1, Number(fraction) || 0));
+    if (f <= 0) return 0;
+    return Math.max(1, Math.round(f * segments));
 }
 
-function drawWeapon(ctx, ship) {
-    const spec = WEAPONS[ship.weapon.type];
-    const x = 16;
-    const y = VIEW.height - 52;
-    text(ctx, spec.name.toUpperCase(), x, y - 6, { size: 13, color: spec.color });
-    for (let i = 0; i < MAX_TIER; i++) {
-        ctx.fillStyle = i < ship.weapon.tier ? spec.color : 'rgba(255, 255, 255, 0.15)';
-        ctx.fillRect(x + 150 + i * 14, y - 16, 10, 10);
-    }
+// Eased approach used for the score roll-up counter.
+function rollUp(displayed, target, dt) {
+    if (!(displayed < target) && !(displayed > target)) return target;
+    const diff = target - displayed;
+    const step = Math.max(1, Math.abs(diff) * Math.min(1, dt * 8));
+    const next = displayed + Math.sign(diff) * step;
+    return diff > 0 ? Math.min(target, next) : Math.max(target, next);
 }
 
-function drawLives(ctx, ship) {
-    for (let i = 0; i < ship.lives; i++) {
-        const x = VIEW.width - 24 - i * 22;
-        ctx.beginPath();
-        ctx.moveTo(x, 14);
-        ctx.lineTo(x + 7, 30);
-        ctx.lineTo(x - 7, 30);
-        ctx.closePath();
-        ctx.strokeStyle = '#7fd7ff';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-    }
+function panelBox(ctx, x, y, w, h, color = 'rgba(127, 215, 255, 0.55)') {
+    ctx.fillStyle = 'rgba(4, 6, 20, 0.72)';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = color;
+    // 8-bit corner brackets.
+    const c = 6;
+    ctx.fillRect(x, y, c, 2);
+    ctx.fillRect(x, y, 2, c);
+    ctx.fillRect(x + w - c, y, c, 2);
+    ctx.fillRect(x + w - 2, y, 2, c);
+    ctx.fillRect(x, y + h - 2, c, 2);
+    ctx.fillRect(x, y + h - c, 2, c);
+    ctx.fillRect(x + w - c, y + h - 2, c, 2);
+    ctx.fillRect(x + w - 2, y + h - c, 2, c);
 }
 
-function drawProgress(ctx, game) {
-    const width = 260;
-    const x = (VIEW.width - width) / 2;
-    text(ctx, `LEVEL ${game.level.number}/${LEVEL_COUNT} · ${game.level.name.toUpperCase()}`, VIEW.width / 2, 20, {
-        size: 13,
-        align: 'center'
-    });
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.fillRect(x, 28, width, 5);
-    ctx.fillStyle = '#7dff8c';
-    ctx.fillRect(x, 28, width * game.levelProgress, 5);
-}
+function createHud() {
+    const view = { score: 0, lastTime: null, combo: 0, comboPop: 0, power: 1, lastLevelKey: '' };
 
-function drawRadar(ctx, game) {
-    const width = 120;
-    const height = 150;
-    const x = VIEW.width - width - 12;
-    const y = 42;
-    const rangeAhead = 900;
-    const rangeBehind = 100;
-    const scaleX = width / 800;
-    const scaleY = height / (rangeAhead + rangeBehind);
-    const toRadar = (obj) => ({
-        x: x + obj.x * scaleX,
-        y: y + height - (obj.y - (game.ship.y - rangeBehind)) * scaleY
-    });
-    const inside = (p) => p.y >= y && p.y <= y + height;
-
-    ctx.save();
-    ctx.fillStyle = 'rgba(4, 12, 24, 0.75)';
-    ctx.fillRect(x, y, width, height);
-    ctx.strokeStyle = 'rgba(127, 215, 255, 0.5)';
-    ctx.strokeRect(x + 0.5, y + 0.5, width, height);
-    for (const asteroid of game.asteroids) {
-        const p = toRadar(asteroid);
-        if (!inside(p)) continue;
-        ctx.fillStyle = asteroid.shooter ? '#ff8a5c' : '#bdb8ad';
-        const s = Math.max(2, asteroid.size * scaleX * 1.6);
-        ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
-    }
-    for (const pickup of game.pickups) {
-        const p = toRadar(pickup);
-        if (!inside(p)) continue;
-        ctx.fillStyle = PICKUP_STYLE[pickup.type].color;
-        ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
-    }
-    ctx.fillStyle = '#ff5a3c';
-    for (const bullet of game.enemyBullets) {
-        const p = toRadar(bullet);
-        if (inside(p)) ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
-    }
-    const shipPoint = toRadar(game.ship);
-    ctx.fillStyle = '#7fd7ff';
-    ctx.beginPath();
-    ctx.moveTo(shipPoint.x, shipPoint.y - 5);
-    ctx.lineTo(shipPoint.x + 4, shipPoint.y + 3);
-    ctx.lineTo(shipPoint.x - 4, shipPoint.y + 3);
-    ctx.fill();
-    text(ctx, 'RADAR', x + 4, y + 12, { size: 10, color: '#9fb4c8' });
-    ctx.restore();
-}
-
-function drawHud(ctx, game) {
-    if (game.state === 'title') return;
-    const ship = game.ship;
-    text(ctx, `SCORE ${game.score}`, 16, 22, { size: 16 });
-    text(ctx, `HI ${Math.max(game.progress.highScore, game.score)}`, 16, 40, { size: 11, color: '#9fb4c8' });
-    drawProgress(ctx, game);
-    drawLives(ctx, ship);
-    drawWeapon(ctx, ship);
-    drawPowerBar(ctx, ship, game.time);
-    const viewLabel = game.view === 'pov' ? 'POV' : 'OVERVIEW';
-    text(ctx, `[V] ${viewLabel}`, VIEW.width - 16, VIEW.height - 18, { size: 12, color: '#9fb4c8', align: 'right' });
-    if (game.view === 'pov') drawRadar(ctx, game);
-}
-
-function panel(ctx, height = 230) {
-    ctx.fillStyle = 'rgba(2, 4, 12, 0.78)';
-    ctx.fillRect(0, (VIEW.height - height) / 2, VIEW.width, height);
-}
-
-function drawTitle(ctx, game) {
-    ctx.fillStyle = 'rgba(2, 4, 12, 0.72)';
-    ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-    const cx = VIEW.width / 2;
-    text(ctx, '☄  AsteRoid  ☄', cx, 130, { size: 52, align: 'center', color: '#7fd7ff' });
-    text(ctx, 'GALACTIC GAUNTLET', cx, 166, { size: 18, align: 'center', color: '#ff8a5c' });
-
-    const level = getLevel(game.selectedLevel);
-    const canLeft = game.selectedLevel > 1;
-    const canRight = game.selectedLevel < game.progress.unlocked;
-    text(ctx, `${canLeft ? '◀' : ' '}  LEVEL ${level.number}: ${level.name.toUpperCase()}  ${canRight ? '▶' : ' '}`, cx, 232, {
-        size: 20,
-        align: 'center'
-    });
-    text(ctx, `Unlocked ${game.progress.unlocked}/${LEVEL_COUNT} · High score ${game.progress.highScore}`, cx, 258, {
-        size: 12,
-        align: 'center',
-        color: '#9fb4c8'
-    });
-    const pulse = 0.55 + 0.45 * Math.sin(game.time * 4);
-    text(ctx, 'PRESS ENTER TO LAUNCH', cx, 304, { size: 20, align: 'center', color: `rgba(125, 255, 140, ${pulse})` });
-
-    const controls = [
-        '←/→ or A/D  steer      ↑/↓ or W/S  throttle',
-        'SPACE  fire (hold)     V  switch overview / POV',
-        'P  pause    M  mute    Q  menu (paused / game over)',
-        '',
-        'Fly through pickups:  S spread · R rapid · P plasma',
-        '+ power cell · ◎ shield.  Orange-core rocks shoot back!'
-    ];
-    controls.forEach((line, i) => text(ctx, line, cx, 370 + i * 22, { size: 14, align: 'center', color: '#c9d6e3', weight: 'normal' }));
-}
-
-function drawOverlay(ctx, game) {
-    const cx = VIEW.width / 2;
-    const cy = VIEW.height / 2;
-    switch (game.state) {
-        case 'title':
-            drawTitle(ctx, game);
-            break;
-        case 'paused':
-            panel(ctx, 160);
-            text(ctx, 'PAUSED', cx, cy - 10, { size: 40, align: 'center' });
-            text(ctx, 'P / Enter resume · Q menu · V switch view', cx, cy + 30, { size: 14, align: 'center', color: '#9fb4c8' });
-            break;
-        case 'levelComplete':
-            panel(ctx);
-            text(ctx, `LEVEL ${game.level.number} CLEAR`, cx, cy - 30, { size: 40, align: 'center', color: '#7dff8c' });
-            text(ctx, `Bonus +${game.levelBonus}`, cx, cy + 10, { size: 18, align: 'center' });
-            text(ctx, `Next: ${getLevel(game.level.number + 1).name}  ·  Enter to jump now`, cx, cy + 44, {
-                size: 14,
-                align: 'center',
-                color: '#9fb4c8'
-            });
-            break;
-        case 'gameOver':
-            panel(ctx);
-            text(ctx, 'GAME OVER', cx, cy - 30, { size: 46, align: 'center', color: '#ff5a3c' });
-            text(ctx, `Score ${game.score}`, cx, cy + 10, { size: 18, align: 'center' });
-            text(ctx, `Enter retry level ${game.level.number} · Q menu`, cx, cy + 44, { size: 14, align: 'center', color: '#9fb4c8' });
-            break;
-        case 'victory':
-            panel(ctx, 260);
-            text(ctx, 'YOU CLEARED THE CORE!', cx, cy - 40, { size: 36, align: 'center', color: '#7dff8c' });
-            text(ctx, `Final score ${game.score}`, cx, cy + 4, { size: 20, align: 'center' });
-            text(ctx, 'All 10 levels complete · Enter for menu', cx, cy + 40, { size: 14, align: 'center', color: '#9fb4c8' });
-            break;
-        case 'playing':
-            if (game.showLevelIntro) {
-                text(ctx, `LEVEL ${game.level.number}`, cx, cy - 40, { size: 44, align: 'center', color: '#7fd7ff' });
-                text(ctx, game.level.name.toUpperCase(), cx, cy - 6, { size: 20, align: 'center', color: '#ff8a5c' });
+    function drawPower(ctx, game) {
+        const ship = game.ship;
+        const time = game.time || 0;
+        const x = 14;
+        const y = VIEW.height - 64;
+        panelBox(ctx, x, y, 286, 52);
+        const fraction = ship.power / ship.maxPower;
+        view.power += (fraction - view.power) * 0.15;
+        drawBreathe(ctx, x + 24, y + 26, 13, time, 1);
+        pixelText(ctx, 'POWER', x + 46, y + 16, { size: 12, color: '#9fb4c8' });
+        pixelText(ctx, `${Math.round(ship.power)}`, x + 272, y + 16, { size: 12, color: powerColor(fraction), align: 'right' });
+        const lit = litSegments(fraction);
+        const ghost = litSegments(view.power);
+        const low = fraction <= 0.3 && Math.floor(time * 5) % 2 === 0;
+        const color = low ? '#ffffff' : powerColor(fraction);
+        const segW = 12;
+        for (let i = 0; i < POWER_SEGMENTS; i++) {
+            const sx = x + 46 + i * (segW + 2);
+            const sy = y + 24;
+            if (i < lit) {
+                ctx.fillStyle = color;
+                ctx.fillRect(sx, sy, segW, 16);
+                ctx.fillStyle = 'rgba(255,255,255,0.45)';
+                ctx.fillRect(sx, sy, segW, 3);
+            } else if (i < ghost) {
+                ctx.fillStyle = 'rgba(255, 90, 60, 0.6)';
+                ctx.fillRect(sx, sy, segW, 16);
+            } else {
+                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.fillRect(sx, sy, segW, 16);
             }
-            break;
-        default:
-            break;
+        }
+        drawGlow(ctx, x + 46 + lit * 14 - 6, y + 32, 26, color, 0.35);
+        if (ship.shield > 0) {
+            const sx = x + 46;
+            const sw = 222 * Math.min(1, ship.shield / 7);
+            ctx.fillStyle = PICKUP_STYLE.shield.color;
+            ctx.fillRect(sx, y + 44, sw, 3);
+            pixelText(ctx, `SHIELD ${ship.shield.toFixed(1)}`, x + 290, y + 48, { size: 11, color: PICKUP_STYLE.shield.color });
+        }
     }
+
+    function drawWeapon(ctx, game) {
+        const ship = game.ship;
+        const spec = WEAPONS[ship.weapon.type] || WEAPONS.blaster;
+        const x = 14;
+        const y = VIEW.height - 92;
+        panelBox(ctx, x, y, 286, 24, spec.color);
+        pixelText(ctx, spec.name.toUpperCase(), x + 10, y + 17, { size: 12, color: spec.color });
+        for (let i = 0; i < MAX_TIER; i++) {
+            const px = x + 200 + i * 26;
+            ctx.fillStyle = i < ship.weapon.tier ? spec.color : 'rgba(255,255,255,0.12)';
+            ctx.fillRect(px, y + 7, 20, 10);
+            if (i < ship.weapon.tier) drawGlow(ctx, px + 10, y + 12, 14, spec.color, 0.3);
+        }
+    }
+
+    function drawLives(ctx, game) {
+        const sprite = pixelSprite('lives', SHIP_TOP, SHIP_PALETTE, 2);
+        const lives = Math.max(0, game.ship.lives);
+        for (let i = 0; i < lives; i++) {
+            const x = VIEW.width - 36 - i * 30;
+            if (sprite) {
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(sprite, x, 8);
+            }
+        }
+    }
+
+    function drawProgress(ctx, game) {
+        const width = 300;
+        const x = (VIEW.width - width) / 2;
+        const diff = game.difficulty;
+        const label = `LV ${game.level.number}/${LEVEL_COUNT}  ${game.level.name.toUpperCase()}`;
+        pixelText(ctx, label, VIEW.width / 2, 20, { size: 13, align: 'center' });
+        const segments = 30;
+        const lit = Math.floor(game.levelProgress * segments);
+        for (let i = 0; i < segments; i++) {
+            ctx.fillStyle = i < lit ? (i === lit - 1 ? '#ffffff' : '#7dff8c') : 'rgba(255,255,255,0.1)';
+            ctx.fillRect(x + i * (width / segments), 28, width / segments - 2, 6);
+        }
+        ctx.fillStyle = '#7fd7ff';
+        const mx = x + game.levelProgress * width;
+        ctx.fillRect(mx - 2, 25, 4, 12);
+        if (diff) {
+            const name = difficultyName(game).toUpperCase();
+            const color = difficultyColor(diff);
+            pixelText(ctx, name, VIEW.width / 2, 52, { size: 11, align: 'center', color });
+        }
+    }
+
+    function drawScore(ctx, game, dt) {
+        view.score = rollUp(view.score, game.score, dt);
+        pixelText(ctx, 'SCORE', 16, 16, { size: 10, color: '#9fb4c8' });
+        const rolling = Math.round(view.score) !== game.score;
+        pixelText(ctx, String(Math.round(view.score)).padStart(7, '0'), 16, 38, { size: 20, color: rolling ? '#ffe65c' : '#e8f6ff' });
+        const progress = game.progress || { highScore: 0 };
+        pixelText(ctx, `HI ${String(Math.max(progress.highScore || 0, game.score)).padStart(7, '0')}`, 16, 54, { size: 10, color: '#9fb4c8' });
+    }
+
+    function drawCombo(ctx, game, dt) {
+        const combo = Number(game.combo) || 0;
+        if (combo > view.combo) view.comboPop = 1;
+        view.combo = combo;
+        view.comboPop = Math.max(0, view.comboPop - dt * 3);
+        if (combo < 2) return;
+        const x = VIEW.width - 20;
+        const y = VIEW.height - 70;
+        const scale = 1 + view.comboPop * 0.5;
+        const hue = (game.time * 240) % 360;
+        drawGlow(ctx, x - 50, y - 8, 60 * scale, `hsl(${hue}, 100%, 60%)`, 0.25);
+        pixelText(ctx, `x${combo}`, x, y, { size: Math.round(26 * scale), color: `hsl(${hue}, 100%, 70%)`, align: 'right' });
+        pixelText(ctx, 'COMBO', x, y + 16, { size: 11, color: '#ffffff', align: 'right' });
+        const timer = Number(game.comboTimer);
+        if (Number.isFinite(timer) && timer > 0) {
+            ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+            ctx.fillRect(x - 80 * Math.min(1, timer / 2), y + 22, 80 * Math.min(1, timer / 2), 3);
+        }
+    }
+
+    function drawRadar(ctx, game) {
+        const width = 120;
+        const height = 150;
+        const x = VIEW.width - width - 12;
+        const y = 46;
+        const rangeAhead = 900;
+        const rangeBehind = 100;
+        const scaleX = width / 800;
+        const scaleY = height / (rangeAhead + rangeBehind);
+        const toRadar = (obj) => ({
+            x: x + obj.x * scaleX,
+            y: y + height - (obj.y - (game.ship.y - rangeBehind)) * scaleY
+        });
+        const inside = (p) => p.y >= y && p.y <= y + height;
+
+        ctx.save();
+        panelBox(ctx, x, y, width, height);
+        ctx.strokeStyle = 'rgba(127, 215, 255, 0.12)';
+        for (let gy = y + 15; gy < y + height; gy += 15) {
+            ctx.beginPath();
+            ctx.moveTo(x, gy + 0.5);
+            ctx.lineTo(x + width, gy + 0.5);
+            ctx.stroke();
+        }
+        const sweep = y + height - (((game.time || 0) * 90) % height);
+        ctx.fillStyle = 'rgba(125, 255, 140, 0.18)';
+        ctx.fillRect(x, sweep, width, 3);
+        for (const asteroid of game.asteroids) {
+            const p = toRadar(asteroid);
+            if (!inside(p)) continue;
+            ctx.fillStyle = asteroid.shooter ? '#ff8a5c' : '#bdb8ad';
+            const s = Math.max(2, Math.round(asteroid.size * scaleX * 1.6));
+            ctx.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2), s, s);
+        }
+        for (const pickup of game.pickups) {
+            const p = toRadar(pickup);
+            if (!inside(p)) continue;
+            ctx.fillStyle = (PICKUP_STYLE[pickup.type] || PICKUP_STYLE.power).color;
+            ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+        }
+        ctx.fillStyle = '#ff5a3c';
+        for (const bullet of game.enemyBullets) {
+            const p = toRadar(bullet);
+            if (inside(p)) ctx.fillRect(p.x - 1, p.y - 1, 3, 3);
+        }
+        const shipPoint = toRadar(game.ship);
+        ctx.fillStyle = '#7fd7ff';
+        ctx.beginPath();
+        ctx.moveTo(shipPoint.x, shipPoint.y - 5);
+        ctx.lineTo(shipPoint.x + 4, shipPoint.y + 3);
+        ctx.lineTo(shipPoint.x - 4, shipPoint.y + 3);
+        ctx.fill();
+        pixelText(ctx, 'RADAR', x + 6, y + 14, { size: 10, color: '#7dff8c' });
+        ctx.restore();
+    }
+
+    function drawHud(ctx, game, fx, opts = {}) {
+        const now = game.time || 0;
+        const dt = view.lastTime === null ? 0 : Math.max(0, Math.min(0.1, now - view.lastTime));
+        view.lastTime = now;
+        if (game.state === 'title') {
+            view.score = 0;
+            return;
+        }
+        drawScore(ctx, game, dt);
+        drawProgress(ctx, game);
+        drawLives(ctx, game);
+        drawWeapon(ctx, game);
+        drawPower(ctx, game);
+        drawCombo(ctx, game, dt);
+        const viewLabel = game.view === 'pov' ? 'POV' : 'MAP';
+        const flags = `${opts.muted ? 'M:OFF ' : ''}${opts.crt ? 'CRT ' : ''}[V] ${viewLabel}`;
+        pixelText(ctx, flags, VIEW.width - 16, VIEW.height - 14, { size: 11, color: '#9fb4c8', align: 'right' });
+        if (game.view === 'pov') drawRadar(ctx, game);
+    }
+
+    return { drawHud, view };
 }
 
-module.exports = { drawHud, drawOverlay };
+module.exports = { createHud, rollUp, litSegments, difficultyColor, difficultyName, panelBox, POWER_SEGMENTS, DIFFICULTY_COLORS };

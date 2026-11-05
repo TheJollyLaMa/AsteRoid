@@ -1,0 +1,137 @@
+// Image preloader. Renderers ask for images by key and fall back to vector
+// drawing while an image is missing, still loading or failed to load.
+const BASE_URL = 'assets/game/';
+
+const ROCK_KEYS = ['rock-1', 'rock-2', 'rock-3', 'rock-4', 'rock-5', 'rock-6', 'rock-7', 'rock-8'];
+const BACKDROP_KEYS = ['bg-galaxy', 'bg-royal', 'bg-2a', 'bg-tec', 'bg-zz'];
+const BREATHE_FRAMES = 8;
+
+const MANIFEST = {
+    'rock-1': 'rock-1.png',
+    'rock-2': 'rock-2.png',
+    'rock-3': 'rock-3.png',
+    'rock-4': 'rock-4.png',
+    'rock-5': 'rock-5.png',
+    'rock-6': 'rock-6.png',
+    'rock-7': 'rock-7.png',
+    'rock-8': 'rock-8.png',
+    gate: 'gate.png',
+    'bg-galaxy': 'bg-galaxy.jpg',
+    'bg-royal': 'bg-royal.jpg',
+    'bg-2a': 'bg-2a.jpg',
+    'bg-tec': 'bg-tec.jpg',
+    'bg-zz': 'bg-zz.jpg',
+    'mars-domicile': 'mars-domicile.jpg',
+    'breathe-sheet': 'breathe-sheet.png',
+    'breathe-still': 'breathe-still.png'
+};
+
+const images = {};
+let loadPromise = null;
+
+function isImageReady(img) {
+    return Boolean(img && img.complete !== false && img.naturalWidth > 0);
+}
+
+function getImage(key) {
+    const img = images[key];
+    return isImageReady(img) ? img : null;
+}
+
+function loadOne(key, baseUrl) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.decoding = 'async';
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+        img.src = baseUrl + MANIFEST[key];
+        images[key] = img;
+    });
+}
+
+// Resolves (never rejects) once every image has loaded or failed; in Node or
+// other DOM-less environments it resolves immediately with nothing loaded.
+function loadAssets({ baseUrl = BASE_URL } = {}) {
+    if (loadPromise) return loadPromise;
+    if (typeof Image === 'undefined') {
+        loadPromise = Promise.resolve({ loaded: 0, total: Object.keys(MANIFEST).length });
+        return loadPromise;
+    }
+    const keys = Object.keys(MANIFEST);
+    loadPromise = Promise.all(keys.map((key) => loadOne(key, baseUrl))).then((results) => ({
+        loaded: results.filter(Boolean).length,
+        total: keys.length
+    }));
+    return loadPromise;
+}
+
+// Deterministic integer hash so each asteroid keeps the same Mandelblum sprite.
+function hashInt(value) {
+    let h = (Number(value) | 0) ^ 0x9e3779b9;
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    return (h ^ (h >>> 16)) >>> 0;
+}
+
+function rockKeyFor(id) {
+    return ROCK_KEYS[hashInt(id) % ROCK_KEYS.length];
+}
+
+function backdropKeyFor(levelNumber) {
+    const n = Math.max(1, Math.floor(Number(levelNumber) || 1));
+    return BACKDROP_KEYS[(n - 1) % BACKDROP_KEYS.length];
+}
+
+// Offscreen canvas factory that works in browsers (and returns null in Node).
+function makeCanvas(width, height) {
+    if (typeof document === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.ceil(width));
+    canvas.height = Math.max(1, Math.ceil(height));
+    return canvas;
+}
+
+// Cached tinted copies: 'flash' = white silhouette, 'shooter' = menacing red/orange.
+const tintCache = new Map();
+function getTinted(key, mode) {
+    const cacheKey = `${key}|${mode}`;
+    if (tintCache.has(cacheKey)) return tintCache.get(cacheKey);
+    const img = getImage(key);
+    if (!img) return null;
+    const canvas = makeCanvas(img.naturalWidth, img.naturalHeight);
+    if (!canvas) return null;
+    const c = canvas.getContext('2d');
+    c.drawImage(img, 0, 0);
+    c.globalCompositeOperation = 'source-atop';
+    if (mode === 'flash') {
+        c.fillStyle = '#ffffff';
+        c.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (mode === 'shooter') {
+        c.globalCompositeOperation = 'multiply';
+        c.fillStyle = '#ff6a3c';
+        c.fillRect(0, 0, canvas.width, canvas.height);
+        c.globalCompositeOperation = 'destination-in';
+        c.drawImage(img, 0, 0);
+        c.globalCompositeOperation = 'source-atop';
+        c.fillStyle = 'rgba(120, 0, 30, 0.25)';
+        c.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    tintCache.set(cacheKey, canvas);
+    return canvas;
+}
+
+module.exports = {
+    BASE_URL,
+    MANIFEST,
+    ROCK_KEYS,
+    BACKDROP_KEYS,
+    BREATHE_FRAMES,
+    isImageReady,
+    getImage,
+    loadAssets,
+    hashInt,
+    rockKeyFor,
+    backdropKeyFor,
+    makeCanvas,
+    getTinted
+};

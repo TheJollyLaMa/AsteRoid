@@ -24,6 +24,8 @@ class Asteroid {
         this.spin = range(rng, -0.8, 0.8);
         this.shape = makeShape(rng);
         this.active = false;
+        this.fragment = false;
+        this.missed = false;
         this.flash = 0;
     }
 
@@ -61,6 +63,7 @@ class Asteroid {
                 rng
             });
             fragment.active = true;
+            fragment.fragment = true;
             return fragment;
         });
     }

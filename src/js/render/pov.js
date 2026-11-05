@@ -1,50 +1,76 @@
 const { VIEW, POV, povCamera, projectPov, povFade } = require('./projection');
-const { drawAsteroid, drawPickup, drawShipChase, drawGlowDot } = require('./shapes');
+const { drawAsteroid, drawPickup, drawShipChase, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
+const { levelTint, createStarfield, drawNebula } = require('./background');
+const { getImage } = require('./assets');
 
 const FLOOR_HEIGHT = -40;
 const GRID_STEP = 100;
 
 function createPovRenderer() {
-    const stars = Array.from({ length: 160 }, () => ({
-        x: Math.random() * VIEW.width * 2,
-        y: Math.random() * POV.horizon,
-        size: Math.random() * 1.6 + 0.4
-    }));
+    const stars = createStarfield(170, VIEW.width * 2, POV.horizon, 23);
 
     function drawBackdrop(ctx, game, camera) {
+        const time = game.time || 0;
+        const [top, bottom] = levelTint(game.level.number);
         const sky = ctx.createLinearGradient(0, 0, 0, POV.horizon);
-        sky.addColorStop(0, '#02020a');
-        sky.addColorStop(1, '#1c0f33');
+        sky.addColorStop(0, top);
+        sky.addColorStop(1, bottom);
         ctx.fillStyle = sky;
         ctx.fillRect(0, 0, VIEW.width, POV.horizon);
-        ctx.fillStyle = '#05030c';
+        const floor = ctx.createLinearGradient(0, POV.horizon, 0, VIEW.height);
+        floor.addColorStop(0, bottom);
+        floor.addColorStop(0.25, '#05030c');
+        floor.addColorStop(1, '#020106');
+        ctx.fillStyle = floor;
         ctx.fillRect(0, POV.horizon, VIEW.width, VIEW.height - POV.horizon);
 
         const shift = camera.x * 0.15;
         for (const star of stars) {
             const x = (((star.x - shift) % (VIEW.width * 2)) + VIEW.width * 2) % (VIEW.width * 2) - VIEW.width / 2;
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-            ctx.fillRect(x, star.y, star.size, star.size);
+            ctx.globalAlpha = 0.35 + 0.55 * star.depth * (0.6 + 0.4 * Math.sin(time * 3 + star.twinkle));
+            ctx.fillStyle = star.color;
+            const s = star.depth > 0.8 ? 2 : 1;
+            ctx.fillRect(Math.round(x), Math.round(star.y), s, s);
         }
+        ctx.globalAlpha = 1;
+
+        // Mandelblum moon rising over the horizon, parallaxing with steering.
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, VIEW.width, POV.horizon);
+        ctx.clip();
+        drawNebula(ctx, game.level.number, VIEW.width / 2 - (camera.x - 400) * 0.35, POV.horizon - 40, 760, 0.6);
+        ctx.restore();
+
+        // Horizon glow line.
+        const hz = ctx.createLinearGradient(0, POV.horizon - 18, 0, POV.horizon + 18);
+        hz.addColorStop(0, 'rgba(255, 60, 138, 0)');
+        hz.addColorStop(0.5, 'rgba(255, 60, 138, 0.45)');
+        hz.addColorStop(1, 'rgba(255, 60, 138, 0)');
+        ctx.fillStyle = hz;
+        ctx.fillRect(0, POV.horizon - 18, VIEW.width, 36);
 
         ctx.save();
         ctx.lineWidth = 1;
         const nearY = camera.y + POV.near + 4;
         const farY = camera.y + POV.far;
+        ctx.globalCompositeOperation = 'lighter';
         for (let x = -800; x <= 1600; x += GRID_STEP) {
             const a = projectPov({ x, y: nearY }, camera, FLOOR_HEIGHT);
             const b = projectPov({ x, y: farY }, camera, FLOOR_HEIGHT);
             const edge = x === 0 || x === 800;
-            ctx.strokeStyle = edge ? 'rgba(125, 255, 140, 0.55)' : 'rgba(140, 90, 255, 0.22)';
+            ctx.strokeStyle = edge ? 'rgba(125, 255, 140, 0.7)' : 'rgba(170, 90, 255, 0.3)';
+            ctx.lineWidth = edge ? 2 : 1;
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
             ctx.stroke();
         }
+        ctx.lineWidth = 1;
         for (let y = Math.ceil(nearY / GRID_STEP) * GRID_STEP; y < farY; y += GRID_STEP) {
             const a = projectPov({ x: -800, y }, camera, FLOOR_HEIGHT);
             const b = projectPov({ x: 1600, y }, camera, FLOOR_HEIGHT);
-            ctx.strokeStyle = `rgba(140, 90, 255, ${0.3 * povFade(a.depth)})`;
+            ctx.strokeStyle = `rgba(255, 60, 200, ${0.4 * povFade(a.depth)})`;
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
@@ -52,18 +78,31 @@ function createPovRenderer() {
         }
         ctx.restore();
 
-        const gate = projectPov({ x: 400, y: game.level.length }, camera, 0);
-        if (gate && gate.depth < POV.far) {
-            const left = projectPov({ x: 0, y: game.level.length }, camera, 120);
+        const gate = projectPov({ x: 400, y: game.level.length }, camera, 40);
+        if (gate && gate.depth < POV.far * 1.3) {
+            const alpha = Math.max(0.25, povFade(gate.depth));
+            const size = Math.min(2000, 900 * gate.scale);
+            const img = getImage('gate');
+            if (img) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.globalAlpha = alpha;
+                ctx.drawImage(img, gate.x - size / 2, gate.y - size / 2, size, size);
+                ctx.restore();
+            }
+            drawGlow(ctx, gate.x, gate.y, size * 0.6, '#7dff8c', alpha * 0.35);
+            const left = projectPov({ x: 0, y: game.level.length }, camera, 160);
             const right = projectPov({ x: 800, y: game.level.length }, camera, FLOOR_HEIGHT);
-            ctx.save();
-            ctx.strokeStyle = '#7dff8c';
-            ctx.shadowColor = '#7dff8c';
-            ctx.shadowBlur = 12;
-            ctx.lineWidth = Math.max(1, gate.scale * 6);
-            ctx.globalAlpha = povFade(gate.depth);
-            ctx.strokeRect(left.x, left.y, right.x - left.x, right.y - left.y);
-            ctx.restore();
+            if (left && right) {
+                ctx.save();
+                ctx.strokeStyle = '#7dff8c';
+                ctx.lineWidth = Math.max(1, gate.scale * 6);
+                ctx.globalAlpha = alpha;
+                ctx.setLineDash([Math.max(4, 30 * gate.scale), Math.max(3, 18 * gate.scale)]);
+                ctx.lineDashOffset = -time * 60;
+                ctx.strokeRect(left.x, left.y, right.x - left.x, right.y - left.y);
+                ctx.restore();
+            }
         }
     }
 
@@ -82,19 +121,23 @@ function createPovRenderer() {
         return items;
     }
 
-    function drawRenderable(ctx, game, item) {
+    function drawRenderable(ctx, game, camera, item) {
         const { kind, obj, p } = item;
         const alpha = povFade(p.depth);
+        const time = game.time || 0;
         if (kind === 'asteroid') {
             const radius = obj.size * p.scale;
             if (radius > 1400 || p.x + radius < 0 || p.x - radius > VIEW.width) return;
-            drawAsteroid(ctx, obj, p.x, p.y, radius, alpha);
+            drawAsteroid(ctx, obj, p.x, p.y, radius, alpha, time);
         } else if (kind === 'pickup') {
-            drawPickup(ctx, obj, p.x, p.y, Math.min(120, obj.size * p.scale), game.time, alpha);
+            drawPickup(ctx, obj, p.x, p.y, Math.min(120, obj.size * p.scale), time, alpha);
         } else if (kind === 'enemyBullet') {
-            drawGlowDot(ctx, p.x, p.y, Math.max(2, Math.min(40, obj.size * p.scale)), obj.color, alpha);
+            drawEnemyBullet(ctx, obj, p.x, p.y, Math.min(6, p.scale), alpha, time);
         } else if (kind === 'playerBullet') {
-            drawGlowDot(ctx, p.x, p.y, Math.max(1.5, Math.min(obj.pierce ? 22 : 9, obj.size * p.scale)), obj.color, alpha);
+            const ahead = projectPov({ x: obj.x + obj.vx * 0.05, y: obj.y + obj.vy * 0.05 }, camera, 0);
+            const dx = ahead ? ahead.x - p.x : 0;
+            const dy = ahead ? ahead.y - p.y : -1;
+            drawPlayerBullet(ctx, obj, p.x, p.y, dx, dy, Math.min(3, Math.max(0.35, p.scale)), alpha, time);
         } else {
             ctx.globalAlpha = alpha * Math.max(0, obj.life / obj.maxLife);
             ctx.fillStyle = obj.color;
@@ -104,29 +147,43 @@ function createPovRenderer() {
         }
     }
 
-    function drawReticle(ctx, camera, ship) {
+    function drawReticle(ctx, camera, ship, time) {
         const p = projectPov({ x: ship.x, y: ship.y + 420 }, camera, 0);
+        if (!p) return;
         ctx.save();
-        ctx.strokeStyle = 'rgba(127, 215, 255, 0.75)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
-        [[-20, 0, -8, 0], [8, 0, 20, 0], [0, -20, 0, -8], [0, 8, 0, 20]].forEach(([x1, y1, x2, y2]) => {
-            ctx.moveTo(p.x + x1, p.y + y1);
-            ctx.lineTo(p.x + x2, p.y + y2);
-        });
-        ctx.stroke();
+        ctx.translate(Math.round(p.x), Math.round(p.y));
+        ctx.strokeStyle = 'rgba(127, 215, 255, 0.85)';
+        ctx.lineWidth = 2;
+        const r = 12 + Math.sin(time * 6) * 1.5;
+        for (let i = 0; i < 4; i++) {
+            ctx.rotate(Math.PI / 2);
+            ctx.beginPath();
+            ctx.moveTo(r, -6);
+            ctx.lineTo(r + 6, 0);
+            ctx.lineTo(r, 6);
+            ctx.stroke();
+        }
+        ctx.fillStyle = '#ff3c8a';
+        ctx.fillRect(-1, -1, 3, 3);
         ctx.restore();
     }
 
-    return function renderPov(ctx, game) {
+    return function renderPov(ctx, game, fx) {
         const camera = povCamera(game.ship);
+        const time = game.time || 0;
         drawBackdrop(ctx, game, camera);
-        for (const item of collectRenderables(game, camera)) drawRenderable(ctx, game, item);
+        for (const item of collectRenderables(game, camera)) drawRenderable(ctx, game, camera, item);
+        if (fx) {
+            fx.drawWorld(ctx, (pt) => {
+                const p = projectPov(pt, camera, 0);
+                if (!p || p.depth > POV.far) return null;
+                return { x: p.x, y: p.y, scale: Math.min(1.8, p.scale), alpha: povFade(p.depth) * (p.scale > 1.4 ? 0.7 : 1) };
+            });
+        }
         if (game.state === 'playing' || game.state === 'paused' || game.state === 'levelComplete') {
-            drawReticle(ctx, camera, game.ship);
+            drawReticle(ctx, camera, game.ship, time);
             const shipPoint = projectPov(game.ship, camera, 0);
-            drawShipChase(ctx, game.ship, shipPoint.x, shipPoint.y);
+            if (shipPoint) drawShipChase(ctx, game.ship, shipPoint.x, shipPoint.y, time, fx ? fx.ripples : []);
         }
     };
 }

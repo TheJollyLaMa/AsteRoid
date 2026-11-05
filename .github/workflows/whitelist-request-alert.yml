@@ -1,0 +1,24 @@
+name: Whitelist Request Alert
+on:
+  issues:
+    types: [opened, labeled]
+permissions: {}
+jobs:
+  alert:
+    if: contains(github.event.issue.labels.*.name, 'whitelist-request')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Notify owner without authorizing a wallet
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/sendContributorAlert.js

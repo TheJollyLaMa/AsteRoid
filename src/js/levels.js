@@ -1,3 +1,5 @@
+const { applyDifficulty } = require('./difficulty');
+
 const LEVEL_COUNT = 10;
 
 const LEVEL_NAMES = [
@@ -14,8 +16,9 @@ const LEVEL_NAMES = [
 ];
 
 // Difficulty scales with the level number. Levels 1-3 have stationary rocks;
-// drift and rocks charging at the ship arrive from level 4 onward.
-function getLevel(number) {
+// drift and rocks charging at the ship arrive from level 4 onward (on cadet).
+// Pilot and ace scale these knobs; see difficulty.js.
+function getBaseLevel(number) {
     if (!Number.isInteger(number) || number < 1 || number > LEVEL_COUNT) {
         throw new RangeError(`Level must be an integer from 1 to ${LEVEL_COUNT}`);
     }
@@ -40,4 +43,8 @@ function getLevel(number) {
     };
 }
 
-module.exports = { LEVEL_COUNT, LEVEL_NAMES, getLevel };
+function getLevel(number, difficulty = 'cadet') {
+    return applyDifficulty(getBaseLevel(number), difficulty);
+}
+
+module.exports = { LEVEL_COUNT, LEVEL_NAMES, getLevel, getBaseLevel };

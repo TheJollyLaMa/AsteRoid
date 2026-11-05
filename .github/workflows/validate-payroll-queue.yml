@@ -1,0 +1,21 @@
+name: Validate Payroll Queue
+on:
+  pull_request:
+    paths: ['contributor-accounts.json', 'payroll-*.json', 'bounty-bot-config.json', 'scripts/**', 'tests/payroll*', '.github/workflows/**']
+  push:
+    branches: [main]
+    paths: ['contributor-accounts.json', 'payroll-*.json', 'scripts/**']
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node scripts/validatePayrollQueue.js
+      - run: node --test tests/payroll.test.js
