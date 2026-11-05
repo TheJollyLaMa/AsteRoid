@@ -136,7 +136,8 @@ function drawTitle(ctx, game) {
     drawGlow(ctx, cx, 337, 160, '#7dff8c', 0.12);
     pixelText(ctx, `TAB / X  MODE: ${(game.mode || game.multiplayerMode || 'COOP').toUpperCase()}  ·  CONTROLLER: PRESS A TO JOIN UP TO 5 DECENT PILOTS`, cx, 362, { size: 10, align: 'center', color: '#7fd7ff' });
 
-    panelBox(ctx, 90, 372, 620, 150);
+    const ox = VIEW.offsetX || 0;
+    panelBox(ctx, ox + 90, 372, 620, 150);
     const controls = [
         ['LEFT/RIGHT A/D', 'STEER  (TITLE: LEVEL)'],
         ['UP/DOWN W/S', 'THROTTLE (TITLE: DIFFICULTY)'],
@@ -146,16 +147,16 @@ function drawTitle(ctx, game) {
         ['M', 'MUTE     C  CRT FILTER']
     ];
     controls.forEach(([key, action], i) => {
-        pixelText(ctx, key, 270, 390 + i * 16, { size: 11, color: '#ffe65c', align: 'right' });
-        pixelText(ctx, action, 290, 390 + i * 16, { size: 11, color: '#c9d6e3' });
+        pixelText(ctx, key, ox + 270, 390 + i * 16, { size: 11, color: '#ffe65c', align: 'right' });
+        pixelText(ctx, action, ox + 290, 390 + i * 16, { size: 11, color: '#c9d6e3' });
     });
-    drawBreathe(ctx, 128, 494, 12, time);
-    pixelText(ctx, 'ENS ETH = POWER RE-UP', 152, 499, { size: 11, color: '#7dff8c' });
-    pixelText(ctx, 'S/R/P WEAPONS  O SHIELD', 152, 513, { size: 11, color: '#c9d6e3' });
-    drawGlow(ctx, 470, 502, 22, '#ff3a1c', 0.7 + 0.3 * Math.sin(time * 7));
+    drawBreathe(ctx, ox + 128, 494, 12, time);
+    pixelText(ctx, 'ENS ETH = POWER RE-UP', ox + 152, 499, { size: 11, color: '#7dff8c' });
+    pixelText(ctx, 'S/R/P WEAPONS  O SHIELD', ox + 152, 513, { size: 11, color: '#c9d6e3' });
+    drawGlow(ctx, ox + 470, 502, 22, '#ff3a1c', 0.7 + 0.3 * Math.sin(time * 7));
     ctx.fillStyle = '#fff1c2';
-    ctx.fillRect(467, 499, 6, 6);
-    pixelText(ctx, 'ORANGE CORES SHOOT BACK!', 494, 507, { size: 11, color: '#ff8a5c' });
+    ctx.fillRect(ox + 467, 499, 6, 6);
+    pixelText(ctx, 'ORANGE CORES SHOOT BACK!', ox + 494, 507, { size: 11, color: '#ff8a5c' });
 }
 
 function drawIntro(ctx, game) {

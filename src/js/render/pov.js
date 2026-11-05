@@ -1,4 +1,4 @@
-const { VIEW, POV, povCamera, projectPov, povFade } = require('./projection');
+const { VIEW, MAX_VIEW_WIDTH, POV, povCamera, projectPov, povFade } = require('./projection');
 const { drawAsteroid, drawPickup, drawShipChase, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { levelTint, createStarfield, drawNebula } = require('./background');
 const { getImage } = require('./assets');
@@ -9,7 +9,7 @@ const FLOOR_HEIGHT = -40;
 const GRID_STEP = 100;
 
 function createPovRenderer() {
-    const stars = createStarfield(170, VIEW.width * 2, POV.horizon, 23);
+    const stars = createStarfield(340, MAX_VIEW_WIDTH * 2, POV.horizon, 23);
 
     function drawBackdrop(ctx, game, camera) {
         const time = game.time || 0;
@@ -28,7 +28,9 @@ function createPovRenderer() {
 
         const shift = camera.x * 0.15;
         for (const star of stars) {
-            const x = (((star.x - shift) % (VIEW.width * 2)) + VIEW.width * 2) % (VIEW.width * 2) - VIEW.width / 2;
+            const span = MAX_VIEW_WIDTH * 2;
+            const x = (((star.x - shift) % span) + span) % span - MAX_VIEW_WIDTH / 2;
+            if (x < -2 || x > VIEW.width + 2) continue;
             ctx.globalAlpha = 0.35 + 0.55 * star.depth * (0.6 + 0.4 * Math.sin(time * 3 + star.twinkle));
             ctx.fillStyle = star.color;
             const s = star.depth > 0.8 ? 2 : 1;
@@ -57,7 +59,7 @@ function createPovRenderer() {
         const nearY = camera.y + POV.near + 4;
         const farY = camera.y + POV.far;
         ctx.globalCompositeOperation = 'lighter';
-        for (let x = -800; x <= 1600; x += GRID_STEP) {
+        for (let x = -1600; x <= 2400; x += GRID_STEP) {
             const a = projectPov({ x, y: nearY }, camera, FLOOR_HEIGHT);
             const b = projectPov({ x, y: farY }, camera, FLOOR_HEIGHT);
             const edge = x === 0 || x === 800;
@@ -70,8 +72,8 @@ function createPovRenderer() {
         }
         ctx.lineWidth = 1;
         for (let y = Math.ceil(nearY / GRID_STEP) * GRID_STEP; y < farY; y += GRID_STEP) {
-            const a = projectPov({ x: -800, y }, camera, FLOOR_HEIGHT);
-            const b = projectPov({ x: 1600, y }, camera, FLOOR_HEIGHT);
+            const a = projectPov({ x: -1600, y }, camera, FLOOR_HEIGHT);
+            const b = projectPov({ x: 2400, y }, camera, FLOOR_HEIGHT);
             ctx.strokeStyle = `rgba(127, 215, 255, ${0.4 * povFade(a.depth)})`;
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);

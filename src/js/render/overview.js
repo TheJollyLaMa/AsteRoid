@@ -31,6 +31,29 @@ function drawJumpGate(ctx, y, time, sector2 = false) {
     pixelText(ctx, '>> JUMP GATE <<', 12, y - 10, { size: 14, color: '#7dff8c' });
 }
 
+// On wide screens the 800-wide flight lane sits centred; dim the margins and mark its edges.
+function drawLaneRails(ctx, scrollY, time) {
+    const left = VIEW.offsetX;
+    const right = VIEW.offsetX + 800;
+    ctx.save();
+    ctx.fillStyle = 'rgba(2, 4, 12, 0.38)';
+    ctx.fillRect(0, 0, left, VIEW.height);
+    ctx.fillRect(right, 0, VIEW.width - right, VIEW.height);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const x of [left, right]) {
+        const g = ctx.createLinearGradient(x - 10, 0, x + 10, 0);
+        g.addColorStop(0, 'rgba(86, 237, 255, 0)');
+        g.addColorStop(0.5, 'rgba(86, 237, 255, 0.16)');
+        g.addColorStop(1, 'rgba(86, 237, 255, 0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x - 10, 0, 20, VIEW.height);
+        ctx.fillStyle = 'rgba(125, 255, 140, 0.45)';
+        const phase = ((scrollY || 0) + time * 30) % 40;
+        for (let y = phase - 40; y < VIEW.height; y += 40) ctx.fillRect(x - 1, y, 2, 14);
+    }
+    ctx.restore();
+}
+
 function createOverviewRenderer() {
     const background = createOverviewBackground();
 
@@ -38,6 +61,7 @@ function createOverviewRenderer() {
         const { scrollY } = game;
         const time = game.time || 0;
         background(ctx, game);
+        if (VIEW.offsetX > 0) drawLaneRails(ctx, scrollY, time);
 
         const exit = projectOverview({ x: 0, y: game.level.length }, scrollY);
         if (exit.y > -160 && exit.y < VIEW.height + 160) drawJumpGate(ctx, exit.y, time, game.level.number >= 11);

@@ -1,11 +1,21 @@
-const VIEW = { width: 800, height: 600 };
+// The world is always 800 wide; the view can be wider and centres the world with offsetX.
+const WORLD_VIEW_WIDTH = 800;
+const MAX_VIEW_WIDTH = 1600;
+const VIEW = { width: WORLD_VIEW_WIDTH, height: 600, offsetX: 0 };
+
+function setViewWidth(width) {
+    const w = Math.round(Math.max(WORLD_VIEW_WIDTH, Math.min(MAX_VIEW_WIDTH, Number(width) || WORLD_VIEW_WIDTH)));
+    VIEW.width = w;
+    VIEW.offsetX = (w - WORLD_VIEW_WIDTH) / 2;
+    return w;
+}
 
 // Overview: top-down map; the level scrolls toward the bottom of the screen.
 const OVERVIEW_SHIP_LINE = 560;
 
 function projectOverview(point, scrollY) {
     return {
-        x: point.x,
+        x: point.x + VIEW.offsetX,
         y: OVERVIEW_SHIP_LINE - (point.y - scrollY),
         scale: 1
     };
@@ -41,4 +51,4 @@ function povFade(depth) {
     return Math.max(0, Math.min(1, 1.15 - depth / POV.far));
 }
 
-module.exports = { VIEW, OVERVIEW_SHIP_LINE, POV, projectOverview, povCamera, projectPov, povFade };
+module.exports = { VIEW, setViewWidth, WORLD_VIEW_WIDTH, MAX_VIEW_WIDTH, OVERVIEW_SHIP_LINE, POV, projectOverview, povCamera, projectPov, povFade };

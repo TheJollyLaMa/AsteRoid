@@ -6,6 +6,7 @@ const { createHud } = require('./render/hud');
 const { drawOverlay } = require('./render/screens');
 const { createFx } = require('./render/fx');
 const { drawCrt } = require('./render/post');
+const { setViewWidth } = require('./render/projection');
 const { loadAssets } = require('./render/assets');
 const { renderBattleCard, previewBattleCard } = require('./render/battleCard');
 const { sampleRecord } = require('./render/cardMath');
@@ -203,15 +204,17 @@ function step(realDt, controls = null) {
     fx.update(realDt, game);
 }
 
-// The world stays 800×600; the backing store scales with the on-screen size so a full-page canvas stays sharp.
+// The world stays 800×600; the view widens to the page's aspect and the backing store scales so it stays sharp.
 const LOGICAL = { width: canvas.width, height: canvas.height };
 let renderScale = 1;
 function fitBacking() {
-    const width = canvas.getBoundingClientRect().width || LOGICAL.width;
-    const scale = Math.min(2, Math.max(1, Math.round((width * (window.devicePixelRatio || 1) / LOGICAL.width) * 4) / 4));
-    if (scale === renderScale && canvas.width === Math.round(LOGICAL.width * scale)) return;
+    const rect = canvas.getBoundingClientRect();
+    const logicalWidth = setViewWidth(rect.width && rect.height ? LOGICAL.height * rect.width / rect.height : LOGICAL.width);
+    const shown = Math.min(rect.width || logicalWidth, (rect.height || LOGICAL.height) * logicalWidth / LOGICAL.height);
+    const scale = Math.min(2, Math.max(1, Math.round((shown * (window.devicePixelRatio || 1) / logicalWidth) * 4) / 4));
+    if (scale === renderScale && canvas.width === Math.round(logicalWidth * scale) && canvas.height === Math.round(LOGICAL.height * scale)) return;
     renderScale = scale;
-    canvas.width = Math.round(LOGICAL.width * scale);
+    canvas.width = Math.round(logicalWidth * scale);
     canvas.height = Math.round(LOGICAL.height * scale);
 }
 if (typeof ResizeObserver === 'function') new ResizeObserver(fitBacking).observe(canvas);

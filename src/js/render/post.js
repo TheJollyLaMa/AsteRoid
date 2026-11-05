@@ -3,8 +3,10 @@ const { VIEW } = require('./projection');
 const { makeCanvas } = require('./assets');
 
 let overlay;
+let overlayWidth = 0;
 function crtOverlay() {
-    if (overlay !== undefined) return overlay;
+    if (overlay !== undefined && overlayWidth === VIEW.width) return overlay;
+    overlayWidth = VIEW.width;
     overlay = makeCanvas(VIEW.width, VIEW.height);
     if (!overlay) return overlay;
     const c = overlay.getContext('2d');

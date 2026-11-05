@@ -1,6 +1,6 @@
 // Per-level space backdrops: tinted gradient, a big Mandelblum "nebula"
 // (screen-blended so its black matte vanishes) and pixel starfield parallax.
-const { VIEW } = require('./projection');
+const { VIEW, MAX_VIEW_WIDTH } = require('./projection');
 const { getImage, backdropKeyFor } = require('./assets');
 
 const SECTOR2_TINTS = [
@@ -61,7 +61,7 @@ function drawNebula(ctx, levelNumber, cx, cy, size, alpha, rotation = 0) {
 }
 
 function createOverviewBackground() {
-    const stars = createStarfield(170, VIEW.width, VIEW.height, 11);
+    const stars = createStarfield(340, MAX_VIEW_WIDTH, VIEW.height, 11);
     return function drawOverviewBackground(ctx, game) {
         const [top, bottom] = levelTint(game.level && game.level.number);
         const g = ctx.createLinearGradient(0, 0, 0, VIEW.height);
@@ -75,6 +75,7 @@ function createOverviewBackground() {
         drawNebula(ctx, game.level ? game.level.number : 1, VIEW.width * 0.62, ny, 980, 0.42, (game.time || 0) * 0.01);
         const time = game.time || 0;
         for (const star of stars) {
+            if (star.x > VIEW.width) continue;
             const y = (star.y + scroll * star.depth * 0.6) % VIEW.height;
             const tw = 0.55 + 0.45 * Math.sin(time * 3 + star.twinkle);
             ctx.globalAlpha = (0.25 + star.depth * 0.6) * tw;

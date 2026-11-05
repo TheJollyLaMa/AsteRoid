@@ -101,6 +101,8 @@ stats and win records are saved per difficulty in `localStorage`, and can be bac
 - `src/js/weapons.js`, `asteroid.js`, `spaceship.js`, `bullet.js` and `collision.js` define the entities and rules.
 - `src/js/difficulty.js`, `stats.js` and `save.js` define difficulty presets, stat tracking and the save format.
 - `src/js/render/` holds the projection, both view renderers, the HUD, effects, screens and the battle-card renderer.
+  The flight world stays 800×600 (so referee replays stay deterministic). The view widens to the page's aspect, up to 1600,
+  with the lane centred between rails. The HUD is a single see-through strip along the bottom edge.
 - `src/js/app.js` wires up input, audio and the animation loop, and exposes `window.asteroidGame`, `asteroid:event`
   and `window.AsteroidRender`.
 - `src/js/input/` handles keyboard and gamepads. `window.voyager` exposes `game`, `step`, `draw` and `setNetworkMode`.
