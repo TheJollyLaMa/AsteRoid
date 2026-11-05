@@ -27,6 +27,16 @@ window.DECENT_CONFIG = {
     { label: 'DecentHead', url: 'https://github.com/TheJollyLaMa/DecentHead' }
   ],
   // Decent Voyager Supporter DNFT. Leave null to show "coming soon" in the About.
-  // Once listed: { title, contract, tokenId, escrowAddress, listingId, chain, marketUrl, paymentToken, expectedPriceAmount }.
-  supporterDnft: null
+  supporterDnft: {
+    title: 'Decent Voyager v1.0.0 Supporter DNFT',
+    image: 'brand/voyager-supporter-v1.png',
+    contract: '0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B',
+    tokenId: '80',
+    escrowAddress: '0x31b07b83e99A9bdF379bf40225b8A80d3804C89d',
+    listingId: '10',
+    chain: { chainId: 8453, chainName: 'Base', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://mainnet.base.org'], blockExplorerUrls: ['https://basescan.org'] },
+    marketUrl: 'https://thejollylama.github.io/DecentHead/supporter/buy.html?chainId=8453&escrow=0x31b07b83e99A9bdF379bf40225b8A80d3804C89d&listingId=10',
+    paymentToken: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    expectedPriceAmount: '10000000'
+  }
 };

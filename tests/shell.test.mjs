@@ -78,7 +78,12 @@ test('header config is public Base-only with HTTPS project links and small local
   const context={ window:{} }; vm.runInNewContext(source,context);
   const config=context.window.DECENT_CONFIG;
   assert.equal(config.appName,'Decent Voyager'); assert.equal(config.chain.chainId,8453); assert.equal(config.voyager.chainId,8453); assert.equal(config.voyager.testnetChainId,84532);
-  assert.equal(config.providers.default,'pinata'); assert.equal(config.ens.enabled,true); assert.equal(config.supporterDnft,null);
+  assert.equal(config.providers.default,'pinata'); assert.equal(config.ens.enabled,true);
+  const supporter=config.supporterDnft;
+  assert.equal(supporter.contract,'0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B'); assert.equal(supporter.tokenId,'80'); assert.equal(supporter.listingId,'10');
+  assert.equal(supporter.escrowAddress,'0x31b07b83e99A9bdF379bf40225b8A80d3804C89d'); assert.equal(supporter.chain.chainId,8453); assert.equal(supporter.expectedPriceAmount,'10000000');
+  assert.match(supporter.marketUrl,/^https:\/\//);
+  assert.ok(statSync(new URL(`../src/assets/${supporter.image}`,import.meta.url)).size<=250000);
   for (const link of [...config.links,...config.relatedDapps]) assert.match(link.url,/^https:\/\//);
   assert.equal(config.about.sections,undefined);
   assert.equal(config.art.titleIcon,'./assets/brand/voyager-disc.png');
