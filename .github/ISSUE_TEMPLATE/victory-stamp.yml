@@ -1,12 +1,13 @@
 name: Victory Stamp Request
-description: Submit pinned victory metadata for owner-reviewed Base minting
+description: Submit a pinned level 20 achievement for owner-reviewed Base minting
 title: "Victory stamp: "
 labels: [victory-stamp]
 body:
   - type: markdown
     attributes:
       value: |
-        Paste the Victory Vault claim JSON. This requests review; it does not mint an NFT.
+        Paste a Pilot or Ace level 20 Victory Vault claim JSON. Earlier levels are flight history, not new achievement mints.
+        This requests review; it does not mint an NFT.
         All IPFS metadata and claimant addresses are public. Do not include keys or private information.
   - type: textarea
     id: claim

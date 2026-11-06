@@ -1,1 +1,1 @@
-module.exports = 'voyager-1.1-handling-rewards';
+module.exports = 'voyager-1.2-lotus-marathon';

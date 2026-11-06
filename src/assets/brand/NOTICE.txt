@@ -1,2 +1,3 @@
 mandelblum-gate.png: resized 240px still of mandelblum_gate1.png from the creator's BlenderBender/Mandelblum art collection, supplied by TheJollyLaMa for use in Decent Voyager. Attribution: TheJollyLaMa / Mandelblum. No third-party station or music rights are conveyed.
 voyager-disc.png / voyager-disc-64.png: resized transparent stills of output-onlinepngtools.png from the creator's BlenderBender/Mandelblum art collection, supplied by TheJollyLaMa for the Decent Voyager header icon and favicon. Attribution: TheJollyLaMa / Mandelblum.
+../game/white-lotus-clear.png: 192px transparent derivative of White_Lotus_Clear.png from the creator's BlenderBender/MandelBlum collection, supplied by TheJollyLaMa for the extra-life pickup. Attribution: TheJollyLaMa / Mandelblum.

@@ -64,7 +64,7 @@ test('save round-trips through importSave into a fresh game', () => {
     target.importSave(JSON.parse(JSON.stringify(exported)));
     const reexported = target.exportSave();
     assert.deepEqual({ ...reexported, savedAt: null }, { ...exported, savedAt: null });
-    assert.equal(target.selectedLevel, 3);
+    assert.equal(target.selectedLevel, 1);
     assert.equal(target.progress.unlocked, 3);
     assert.equal(target.getWinRecords().length, 2);
     const reloaded = new Game({ storage });
@@ -81,7 +81,7 @@ test('import selects the saved last difficulty on the title screen', () => {
     const game = new Game();
     game.importSave(save);
     assert.equal(game.selectedDifficulty, 'pilot');
-    assert.equal(game.selectedLevel, 4);
+    assert.equal(game.selectedLevel, 1);
 });
 
 test('import rejects invalid saves with friendly errors and leaves the game untouched', () => {

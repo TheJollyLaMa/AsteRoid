@@ -67,10 +67,13 @@ test('pilot flight tickets use the referee seed and MAC without prompting', asyn
   await manager.ensureTicket();
   assert.equal(calls.length, 2, 'a new ticket is prefetched after the flight starts');
   assert.equal(applied.length, 1, 'a ticket fetched during play waits for the title screen');
-  game.state = 'title';
+  game.state = 'gameOver';
   await manager.refresh();
   assert.equal(applied[1].seed, 43);
   assert.equal(applied[1].ticket.ticket.id, 'ticket-2');
+  game.state = 'title';
+  await manager.refresh();
+  assert.equal(applied.length, 2, 'game-over restart and title do not duplicate the next ticket');
   assert.ok(states.some(text => text.includes('ready for your next launch')));
   manager.stop();
 });

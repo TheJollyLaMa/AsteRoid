@@ -29,6 +29,7 @@ const LEVEL_COMPLETE_TIME = 3.5;
 const RESPAWN_TIME = 1.8;
 const FIXED_STEP = 1 / 60;
 const WARP_TIME = 2.2;
+const MAX_PARTICLES = 256;
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -72,7 +73,7 @@ class Game {
         this.save = loadSave(storage);
         this.selectedDifficulty = this.save.progress.lastDifficulty;
         this.difficulty = this.selectedDifficulty;
-        this.selectedLevel = this.progress.unlocked;
+        this.selectedLevel = 1;
         this.runStats = createTotals();
         this.tracker = new LevelTracker();
         this.lastRecord = null;
@@ -136,7 +137,7 @@ class Game {
     setDifficulty(id) {
         if (!isDifficulty(id)) throw new RangeError(`Unknown difficulty: ${id}`);
         this.selectedDifficulty = id;
-        this.selectedLevel = this.save.progress.byDifficulty[id].unlocked;
+        this.selectedLevel = 1;
     }
 
     resetWorld() {
@@ -280,12 +281,7 @@ class Game {
     }
 
     retryLevel() {
-        this.score = this.levelStartScore;
-        this.ship = this.createShip();
-        this.ships = [this.ship];
-        this.playerStats = createPlayerStats(this.playerCount);
-        if (this.playerCount > 1) this.setPlayers(this.playerCount, { mode: this.mode });
-        this.startLevel(this.level.number);
+        this.startCampaign(1, this.difficulty);
     }
 
     setPilot({ address = null, isPilot = false } = {}) {
@@ -379,17 +375,13 @@ class Game {
                 break;
             case 'left':
             case 'right':
-                if (this.state === 'title') {
-                    const delta = action === 'left' ? -1 : 1;
-                    this.selectedLevel = Math.min(this.progress.unlocked, Math.max(1, this.selectedLevel + delta));
-                }
                 break;
             case 'difficultyPrev':
             case 'difficultyNext':
                 if (this.state === 'title') this.setDifficulty(stepDifficulty(this.selectedDifficulty, action === 'difficultyPrev' ? -1 : 1));
                 break;
             case 'confirm':
-                if (this.state === 'title') this.startCampaign(this.selectedLevel);
+                if (this.state === 'title') this.startCampaign(1);
                 else if (this.state === 'gameOver') this.retryLevel();
                 else if (this.state === 'levelComplete') this.advanceLevel();
                 else if (this.state === 'paused') this.state = 'playing';
@@ -408,7 +400,7 @@ class Game {
         this.saveProgress();
         this.state = 'title';
         this.selectedDifficulty = this.difficulty;
-        this.selectedLevel = this.progress.unlocked;
+        this.selectedLevel = 1;
     }
 
     // Folds the current level attempt into run and lifetime totals exactly once.
@@ -437,6 +429,11 @@ class Game {
     }
 
     step(inputs = []) {
+        if (!['playing', 'dying', 'levelComplete', 'warping'].includes(this.state)) {
+            this.time += FIXED_STEP;
+            this.updateParticles(FIXED_STEP);
+            return this;
+        }
         const frame = Array.from({ length: this.playerCount }, (_, index) =>
             inputLog.decodeInput(inputLog.encodeInput(inputs[index] || {})));
         this.runFrames.push(frame.map((input) => ({ ...input })));
@@ -609,17 +606,38 @@ class Game {
 
     resolvePlayerHits() {
         const spawned = [];
+        const buckets = new Map();
+        let maxSize = 0;
+        this.asteroids.forEach((rock, index) => {
+            if (rock.hp <= 0) return;
+            maxSize = Math.max(maxSize, rock.size);
+            const cell = Math.floor(rock.y / 128);
+            if (!buckets.has(cell)) buckets.set(cell, []);
+            buckets.get(cell).push(index);
+        });
+        const candidates = (bullet, radius) => {
+            const indices = [];
+            const first = Math.floor((bullet.y - radius) / 128);
+            const last = Math.floor((bullet.y + radius) / 128);
+            for (let cell = first; cell <= last; cell++) {
+                if (buckets.has(cell)) indices.push(...buckets.get(cell));
+            }
+            // Preserve first-hit and piercing order from the deterministic world array.
+            return indices.sort((a, b) => a - b);
+        };
         for (const bullet of this.playerBullets) {
             if (!bullet.alive) continue;
             if (bullet.ownerWeapon === 'singularity') {
-                for (const rock of this.asteroids) {
+                for (const index of candidates(bullet, 220)) {
+                    const rock = this.asteroids[index];
                     if (rock.hp <= 0) continue;
                     const dx = bullet.x - rock.x; const dy = bullet.y - rock.y; const distance = Math.hypot(dx, dy);
                     if (distance > 220 || distance === 0) continue;
                     const pull = (220 - distance) * 0.18; rock.vx += dx / distance * pull * FIXED_STEP; rock.vy += dy / distance * pull * FIXED_STEP;
                 }
             }
-            for (const asteroid of this.asteroids) {
+            for (const index of candidates(bullet, (bullet.size || 0) + (bullet.radius || 0) + maxSize)) {
+                const asteroid = this.asteroids[index];
                 if (asteroid.hp <= 0 || asteroid.phaseActive || (bullet.hits && bullet.hits.has(asteroid.id))) continue;
                 if (!checkCollision(bullet, asteroid)) continue;
                 if (bullet.hits) bullet.hits.add(asteroid.id);
@@ -777,6 +795,8 @@ class Game {
         const ship = targetShip;
         if (pickup.type === 'power') {
             ship.power = Math.min(ship.maxPower, ship.power + (this.level.powerRestore ?? 40));
+        } else if (pickup.type === 'life') {
+            ship.lives += 1;
         } else if (pickup.type === 'shield') {
             ship.shield = this.level.shieldTime ?? 7;
         } else {
@@ -794,7 +814,7 @@ class Game {
             this.score += pickupPoints; awardScore(this.playerStats, playerIndex, pickupPoints, 'coop');
         }
         this.spawnExplosion(pickup.x, pickup.y, '#9effa8', 14);
-        this.emit('pickup', { pickupType: pickup.type, x: pickup.x, y: pickup.y, weapon: { ...ship.weapon } });
+        this.emit('pickup', { pickupType: pickup.type, x: pickup.x, y: pickup.y, player: playerIndex, lives: ship.lives, weapon: { ...ship.weapon } });
     }
 
     completeLevel() {
@@ -916,7 +936,7 @@ class Game {
         }
         const unlocked = this.save.progress.byDifficulty[this.state === 'title' ? this.selectedDifficulty : this.difficulty].unlocked;
         this.selectedLevel = Math.min(Math.max(1, this.selectedLevel), unlocked);
-        if (this.state === 'title') this.selectedLevel = unlocked;
+        if (this.state === 'title') this.selectedLevel = 1;
         persistSave(this.storage, this.exportSave());
         return this.exportSave();
     }
@@ -960,7 +980,8 @@ class Game {
     }
 
     spawnExplosion(x, y, color, count) {
-        for (let i = 0; i < count; i++) {
+        const available = Math.min(count, MAX_PARTICLES - this.particles.length);
+        for (let i = 0; i < available; i++) {
             const angle = this.cosmeticRng() * Math.PI * 2;
             const speed = 30 + this.cosmeticRng() * 140;
             const life = 0.4 + this.cosmeticRng() * 0.6;
@@ -998,6 +1019,7 @@ Game.STORAGE_KEY = STORAGE_KEY;
 Game.LEGACY_STORAGE_KEY = LEGACY_STORAGE_KEY;
 Game.DIFFICULTIES = DIFFICULTY_IDS;
 Game.FIXED_STEP = FIXED_STEP;
+Game.MAX_PARTICLES = MAX_PARTICLES;
 Game.groupPlayers = require('./multiplayer').groupPlayers;
 
 module.exports = Game;

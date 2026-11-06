@@ -121,7 +121,7 @@ test('shield blocks damage; losing all power costs a life then respawns', () => 
     assert.equal(game.ship.power, 100);
 });
 
-test('game over after the last life, and Enter retries the level', () => {
+test('game over ends the run and Enter restarts from level 1', () => {
     const game = playingGame(2);
     game.ship.lives = 1;
     game.damageShip(500, 0, 0);
@@ -129,7 +129,7 @@ test('game over after the last life, and Enter retries the level', () => {
     assert.equal(game.state, 'gameOver');
     game.handleAction('confirm');
     assert.equal(game.state, 'playing');
-    assert.equal(game.level.number, 2);
+    assert.equal(game.level.number, 1);
     assert.equal(game.ship.lives, 3);
 });
 
@@ -150,7 +150,7 @@ test('reaching the jump gate completes the level, unlocks and saves progress', (
     assert.equal(game.level.number, 2);
 
     const resumed = new Game({ storage });
-    assert.equal(resumed.selectedLevel, 2);
+    assert.equal(resumed.selectedLevel, 1);
 });
 
 test('clearing level 10 wins the campaign', () => {
@@ -282,10 +282,10 @@ test('title screen picks a difficulty; progress is tracked per difficulty', () =
 
     const resumed = new Game({ storage });
     assert.equal(resumed.selectedDifficulty, 'ace', 'remembers the last difficulty played');
-    assert.equal(resumed.selectedLevel, 2);
+    assert.equal(resumed.selectedLevel, 1);
     assert.equal(resumed.progress.unlocked, 2);
     resumed.handleAction('right');
-    assert.equal(resumed.selectedLevel, 2, 'cannot pick past the unlocked level');
+    assert.equal(resumed.selectedLevel, 1, 'new voyages always start at level 1');
     resumed.handleAction('difficultyPrev');
     assert.equal(resumed.selectedDifficulty, 'pilot');
     assert.equal(resumed.selectedLevel, 1, 'pilot is still locked to level 1');

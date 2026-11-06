@@ -35,9 +35,10 @@ export function mountFlightLog({ getGame = () => window.voyager?.game || window.
     if (detail.type === 'levelRecord' && detail.record && !records.some(record => record.id === detail.record.id)) { records.push(detail.record); }
     if (detail.type === 'supporterCaptured') captures.push(detail);
     if (detail.type === 'victory' || detail.type === 'gameOver') {
+      if (detail.type === 'gameOver') void tickets.refresh();
       const game = getGame();
       runId = game?.getRunLog?.()?.runId || runId || `voyager-${Date.now()}`;
-      if (pilot.isPilot && promptedRun !== runId && (records.length || captures.length)) {
+      if (pilot.isPilot && promptedRun !== runId && (records.some(record => record.level === 20) || captures.length)) {
         promptedRun = runId;
         const hasTicket = !!game?.getRunLog?.()?.ticket;
         if (!hasTicket) notify('Rewards need a referee flight ticket. No ticket was attached; GitHub fallback: ☥ profile → Victory Vault → Request mint on GitHub.');

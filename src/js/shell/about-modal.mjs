@@ -14,14 +14,14 @@ export const ABOUT = {
   stats: [['20', 'levels across two sectors'], ['3', 'difficulties · Cadet → Ace'], ['5', 'ships per battle group']],
   mission: 'Decent Voyager is the DecentAgency arcade: an 8-bit gauntlet with modern firepower. Fly through drifting Mandelblum fields, blast the cores that shoot back, grab weapon upgrades, and survive to the end of each level. Sector I (levels 1–10) is free for everyone, no wallet needed. Decent Pilots fly for real rewards.',
   rewards: [
-    { icon: '◈', title: 'Level-pass DNFT', body: 'Every level a whitelisted player clears on Pilot or Ace becomes a DNFT stamped with the date, time, difficulty, and every stat: shots fired, accuracy, asteroids destroyed vs. missed, combo, damage taken. It comes with a rendering of the battle you fought. Cadet flights are practice only.', note: 'Queued after signing the flight log. It waits in ☥ → Rewards waiting each time you log in.' },
+    { icon: '◈', title: 'Level 20 achievement NFT', body: 'Only completing level 20 on Pilot or Ace earns a new achievement NFT. Earlier levels keep their battle records and stats without minting an NFT. The final achievement carries the date, time, difficulty, telemetry and battle rendering; a full solo marathon also records all 20 levels. Cadet flights are practice only.', note: 'Queued after signing the flight log. It waits in ☥ → Rewards waiting each time you log in. Previously issued vouchers remain valid.' },
     { icon: '⬢', title: 'Guarded Supporter pickups', body: 'Whitelisted Pilot and Ace players find a guarded pickup near levels 9–10 and another near 19–20. Sector I offers DecentHead or DecentMarket; Sector II offers DecentCalendar, DecentCanopy or DecentPilgrimages. Destroy every guard and fly through the token.', note: 'Each capture refills health; the first unlocks your difficulty’s levels 11–20. Transfers require funded custody and referee verification.' },
     { icon: '✦', title: 'Marathon and Perfect awards', body: 'Finish all 20 levels in one solo Ace run for a Voyager Supporter award. Perfect Ace also requires zero lives lost and both guarded pickups: earn the rare DecentBusking Supporter. Perfect Pilot uses the same full-run rules at Pilot difficulty: earn a BigNuten Supporter plus 100 BNut in one atomic claim. Cadets earn practice and confidence, not tokens.', note: 'The level-20 receipt records full-run stats and award references. References are not transfer receipts. The Voyager multi-asset escrow transfers the Perfect Pilot NFT and BNut together or reverts both. Limited reserves must be funded before rewards are claimable.' },
     { icon: '✶', title: 'Sector II · Far Future', body: 'Capture a Sector I vault and the voyage carries you into levels 11–20, a further-future sector with new Mandelblums and wilder weapons: Prism Splitter, Singularity, and a brighter Nova.', note: 'Your progress saves locally and can be backed up to IPFS.' },
     { icon: '⚔', title: 'Arena pot', body: 'Online battles cost $10 USDC per pilot. Every pilot who makes it to the end splits the pot. Pilots who go down forfeit their entry to the survivors.', note: 'Couch battles on one screen are always free.' },
   ],
   school: [
-    { key: '←↑→↓ / WASD', text: 'Fly. On the start screen ←/→ picks a level and ↑/↓ picks a difficulty.' },
+    { key: '←↑→↓ / WASD', text: 'Fly. On the start screen ↑/↓ picks a difficulty. Every new voyage starts at level 1; game over ends the run, not just the level.' },
     { key: 'Space', text: 'Fire. Hold for continuous fire.' },
     { key: 'B · hold', text: 'Charge the Nova cannon, then release for a big blast.' },
     { key: 'V', text: 'Switch between the overview map and the cockpit POV, where the field rushes toward you.' },
@@ -31,6 +31,7 @@ export const ABOUT = {
   pickups: [
     { img: 'brand/voyager-disc.png', text: 'Fly through glowing capsules for upgrades: S Spread Cannon, R Rapid Laser, P Plasma Lance, O Shield.' },
     { img: 'vendor-breathe', text: 'The breathing ENS·ETH emblem refills your power bar.' },
+    { img: 'game/white-lotus-clear.png', text: 'White Lotus grants one extra life to the ship that collects it. Find one in levels 3, 7, 12 and 16 for a second chance.' },
     { img: null, text: 'Orange cores shoot back. Clear them before the gauntlet reaches you.' },
   ],
   couch: [
@@ -47,7 +48,7 @@ export const ABOUT = {
     { title: 'Launch', text: 'The pilot who opened the round presses Start when everyone is in. Up to five ships fly per group; extra pilots start a new group.' },
     { title: 'Survive', text: 'Reach the end alive and claim your share with Claim payout. If a round expires before launch, Claim refund returns your $10.' },
   ],
-  pilots: 'Wallet features (level-pass DNFTs, Supporter Vaults, Sector II rewards and online rounds) are open to whitelisted DecentAgency collaborators, the Decent Pilots. Not on the list yet? Ask in the DecentAgency Discord. Levels 1–10 stay free for everyone.',
+  pilots: 'Wallet features (level 20 achievement NFTs, Supporter Vaults, Sector II rewards and online rounds) are open to whitelisted DecentAgency collaborators, the Decent Pilots. Not on the list yet? Ask in the DecentAgency Discord. Levels 1–10 stay free for everyone.',
   saving: 'Your progress lives in this browser. Use the left IPFS orb to back it up or restore it with your own pinning provider. IPFS is public, so only game progress is exported.',
 };
 

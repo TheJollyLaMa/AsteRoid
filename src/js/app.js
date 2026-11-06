@@ -10,6 +10,7 @@ const { setViewWidth } = require('./render/projection');
 const { loadAssets } = require('./render/assets');
 const { renderBattleCard, previewBattleCard } = require('./render/battleCard');
 const { sampleRecord } = require('./render/cardMath');
+const { setGlowBudget } = require('./render/shapes');
 const { createInput } = require('./input');
 
 const canvas = document.getElementById('gameCanvas');
@@ -209,13 +210,19 @@ const LOGICAL = { width: canvas.width, height: canvas.height };
 let renderScaleX = 1;
 let renderScaleY = 1;
 let renderPixelRatio = 0;
+let renderQuality = 1;
+let renderedTitle = game.state === 'title';
+const MAX_BACKING_PIXELS = 3_000_000;
 function fitBacking() {
     const rect = canvas.getBoundingClientRect();
     const logicalWidth = setViewWidth(rect.width && rect.height ? LOGICAL.height * rect.width / rect.height : LOGICAL.width);
     const shown = Math.min(rect.width || logicalWidth, (rect.height || LOGICAL.height) * logicalWidth / LOGICAL.height);
     renderPixelRatio = window.devicePixelRatio || 1;
-    const width = Math.max(1, Math.round(shown * renderPixelRatio));
-    const height = Math.max(1, Math.round(shown * LOGICAL.height / logicalWidth * renderPixelRatio));
+    const pixelRatio = Math.min(renderPixelRatio, 2) * (game.state === 'title' ? 1 : renderQuality);
+    const pixelLimit = Math.sqrt(MAX_BACKING_PIXELS / (shown * shown * LOGICAL.height / logicalWidth));
+    const scale = Math.min(pixelRatio, pixelLimit);
+    const width = Math.max(1, Math.floor(shown * scale));
+    const height = Math.max(1, Math.floor(shown * LOGICAL.height / logicalWidth * scale));
     renderScaleX = width / logicalWidth;
     renderScaleY = height / LOGICAL.height;
     if (canvas.width === width && canvas.height === height) return;
@@ -227,30 +234,69 @@ window.addEventListener('resize', fitBacking);
 fitBacking();
 
 function draw() {
-    if (renderPixelRatio !== (window.devicePixelRatio || 1)) fitBacking();
+    if (renderPixelRatio !== (window.devicePixelRatio || 1) || renderedTitle !== (game.state === 'title')) {
+        renderedTitle = game.state === 'title';
+        fitBacking();
+    }
+    setGlowBudget(game.state === 'title' ? Infinity : renderQuality < 1 ? 30 : 120);
     audio.setSector2(Number(game.level && game.level.number) >= 11);
     const shake = fx.shakeOffset();
     ctx.setTransform(renderScaleX, 0, 0, renderScaleY, 0, 0);
     // Resizing resets context state; apply nearest-neighbour sampling every frame.
     ctx.imageSmoothingEnabled = false;
-    ctx.save();
-    ctx.translate(shake.x, shake.y);
-    renderers[game.view](ctx, game, fx);
-    ctx.restore();
-    fx.drawScreen(ctx, game);
+    if (game.state !== 'title') {
+        ctx.save();
+        ctx.translate(shake.x, shake.y);
+        renderers[game.view](ctx, game, fx);
+        ctx.restore();
+        fx.drawScreen(ctx, game);
+    }
     hud.drawHud(ctx, game, fx, { muted: audio.muted, crt: display.crt });
     drawOverlay(ctx, game, fx);
-    if (display.crt) drawCrt(ctx, game.time || 0);
+    if (display.crt && game.state !== 'title') drawCrt(ctx, game.time || 0);
+    setGlowBudget();
 }
 
 let last = null;
+let slowFrames = 0;
+let healthyFrames = 0;
 function frame(timestamp) {
-    const dt = last === null ? 0 : Math.min(0.05, (timestamp - last) / 1000);
+    const elapsed = last === null ? 0 : (timestamp - last) / 1000;
+    let dt = Math.min(0.05, elapsed);
     last = timestamp;
+    slowFrames = elapsed > 0.05 ? slowFrames + 1 : 0;
+    if (['playing', 'paused'].includes(game.state) && (elapsed > 0.25 || slowFrames >= 8)) {
+        renderQuality = Math.max(0.35, renderQuality * 0.65);
+        fitBacking();
+        fx.clear();
+        game.particles.length = 0;
+        input.clear();
+        if (!networkMode) {
+            game.handleAction('pause');
+            dt = 0;
+            hud.setToast('Performance pause: battle frozen. Press P / Resume when ready.', 12000);
+        } else {
+            hud.setToast('Reduced visual load. Online battle continues on the referee.', 12000);
+        }
+        slowFrames = 0;
+    }
+    healthyFrames = elapsed > 0 && elapsed < 0.025 ? healthyFrames + 1 : 0;
+    if (game.state === 'playing' && healthyFrames >= 600 && renderQuality < 1) {
+        renderQuality = Math.min(1, renderQuality + 0.05);
+        fitBacking();
+        healthyFrames = 0;
+    }
     step(dt);
     draw();
     requestAnimationFrame(frame);
 }
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) last = null;
+    else {
+        input.clear();
+        if (!networkMode && game.state === 'playing') game.handleAction('pause');
+    }
+});
 
 // Console handles for debugging, automated play-testing and other page modules.
 window.asteroidGame = game;

@@ -11,6 +11,7 @@ const { setViewWidth } = require('./render/projection');
 const { loadAssets } = require('./render/assets');
 const { renderBattleCard, previewBattleCard } = require('./render/battleCard');
 const { sampleRecord } = require('./render/cardMath');
+const { setGlowBudget } = require('./render/shapes');
 const { createInput } = require('./input');
 
 const canvas = document.getElementById('gameCanvas');
@@ -210,13 +211,19 @@ const LOGICAL = { width: canvas.width, height: canvas.height };
 let renderScaleX = 1;
 let renderScaleY = 1;
 let renderPixelRatio = 0;
+let renderQuality = 1;
+let renderedTitle = game.state === 'title';
+const MAX_BACKING_PIXELS = 3_000_000;
 function fitBacking() {
     const rect = canvas.getBoundingClientRect();
     const logicalWidth = setViewWidth(rect.width && rect.height ? LOGICAL.height * rect.width / rect.height : LOGICAL.width);
     const shown = Math.min(rect.width || logicalWidth, (rect.height || LOGICAL.height) * logicalWidth / LOGICAL.height);
     renderPixelRatio = window.devicePixelRatio || 1;
-    const width = Math.max(1, Math.round(shown * renderPixelRatio));
-    const height = Math.max(1, Math.round(shown * LOGICAL.height / logicalWidth * renderPixelRatio));
+    const pixelRatio = Math.min(renderPixelRatio, 2) * (game.state === 'title' ? 1 : renderQuality);
+    const pixelLimit = Math.sqrt(MAX_BACKING_PIXELS / (shown * shown * LOGICAL.height / logicalWidth));
+    const scale = Math.min(pixelRatio, pixelLimit);
+    const width = Math.max(1, Math.floor(shown * scale));
+    const height = Math.max(1, Math.floor(shown * LOGICAL.height / logicalWidth * scale));
     renderScaleX = width / logicalWidth;
     renderScaleY = height / LOGICAL.height;
     if (canvas.width === width && canvas.height === height) return;
@@ -228,30 +235,69 @@ window.addEventListener('resize', fitBacking);
 fitBacking();
 
 function draw() {
-    if (renderPixelRatio !== (window.devicePixelRatio || 1)) fitBacking();
+    if (renderPixelRatio !== (window.devicePixelRatio || 1) || renderedTitle !== (game.state === 'title')) {
+        renderedTitle = game.state === 'title';
+        fitBacking();
+    }
+    setGlowBudget(game.state === 'title' ? Infinity : renderQuality < 1 ? 30 : 120);
     audio.setSector2(Number(game.level && game.level.number) >= 11);
     const shake = fx.shakeOffset();
     ctx.setTransform(renderScaleX, 0, 0, renderScaleY, 0, 0);
     // Resizing resets context state; apply nearest-neighbour sampling every frame.
     ctx.imageSmoothingEnabled = false;
-    ctx.save();
-    ctx.translate(shake.x, shake.y);
-    renderers[game.view](ctx, game, fx);
-    ctx.restore();
-    fx.drawScreen(ctx, game);
+    if (game.state !== 'title') {
+        ctx.save();
+        ctx.translate(shake.x, shake.y);
+        renderers[game.view](ctx, game, fx);
+        ctx.restore();
+        fx.drawScreen(ctx, game);
+    }
     hud.drawHud(ctx, game, fx, { muted: audio.muted, crt: display.crt });
     drawOverlay(ctx, game, fx);
-    if (display.crt) drawCrt(ctx, game.time || 0);
+    if (display.crt && game.state !== 'title') drawCrt(ctx, game.time || 0);
+    setGlowBudget();
 }
 
 let last = null;
+let slowFrames = 0;
+let healthyFrames = 0;
 function frame(timestamp) {
-    const dt = last === null ? 0 : Math.min(0.05, (timestamp - last) / 1000);
+    const elapsed = last === null ? 0 : (timestamp - last) / 1000;
+    let dt = Math.min(0.05, elapsed);
     last = timestamp;
+    slowFrames = elapsed > 0.05 ? slowFrames + 1 : 0;
+    if (['playing', 'paused'].includes(game.state) && (elapsed > 0.25 || slowFrames >= 8)) {
+        renderQuality = Math.max(0.35, renderQuality * 0.65);
+        fitBacking();
+        fx.clear();
+        game.particles.length = 0;
+        input.clear();
+        if (!networkMode) {
+            game.handleAction('pause');
+            dt = 0;
+            hud.setToast('Performance pause: battle frozen. Press P / Resume when ready.', 12000);
+        } else {
+            hud.setToast('Reduced visual load. Online battle continues on the referee.', 12000);
+        }
+        slowFrames = 0;
+    }
+    healthyFrames = elapsed > 0 && elapsed < 0.025 ? healthyFrames + 1 : 0;
+    if (game.state === 'playing' && healthyFrames >= 600 && renderQuality < 1) {
+        renderQuality = Math.min(1, renderQuality + 0.05);
+        fitBacking();
+        healthyFrames = 0;
+    }
     step(dt);
     draw();
     requestAnimationFrame(frame);
 }
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) last = null;
+    else {
+        input.clear();
+        if (!networkMode && game.state === 'playing') game.handleAction('pause');
+    }
+});
 
 // Console handles for debugging, automated play-testing and other page modules.
 window.asteroidGame = game;
@@ -286,7 +332,7 @@ window.asteroidReady = true;
 window.dispatchEvent(new CustomEvent('asteroid:ready', { detail: { game } }));
 requestAnimationFrame(frame);
 
-},{"./audio":3,"./game":7,"./input":8,"./render/assets":14,"./render/battleCard":16,"./render/cardMath":17,"./render/fx":20,"./render/hud":21,"./render/overview":22,"./render/post":24,"./render/pov":25,"./render/projection":26,"./render/screens":27}],2:[function(require,module,exports){
+},{"./audio":3,"./game":7,"./input":8,"./render/assets":14,"./render/battleCard":16,"./render/cardMath":17,"./render/fx":20,"./render/hud":21,"./render/overview":22,"./render/post":24,"./render/pov":25,"./render/projection":26,"./render/screens":27,"./render/shapes":28}],2:[function(require,module,exports){
 const { range } = require('./rng');
 
 const WORLD_WIDTH = 800;
@@ -720,10 +766,8 @@ module.exports = Bullet;
 function checkCollision(obj1, obj2) {
     const dx = obj1.x - obj2.x;
     const dy = obj1.y - obj2.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    // Use the size of both objects for accurate detection
-    return distance < (obj1.size || 0) + (obj1.radius || 0) + (obj2.size || 0);
+    const radius = (obj1.size || 0) + (obj1.radius || 0) + (obj2.size || 0);
+    return radius > 0 && dx * dx + dy * dy < radius * radius;
 }
 
 module.exports = checkCollision;
@@ -924,6 +968,7 @@ const LEVEL_COMPLETE_TIME = 3.5;
 const RESPAWN_TIME = 1.8;
 const FIXED_STEP = 1 / 60;
 const WARP_TIME = 2.2;
+const MAX_PARTICLES = 256;
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -967,7 +1012,7 @@ class Game {
         this.save = loadSave(storage);
         this.selectedDifficulty = this.save.progress.lastDifficulty;
         this.difficulty = this.selectedDifficulty;
-        this.selectedLevel = this.progress.unlocked;
+        this.selectedLevel = 1;
         this.runStats = createTotals();
         this.tracker = new LevelTracker();
         this.lastRecord = null;
@@ -1031,7 +1076,7 @@ class Game {
     setDifficulty(id) {
         if (!isDifficulty(id)) throw new RangeError(`Unknown difficulty: ${id}`);
         this.selectedDifficulty = id;
-        this.selectedLevel = this.save.progress.byDifficulty[id].unlocked;
+        this.selectedLevel = 1;
     }
 
     resetWorld() {
@@ -1175,12 +1220,7 @@ class Game {
     }
 
     retryLevel() {
-        this.score = this.levelStartScore;
-        this.ship = this.createShip();
-        this.ships = [this.ship];
-        this.playerStats = createPlayerStats(this.playerCount);
-        if (this.playerCount > 1) this.setPlayers(this.playerCount, { mode: this.mode });
-        this.startLevel(this.level.number);
+        this.startCampaign(1, this.difficulty);
     }
 
     setPilot({ address = null, isPilot = false } = {}) {
@@ -1274,17 +1314,13 @@ class Game {
                 break;
             case 'left':
             case 'right':
-                if (this.state === 'title') {
-                    const delta = action === 'left' ? -1 : 1;
-                    this.selectedLevel = Math.min(this.progress.unlocked, Math.max(1, this.selectedLevel + delta));
-                }
                 break;
             case 'difficultyPrev':
             case 'difficultyNext':
                 if (this.state === 'title') this.setDifficulty(stepDifficulty(this.selectedDifficulty, action === 'difficultyPrev' ? -1 : 1));
                 break;
             case 'confirm':
-                if (this.state === 'title') this.startCampaign(this.selectedLevel);
+                if (this.state === 'title') this.startCampaign(1);
                 else if (this.state === 'gameOver') this.retryLevel();
                 else if (this.state === 'levelComplete') this.advanceLevel();
                 else if (this.state === 'paused') this.state = 'playing';
@@ -1303,7 +1339,7 @@ class Game {
         this.saveProgress();
         this.state = 'title';
         this.selectedDifficulty = this.difficulty;
-        this.selectedLevel = this.progress.unlocked;
+        this.selectedLevel = 1;
     }
 
     // Folds the current level attempt into run and lifetime totals exactly once.
@@ -1332,6 +1368,11 @@ class Game {
     }
 
     step(inputs = []) {
+        if (!['playing', 'dying', 'levelComplete', 'warping'].includes(this.state)) {
+            this.time += FIXED_STEP;
+            this.updateParticles(FIXED_STEP);
+            return this;
+        }
         const frame = Array.from({ length: this.playerCount }, (_, index) =>
             inputLog.decodeInput(inputLog.encodeInput(inputs[index] || {})));
         this.runFrames.push(frame.map((input) => ({ ...input })));
@@ -1504,17 +1545,38 @@ class Game {
 
     resolvePlayerHits() {
         const spawned = [];
+        const buckets = new Map();
+        let maxSize = 0;
+        this.asteroids.forEach((rock, index) => {
+            if (rock.hp <= 0) return;
+            maxSize = Math.max(maxSize, rock.size);
+            const cell = Math.floor(rock.y / 128);
+            if (!buckets.has(cell)) buckets.set(cell, []);
+            buckets.get(cell).push(index);
+        });
+        const candidates = (bullet, radius) => {
+            const indices = [];
+            const first = Math.floor((bullet.y - radius) / 128);
+            const last = Math.floor((bullet.y + radius) / 128);
+            for (let cell = first; cell <= last; cell++) {
+                if (buckets.has(cell)) indices.push(...buckets.get(cell));
+            }
+            // Preserve first-hit and piercing order from the deterministic world array.
+            return indices.sort((a, b) => a - b);
+        };
         for (const bullet of this.playerBullets) {
             if (!bullet.alive) continue;
             if (bullet.ownerWeapon === 'singularity') {
-                for (const rock of this.asteroids) {
+                for (const index of candidates(bullet, 220)) {
+                    const rock = this.asteroids[index];
                     if (rock.hp <= 0) continue;
                     const dx = bullet.x - rock.x; const dy = bullet.y - rock.y; const distance = Math.hypot(dx, dy);
                     if (distance > 220 || distance === 0) continue;
                     const pull = (220 - distance) * 0.18; rock.vx += dx / distance * pull * FIXED_STEP; rock.vy += dy / distance * pull * FIXED_STEP;
                 }
             }
-            for (const asteroid of this.asteroids) {
+            for (const index of candidates(bullet, (bullet.size || 0) + (bullet.radius || 0) + maxSize)) {
+                const asteroid = this.asteroids[index];
                 if (asteroid.hp <= 0 || asteroid.phaseActive || (bullet.hits && bullet.hits.has(asteroid.id))) continue;
                 if (!checkCollision(bullet, asteroid)) continue;
                 if (bullet.hits) bullet.hits.add(asteroid.id);
@@ -1672,6 +1734,8 @@ class Game {
         const ship = targetShip;
         if (pickup.type === 'power') {
             ship.power = Math.min(ship.maxPower, ship.power + (this.level.powerRestore ?? 40));
+        } else if (pickup.type === 'life') {
+            ship.lives += 1;
         } else if (pickup.type === 'shield') {
             ship.shield = this.level.shieldTime ?? 7;
         } else {
@@ -1689,7 +1753,7 @@ class Game {
             this.score += pickupPoints; awardScore(this.playerStats, playerIndex, pickupPoints, 'coop');
         }
         this.spawnExplosion(pickup.x, pickup.y, '#9effa8', 14);
-        this.emit('pickup', { pickupType: pickup.type, x: pickup.x, y: pickup.y, weapon: { ...ship.weapon } });
+        this.emit('pickup', { pickupType: pickup.type, x: pickup.x, y: pickup.y, player: playerIndex, lives: ship.lives, weapon: { ...ship.weapon } });
     }
 
     completeLevel() {
@@ -1811,7 +1875,7 @@ class Game {
         }
         const unlocked = this.save.progress.byDifficulty[this.state === 'title' ? this.selectedDifficulty : this.difficulty].unlocked;
         this.selectedLevel = Math.min(Math.max(1, this.selectedLevel), unlocked);
-        if (this.state === 'title') this.selectedLevel = unlocked;
+        if (this.state === 'title') this.selectedLevel = 1;
         persistSave(this.storage, this.exportSave());
         return this.exportSave();
     }
@@ -1855,7 +1919,8 @@ class Game {
     }
 
     spawnExplosion(x, y, color, count) {
-        for (let i = 0; i < count; i++) {
+        const available = Math.min(count, MAX_PARTICLES - this.particles.length);
+        for (let i = 0; i < available; i++) {
             const angle = this.cosmeticRng() * Math.PI * 2;
             const speed = 30 + this.cosmeticRng() * 140;
             const life = 0.4 + this.cosmeticRng() * 0.6;
@@ -1893,6 +1958,7 @@ Game.STORAGE_KEY = STORAGE_KEY;
 Game.LEGACY_STORAGE_KEY = LEGACY_STORAGE_KEY;
 Game.DIFFICULTIES = DIFFICULTY_IDS;
 Game.FIXED_STEP = FIXED_STEP;
+Game.MAX_PARTICLES = MAX_PARTICLES;
 Game.groupPlayers = require('./multiplayer').groupPlayers;
 
 module.exports = Game;
@@ -2214,6 +2280,7 @@ const WORLD_WIDTH = Asteroid.WORLD_WIDTH;
 const SAFE_START = 520;
 const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield'];
 const FUTURE_PICKUPS = ['nova', 'prism', 'singularity'];
+const EXTRA_LIFE_LEVELS = [3, 7, 12, 16];
 
 function scatterAsteroid(level, rng, y) {
     const size = range(rng, 14, 26 + level.number * 1.6);
@@ -2330,12 +2397,15 @@ function populateLevel(level, rng) {
         pickups.push({ x: range(rng, 80, WORLD_WIDTH - 80), y, type, size: 14 });
     }
 
+    if (EXTRA_LIFE_LEVELS.includes(level.number)) {
+        pickups.push({ x: WORLD_WIDTH / 2, y: level.length * 0.6, type: 'life', size: 20 });
+    }
     asteroids.sort((a, b) => a.y - b.y);
     pickups.sort((a, b) => a.y - b.y);
     return { asteroids, pickups };
 }
 
-module.exports = { populateLevel, PICKUP_TYPES, FUTURE_PICKUPS, SAFE_START };
+module.exports = { populateLevel, PICKUP_TYPES, FUTURE_PICKUPS, EXTRA_LIFE_LEVELS, SAFE_START };
 
 },{"./asteroid":2,"./rng":30}],11:[function(require,module,exports){
 const { applyDifficulty } = require('./difficulty');
@@ -2486,6 +2556,7 @@ const MANIFEST = {
     'mars-domicile': 'mars-domicile.jpg',
     'breathe-sheet': 'breathe-sheet.png',
     'breathe-still': 'breathe-still.png',
+    'white-lotus': 'white-lotus-clear.png',
     'future-rock-1': 'future-rock-1.png',
     'future-rock-2': 'future-rock-2.png',
     'future-rock-3': 'future-rock-3.png',
@@ -3415,19 +3486,21 @@ function rasterize(value, size, color, outline, weight) {
 }
 
 // Draws pixel text; returns the drawn width in canvas pixels.
-function pixelText(ctx, value, x, y, { size = 14, color = '#e8f6ff', align = 'left', outline = '#05030c', weight = 'bold', alpha = 1, scale = 1 } = {}) {
+function pixelText(ctx, value, x, y, { size = 14, color = '#e8f6ff', align = 'left', outline = '#05030c', weight = 'bold', alpha = 1, scale = 1, crisp = false } = {}) {
     const str = String(value);
     if (!str) return 0;
-    const entry = rasterize(str, size, color, outline, weight);
+    const entry = crisp ? null : rasterize(str, size, color, outline, weight);
     if (!entry) {
         ctx.save();
         ctx.globalAlpha *= alpha;
         ctx.font = fontFor(size * scale, weight);
         ctx.textAlign = align;
+        ctx.textBaseline = 'alphabetic';
         ctx.fillStyle = color;
+        const width = ctx.measureText ? ctx.measureText(str).width : 0;
         ctx.fillText(str, x, y);
         ctx.restore();
-        return ctx.measureText ? ctx.measureText(str).width : 0;
+        return width;
     }
     const k = PIXEL * scale;
     const w = entry.width * k;
@@ -3464,8 +3537,8 @@ const { normalizeEvent } = require('./events');
 const { getImage } = require('./assets');
 const { drawSupporterToken } = require('./vault');
 
-const MAX_WORLD_PARTICLES = 650;
-const MAX_SCREEN_PARTICLES = 700;
+const MAX_WORLD_PARTICLES = 360;
+const MAX_SCREEN_PARTICLES = 450;
 const ROCK_COLORS = ['#7fffe0', '#ff8ae6', '#b9a8ff', '#ffffff', '#9ff3ff', '#ffe18a'];
 const SHOOTER_COLORS = ['#ff5a1c', '#ff8a5c', '#ffd25c', '#ffffff', '#ff3a1c'];
 const FIREWORK_COLORS = ['#3fb8ff', '#7fd7ff', '#7dff8c', '#ffe65c', '#d8e4ef', '#ffffff', '#ffb347'];
@@ -3475,6 +3548,7 @@ const rand = (min, max) => min + Math.random() * (max - min);
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
 function pickupLabel(kind, weapon) {
+    if (kind === 'life') return '+1 LIFE';
     if (kind === 'power') return '+POWER';
     if (kind === 'shield') return 'SHIELD UP';
     const tier = weapon && weapon.type === kind && weapon.tier ? ` LV${weapon.tier}` : '';
@@ -3508,12 +3582,18 @@ function createFx() {
     };
 
     function addWorld(p) {
-        if (world.length >= MAX_WORLD_PARTICLES) world.splice(0, world.length - MAX_WORLD_PARTICLES + 1);
+        if (world.length >= MAX_WORLD_PARTICLES) {
+            if (['ring', 'flash', 'text'].includes(p.kind)) {
+                const expendable = world.findIndex(item => ['debris', 'spark', 'thrust'].includes(item.kind));
+                if (expendable >= 0) world[expendable] = p;
+            }
+            return;
+        }
         world.push(p);
     }
 
     function addScreen(p) {
-        if (screen.length >= MAX_SCREEN_PARTICLES) screen.splice(0, screen.length - MAX_SCREEN_PARTICLES + 1);
+        if (screen.length >= MAX_SCREEN_PARTICLES) return;
         screen.push(p);
     }
 
@@ -3698,6 +3778,8 @@ function createFx() {
                 case 'levelStart':
                 case 'respawn':
                     if (e.type === 'levelStart') {
+                        world.length = 0;
+                        ripples.length = 0;
                         state.celebrateTime = -1;
                         state.celebrateKind = null;
                         screen.length = 0;
@@ -3739,14 +3821,16 @@ function createFx() {
         for (const r of ripples) r.age += dt;
         while (ripples.length && ripples[0].age > ripples[0].life) ripples.shift();
 
+        const expiredRockets = [];
         for (const p of screen) {
             p.life -= dt;
             if (p.gravity) p.vy += p.gravity * dt;
             p.x += p.vx * dt;
             p.y += p.vy * dt;
-            if (p.kind === 'rocket' && p.life <= 0) firework(p.x, p.y, p.color, game && game.state === 'victory' ? 60 : 44);
+            if (p.kind === 'rocket' && p.life <= 0) expiredRockets.push(p);
         }
         for (let i = screen.length - 1; i >= 0; i--) if (screen[i].life <= 0) screen.splice(i, 1);
+        for (const p of expiredRockets) firework(p.x, p.y, p.color, game && game.state === 'victory' ? 60 : 44);
 
         if (state.celebrateTime >= 0) state.celebrateTime += dt;
         const celebrating = game && (game.state === 'levelComplete' || game.state === 'victory');
@@ -3925,6 +4009,15 @@ function createFx() {
         shakeOffset,
         timeScale,
         firework,
+        clear() {
+            world.length = 0;
+            screen.length = 0;
+            ripples.length = 0;
+            state.shake = 0;
+            state.hitStop = 0;
+            state.slowMo = 0;
+            state.flash = 0;
+        },
         get worldCount() {
             return world.length;
         },
@@ -4730,6 +4823,7 @@ function drawFloatingRocks(ctx, time) {
 }
 
 function drawTitle(ctx, game) {
+    const titleText = (value, x, y, options) => pixelText(ctx, value, x, y, { ...options, crisp: true });
     const time = game.time || 0;
     if (!drawCover(ctx, getImage('bg-galaxy'), 1, 1.08 + 0.03 * Math.sin(time * 0.3))) {
         ctx.fillStyle = '#05030c';
@@ -4740,15 +4834,8 @@ function drawTitle(ctx, game) {
     const cx = VIEW.width / 2;
 
     drawGlow(ctx, cx, 92, 260, '#3fb8ff', 0.18 + 0.06 * Math.sin(time * 2));
-    waveText(ctx, 'DECENT VOYAGER', cx, 110, { size: 49, time, amp: 5 });
-    const shine = (time * 160) % 900 - 50;
-    pixelText(ctx, 'GALACTIC  GAUNTLET', cx, 145, { size: 18, align: 'center', color: '#ffe65c' });
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.25;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(shine, 126, 24, 22);
-    ctx.restore();
+    titleText('DECENT VOYAGER', cx, 110, { size: 49, align: 'center', color: '#e8f6ff' });
+    titleText('GALACTIC GAUNTLET', cx, 145, { size: 22, align: 'center', color: '#ffe65c' });
 
     // Difficulty cards.
     const selected = game.selectedDifficulty || 'cadet';
@@ -4767,36 +4854,29 @@ function drawTitle(ctx, game) {
             ctx.lineWidth = 2;
             ctx.strokeRect(x + 1, y + 1, cardW - 2, 50);
         }
-        pixelText(ctx, opt.label, x + cardW / 2, y + 24, { size: 18, align: 'center', color: active ? color : '#6d7a8a' });
-        pixelText(ctx, opt.tagline, x + cardW / 2, y + 42, { size: 10, align: 'center', color: active ? '#e8f6ff' : '#55606e' });
+        titleText(opt.label, x + cardW / 2, y + 24, { size: 22, align: 'center', color: active ? color : '#c9d6e3' });
+        titleText(opt.tagline, x + cardW / 2, y + 43, { size: 14, align: 'center', color: '#c9d6e3' });
         for (let s = 0; s <= i; s++) {
             ctx.fillStyle = active ? color : '#3a4250';
             ctx.fillRect(x + 8 + s * 8, y + 6, 5, 5);
         }
     });
-    pixelText(ctx, 'UP/DOWN  DIFFICULTY', cx, 244, { size: 11, align: 'center', color: '#9fb4c8' });
+    titleText('UP/DOWN  DIFFICULTY', cx, 246, { size: 16, align: 'center', color: '#c9d6e3' });
 
     const level = getLevel(game.selectedLevel || 1);
     const progress = game.progress || { unlocked: 1, highScore: 0 };
-    const canLeft = (game.selectedLevel || 1) > 1;
-    const canRight = (game.selectedLevel || 1) < progress.unlocked;
-    const bob = Math.sin(time * 6) * 3;
-    if (canLeft) pixelText(ctx, '<', cx - 270 - bob, 284, { size: 22, color: '#7fd7ff' });
-    if (canRight) pixelText(ctx, '>', cx + 256 + bob, 284, { size: 22, color: '#7fd7ff' });
-    pixelText(ctx, `LEVEL ${level.number}: ${level.name.toUpperCase()}`, cx, 284, { size: 20, align: 'center' });
-    pixelText(ctx, `${difficultyName(game, true).toUpperCase()} UNLOCKED ${progress.unlocked}/${progress.sector2Unlocked ? TOTAL_LEVEL_COUNT : LEVEL_COUNT}   HI ${progress.highScore || 0}`, cx, 306, {
-        size: 11, align: 'center', color: '#9fb4c8'
+    titleText(`LEVEL ${level.number}: ${level.name.toUpperCase()}`, cx, 284, { size: 24, align: 'center' });
+    titleText(`${difficultyName(game, true).toUpperCase()} UNLOCKED ${progress.unlocked}/${progress.sector2Unlocked ? TOTAL_LEVEL_COUNT : LEVEL_COUNT}   HI ${progress.highScore || 0}`, cx, 309, {
+        size: 16, align: 'center', color: '#c9d6e3'
     });
-    if (Math.floor(time * 2.5) % 2 === 0) {
-        pixelText(ctx, 'PRESS ENTER TO LAUNCH', cx, 344, { size: 20, align: 'center', color: '#7dff8c' });
-    }
+    titleText('PRESS ENTER TO LAUNCH', cx, 344, { size: 24, align: 'center', color: '#7dff8c' });
     drawGlow(ctx, cx, 337, 160, '#7dff8c', 0.12);
-    pixelText(ctx, `TAB / X  MODE: ${(game.mode || game.multiplayerMode || 'COOP').toUpperCase()}  ·  CONTROLLER: PRESS A TO JOIN UP TO 5 DECENT PILOTS`, cx, 362, { size: 10, align: 'center', color: '#7fd7ff' });
+    titleText(`TAB / X: ${(game.mode || game.multiplayerMode || 'COOP').toUpperCase()}  |  CONTROLLER A: JOIN (UP TO 5 PILOTS)`, cx, 366, { size: 14, align: 'center', color: '#7fd7ff' });
 
     const ox = VIEW.offsetX || 0;
     panelBox(ctx, ox + 90, 372, 620, 150);
     const controls = [
-        ['LEFT/RIGHT A/D', 'STEER  (TITLE: LEVEL)'],
+        ['LEFT/RIGHT A/D', 'STEER'],
         ['UP/DOWN W/S', 'THROTTLE (TITLE: DIFFICULTY)'],
         ['SPACE', 'FIRE (HOLD)'],
         ['V', 'SWITCH MAP / POV VIEW'],
@@ -4804,16 +4884,17 @@ function drawTitle(ctx, game) {
         ['M', 'MUTE     C  CRT FILTER']
     ];
     controls.forEach(([key, action], i) => {
-        pixelText(ctx, key, ox + 270, 390 + i * 16, { size: 11, color: '#ffe65c', align: 'right' });
-        pixelText(ctx, action, ox + 290, 390 + i * 16, { size: 11, color: '#c9d6e3' });
+        titleText(key, ox + 270, 392 + i * 16, { size: 16, color: '#ffe65c', align: 'right' });
+        titleText(action, ox + 290, 392 + i * 16, { size: 16, color: '#e8f6ff' });
     });
     drawBreathe(ctx, ox + 128, 494, 12, time);
-    pixelText(ctx, 'ENS ETH = POWER RE-UP', ox + 152, 499, { size: 11, color: '#7dff8c' });
-    pixelText(ctx, 'S/R/P WEAPONS  O SHIELD', ox + 152, 513, { size: 11, color: '#c9d6e3' });
+    titleText('ENS ETH = POWER RE-UP', ox + 152, 499, { size: 14, color: '#7dff8c' });
+    titleText('S/R/P WEAPONS  O SHIELD', ox + 152, 516, { size: 14, color: '#e8f6ff' });
     drawGlow(ctx, ox + 470, 502, 22, '#ff3a1c', 0.7 + 0.3 * Math.sin(time * 7));
     ctx.fillStyle = '#fff1c2';
     ctx.fillRect(ox + 467, 499, 6, 6);
-    pixelText(ctx, 'ORANGE CORES SHOOT BACK!', ox + 494, 507, { size: 11, color: '#ff8a5c' });
+    titleText('ORANGE CORES SHOOT BACK!', ox + 494, 507, { size: 14, color: '#ff8a5c' });
+    titleText('WHITE LOTUS: +1 LIFE  |  GAME OVER: RESTART LEVEL 1', cx, 546, { size: 16, align: 'center', color: '#e8f6ff' });
 }
 
 function drawIntro(ctx, game) {
@@ -4966,7 +5047,7 @@ function drawVictory(ctx, game, fx) {
     }
     const pulse = 0.6 + 0.4 * Math.sin(time * 5);
     pixelText(ctx, `ALL ${game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT} LEVELS CLEARED`, cx, 470, { size: 16, align: 'center', color: '#7dff8c', alpha: pulse });
-    pixelText(ctx, 'CLAIM YOUR VICTORY STAMPS IN THE VAULT', cx, 492, { size: 11, align: 'center', color: '#c9d6e3' });
+    pixelText(ctx, game.level.number === TOTAL_LEVEL_COUNT ? 'CLAIM YOUR LEVEL 20 ACHIEVEMENT IN THE VAULT' : 'SECTOR I CLEARED - LEVEL 20 EARNS THE ACHIEVEMENT', cx, 492, { size: 11, align: 'center', color: '#c9d6e3' });
     pixelText(ctx, 'ENTER  MENU', cx, VIEW.height - 30, { size: 12, align: 'center', color: '#9fb4c8' });
 }
 
@@ -4996,7 +5077,7 @@ function drawGameOver(ctx, game) {
     pixelText(ctx, `SCORE ${game.score}`, cx, cy + 14, { size: 20, align: 'center' });
     pixelText(ctx, `LEVEL ${game.level.number}  ${game.level.name.toUpperCase()}`, cx, cy + 40, { size: 12, align: 'center', color: '#ffb347' });
     if (Math.floor(time * 2) % 2 === 0) {
-        pixelText(ctx, `ENTER RETRY LEVEL ${game.level.number}    Q MENU`, cx, cy + 80, { size: 14, align: 'center', color: '#e8f6ff' });
+        pixelText(ctx, 'ENTER RESTART FROM LEVEL 1    Q MENU', cx, cy + 80, { size: 14, align: 'center', color: '#e8f6ff' });
     }
 }
 
@@ -5062,6 +5143,10 @@ function bulletWeaponType(bullet) {
 
 // ---------------------------------------------------------------- glow sprites
 const glowCache = new Map();
+let glowBudget = Infinity;
+function setGlowBudget(limit = Infinity) {
+    glowBudget = limit;
+}
 function glowSprite(color) {
     if (glowCache.has(color)) return glowCache.get(color);
     const canvas = makeCanvas(64, 64);
@@ -5082,6 +5167,8 @@ function glowSprite(color) {
 // Additive soft glow: much cheaper than shadowBlur.
 function drawGlow(ctx, x, y, radius, color, alpha = 1) {
     if (!(radius > 0) || !(alpha > 0)) return;
+    if (glowBudget <= 0) return;
+    glowBudget -= 1;
     const sprite = glowSprite(color);
     const prevOp = ctx.globalCompositeOperation;
     const prevAlpha = ctx.globalAlpha;
@@ -5266,6 +5353,20 @@ function drawBreathe(ctx, x, y, radius, time, alpha = 1) {
 }
 
 function drawPickup(ctx, pickup, x, y, radius, time, alpha = 1) {
+    if (pickup.type === 'life') {
+        const lotus = getImage('white-lotus');
+        drawGlow(ctx, x, y, radius * 2.3, '#e8f6ff', alpha * 0.5);
+        if (lotus) {
+            const size = radius * 2.8;
+            ctx.save();
+            ctx.globalAlpha *= alpha;
+            const height = size * lotus.naturalHeight / lotus.naturalWidth;
+            ctx.drawImage(lotus, x - size / 2, y - height / 2, size, height);
+            ctx.restore();
+        }
+        pixelText(ctx, '+1 LIFE', x, y + radius * 1.8, { size: 14, color: '#ffffff', align: 'center', alpha, crisp: true });
+        return;
+    }
     if (pickup.type === 'power') {
         drawBreathe(ctx, x, y, radius, time, alpha);
         return;
@@ -5585,6 +5686,7 @@ module.exports = {
     SHIP_PALETTE,
     bulletWeaponType,
     glowSprite,
+    setGlowBudget,
     drawGlow,
     drawGlowDot,
     pixelSprite,
@@ -5662,11 +5764,15 @@ function drawGenerator(ctx, x, y, scale, time) {
     ctx.restore();
 }
 
-function drawGuards(ctx, guards, project, time, sector2 = false) {
+function drawGuards(ctx, guards, project, time, sector2 = false, world = []) {
+    const rendered = new Set(world.map(rock => rock.id));
     guards.forEach((guard) => {
+        if (rendered.has(guard.id)) return;
         const point = project(guard);
         if (!point) return;
-        drawAsteroid(ctx, { ...guard, shooter: true }, point.x, point.y, Number(guard.size) || 22, 1, time, sector2);
+        const radius = Math.min(160, (Number(guard.size) || 22) * (point.scale || 1));
+        if (point.x + radius < 0 || point.x - radius > VIEW.width || point.y + radius < 0 || point.y - radius > VIEW.height) return;
+        drawAsteroid(ctx, { ...guard, shooter: true }, point.x, point.y, radius, 1, time, sector2);
     });
 }
 
@@ -5674,7 +5780,7 @@ function drawVault(ctx, game, scrollY, time, project, onScreen) {
     const vault = game && game.vault;
     if (!vault || vault.active === false || vault.captured) return;
     const guards = guardList(game, vault);
-    drawGuards(ctx, guards, (point) => project(point, scrollY), time, Number(game.level && game.level.number) >= 11);
+    drawGuards(ctx, guards, (point) => project(point, scrollY), time, Number(game.level && game.level.number) >= 11, game.asteroids || []);
     const point = project(vault, scrollY);
     if (!point || (onScreen && !onScreen(point, 100))) return;
     drawVaultGlyph(ctx, point.x, point.y, Math.max(16, Number(vault.size) || 28), time, vault, guards);
@@ -5689,11 +5795,13 @@ function drawVaultPov(ctx, game, camera, project, time) {
     const vault = game && game.vault;
     if (!vault || vault.active === false || vault.captured) return;
     const guards = guardList(game, vault);
-    drawGuards(ctx, guards, (point) => project(point, camera), time, Number(game.level && game.level.number) >= 11);
+    drawGuards(ctx, guards, (point) => project(point, camera), time, Number(game.level && game.level.number) >= 11, game.asteroids || []);
     const point = project(vault, camera);
     if (point) {
         const scale = Math.min(20, Math.max(0.35, point.scale));
-        drawVaultGlyph(ctx, point.x, point.y, Math.max(9, (Number(vault.size) || 24) * scale), time, vault, guards);
+        const radius = Math.min(160, Math.max(9, (Number(vault.size) || 24) * scale));
+        if (point.x + radius * 2 < 0 || point.x - radius * 2 > VIEW.width || point.y + radius * 2 < 0 || point.y - radius * 2 > VIEW.height) return;
+        drawVaultGlyph(ctx, point.x, point.y, radius, time, vault, guards);
         const generator = vault.generator || vault.shieldGenerator || guards.find((guard) => guard.kind === 'generator');
         const genPoint = generator && project(generator, camera);
         if (genPoint) drawGenerator(ctx, genPoint.x, genPoint.y, Math.min(8, genPoint.scale), time);
@@ -5747,7 +5855,7 @@ function pick(rng, items) {
 module.exports = { createRng, range, pick };
 
 },{}],31:[function(require,module,exports){
-module.exports = 'voyager-1.1-handling-rewards';
+module.exports = 'voyager-1.2-lotus-marathon';
 
 },{}],32:[function(require,module,exports){
 // Save format, validation, legacy migration and quota-tolerant persistence.
@@ -6331,7 +6439,7 @@ module.exports = Spaceship;
 // - closestCall: smallest gap in px between the ship's and a dodged enemy bullet's edges
 //   (-1 when no enemy bullet was dodged).
 const WEAPON_TYPES = ['blaster', 'spread', 'rapid', 'plasma', 'nova', 'prism', 'singularity'];
-const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield', 'nova', 'prism', 'singularity'];
+const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield', 'nova', 'prism', 'singularity', 'life'];
 const COMBO_WINDOW = 2;
 const RECORD_SCHEMA = 'asteroid-level-record/1';
 const GAME_NAME = 'Decent Voyager: Galactic Gauntlet';
@@ -6390,7 +6498,7 @@ function minCall(a, b) {
 function mergeTotals(totals, stats, { outcome, livesLost = 0, durationSec = 0 } = {}) {
     for (const key of COUNTER_FIELDS) totals[key] = round((totals[key] || 0) + (stats[key] || 0));
     for (const key of WEAPON_TYPES) totals.shotsByWeapon[key] += stats.shotsByWeapon[key] || 0;
-    for (const key of PICKUP_TYPES) totals.pickupsCollected[key] += stats.pickupsCollected[key] || 0;
+    for (const key of PICKUP_TYPES) totals.pickupsCollected[key] = (totals.pickupsCollected[key] || 0) + (stats.pickupsCollected[key] || 0);
     totals.maxCombo = Math.max(totals.maxCombo, stats.maxCombo || 0);
     totals.closestCall = minCall(totals.closestCall, stats.closestCall);
     totals.levelsPlayed += 1;

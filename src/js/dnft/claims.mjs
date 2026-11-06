@@ -15,7 +15,7 @@ export function mountClaims() {
   if (document.getElementById('asteroid-victory-vault')) return;
   const vault = new VictoryVault(), busy = new Set();
   const dialog = createDialog('🏆 Victory Vault', 'asteroid-victory-vault');
-  const intro = node('p', 'Every level you clear is recorded here with its battle card and full stats. Decent Pilots who sign a flight log get level-pass DNFTs queued automatically (see Rewards waiting). As a fallback, stamp a record to IPFS and request the mint on GitHub. A request is not yet an on-chain NFT.');
+  const intro = node('p', 'Every cleared level stays here as flight history with full stats. Only completing level 20 earns an achievement NFT. Decent Pilots can sign the final flight log for the referee, or pin the level 20 battle card and request the mint on GitHub. A request is not yet an on-chain NFT. Previously issued vouchers remain valid.');
   const status = node('p', '', { role: 'status', 'aria-live': 'polite', className: 'asteroid-status' });
   const list = node('section', '', { 'aria-label': 'Cleared levels' }); dialog.append(intro, status, list);
   let opener = null;
@@ -39,7 +39,7 @@ export function mountClaims() {
       const gateway = window.DecentHead?.getIpfs?.()?.options?.gateway;
       for (const [label, uri] of [['Battle PNG', entry.image], ['Metadata', entry.tokenURI]]) if (uri) { card.append(node('p', `${label} CID: ${uri.slice(7)}`), link(`Open ${label}`, gatewayUrl(uri, gateway))); }
       if (entry.txHash && /^0x[\da-f]{64}$/i.test(entry.txHash)) card.append(link('Mint transaction on BaseScan', `https://basescan.org/tx/${entry.txHash}`));
-      if (entry.status !== 'minted') {
+      if (entry.status !== 'minted' && record.level === 20 && record.difficulty !== 'cadet') {
         const isPilot = window.__voyagerPilot?.isPilot === true;
         const stamp = button(entry.tokenURI ? 'Re-stamp for connected wallet' : 'Stamp DNFT', () => action(entry, async () => {
           requireDecentPilot('Stamping a victory record');

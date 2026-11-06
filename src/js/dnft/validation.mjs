@@ -64,6 +64,7 @@ export function appendClaim(queue, claim, issue = {}) {
   const result = parseQueue(queue), valid = validateClaim(claim);
   const existing = [...result.pending, ...result.minted].find(entry => entry.recordId === valid.recordId || entry.tokenURI === valid.tokenURI);
   if (existing) return { queue: result, added: false, existing };
+  if (valid.level !== 20 || valid.difficulty === 'cadet') throw new Error('New achievement requests require a Pilot or Ace level 20 win.');
   const entry = { ...valid };
   if (Number.isSafeInteger(issue.number) && issue.number > 0) entry.issueNumber = issue.number;
   if (typeof issue.url === 'string' && /^https:\/\/github\.com\/TheJollyLaMa\/(?:DecentVoyager|AsteRoid)\/issues\/\d+$/.test(issue.url)) {

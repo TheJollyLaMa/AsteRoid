@@ -42,7 +42,8 @@ test('voucher signature recovers the referee address and EIP-712 digest matches 
   const vouchers = makeVoucherService({
     privateKey: referee.privateKey, chainId: 84532, ...REFEREE_CONTRACTS
   });
-  const record = { id: 'record-1', level: 3, difficulty: 'pilot' };
+  const record = { id: 'record-1', level: 20, difficulty: 'pilot' };
+  await assert.rejects(vouchers.stamp({ player: referee.address, record: { ...record, level: 3 }, deadline: 2_000_000_000 }), /level 20/);
   const issued = await vouchers.stamp({
     player: Wallet.createRandom().address, record, metadataURI: 'ipfs://metadata', deadline: 2_000_000_000
   });
@@ -72,6 +73,33 @@ test('run replay accepts matching summary and rejects tampering', async () => {
   const tampered = sampleRun({ pilot: { address: player.address, isPilot: true }, result: { ...result, records: [{ id: 'forged', level: 1, difficulty: 'cadet' }] } });
   const tamperedSig = await player.signMessage(runHash(tampered));
   await assert.rejects(verifyRun({ run: tampered, address: player.address, signature: tamperedSig, isPilot: async () => true, replay: async () => result }), /Replay result does not match/);
+});
+
+test('twenty cleared levels issue exactly one new level 20 achievement', async (t) => {
+  const player = Wallet.createRandom();
+  const vouchers = makeVoucherService({ privateKey: Wallet.createRandom().privateKey, chainId: 84532, ...REFEREE_CONTRACTS });
+  const pinned = [], queued = [];
+  const service = createService({
+    env: { TICKET_SECRET: 'test-secret-with-at-least-thirty-two-bytes!' },
+    pilotRegistry: { isPilot: async () => true }, vouchers,
+    queues: { async append(kind, item) { queued.push({ kind, item }); return { status: 'queued' }; }, async read() { return { pending: [] }; } },
+    pinata: { async pinRecord(record) { pinned.push(record.level); return { status: 'skipped', metadataURI: '', imageURI: '' }; } },
+    replay: async () => ({ state: 'victory', records: Array.from({ length: 20 }, (_, i) => ({ id: `win-${i + 1}`, level: i + 1, difficulty: 'pilot' })), captures: [], survivors: 1 })
+  });
+  await new Promise(resolve => service.server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => service.server.close(resolve)));
+  const ticket = service.ticketService.issue(player.address);
+  const run = sampleRun({ difficulty: 'pilot', seed: ticket.ticket.seed, ticket, pilot: { address: player.address, isPilot: true } });
+  const response = await fetch(`http://127.0.0.1:${service.server.address().port}/runs`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ address: player.address, run, signature: await player.signMessage(runHash(run)) })
+  });
+  assert.equal(response.status, 201);
+  const result = await response.json();
+  assert.deepEqual(pinned, [20]);
+  assert.equal(queued.length, 1);
+  assert.equal(result.vouchers.length, 1);
+  assert.equal(result.vouchers[0].voucher.level, 20);
 });
 
 test('runId is idempotent and non-pilots are rejected by HTTP', async (t) => {
@@ -110,14 +138,14 @@ test('runId is idempotent and non-pilots are rejected by HTTP', async (t) => {
   assert.equal(duplicate.status, 200);
   assert.equal(duplicateBody.idempotent, true);
   assert.equal(replayCalls, 1);
-  assert.equal(queued.length, 3);
-  assert.deepEqual(queued.map((entry) => entry.kind).sort(), ['prizes', 'prizes', 'stamps']);
-  assert.equal(firstBody.vouchers.length, 3);
+  assert.equal(queued.length, 2);
+  assert.deepEqual(queued.map((entry) => entry.kind).sort(), ['prizes', 'prizes']);
+  assert.equal(firstBody.vouchers.length, 2);
   const prizeRunIds = firstBody.vouchers.filter((v) => v.kind === 'prize').map((v) => v.voucher.claimId);
   assert.equal(new Set(prizeRunIds).size, 2, 'each capture is independently claimable on VoyagerPrizes');
-  assert.equal(firstBody.pinning[0].status, 'skipped');
+  assert.deepEqual(firstBody.pinning, [], 'intermediate levels do not pin or mint achievement NFTs');
   const fetchedVouchers = await fetch(`${url}/vouchers/${player.address}`);
-  assert.equal((await fetchedVouchers.json()).vouchers.length, 3);
+  assert.equal((await fetchedVouchers.json()).vouchers.length, 2);
 
   const nonPilot = Wallet.createRandom();
   const deniedRun = sampleRun({ runId: 'non-pilot-run' });
