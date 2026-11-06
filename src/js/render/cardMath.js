@@ -100,7 +100,7 @@ function sampleRecord(seed = 7) {
     return {
         schema: 'asteroid-level-record/1',
         id: `2026-11-05T17:45:00.000Z-pilot-L7-sample${seed}`,
-        game: 'AsteRoid: Galactic Gauntlet',
+        game: 'Decent Voyager: Galactic Gauntlet',
         gameVersion: '2.0.0',
         level: 7,
         levelName: 'Meteor Rain',

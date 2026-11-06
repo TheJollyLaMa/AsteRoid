@@ -1,4 +1,4 @@
-# AsteRoid repository payroll
+# Decent Voyager repository payroll
 
 The generic bounty bot records **Base** repository-development accruals for owner-whitelisted workers. It never handles artists, radio plays, testing bounties, or automatic on-chain payouts. Only TheJollyLaMa is initially registered, with zero earnings and no issue history.
 
@@ -26,7 +26,7 @@ Read-only GitHub inspection on 2026-11-05 found no repository Actions secret nam
 
 ## Settlement intentionally excluded
 
-`payroll-assets.json` records the donor Base ART/USDC identities as configuration, **not verified treasury integration**. It deliberately has `routerAddress: null` and `settlementEnabled: false`; `asteroid-repo-dev` is a proposed ledger scope, not a deployed/funded fund. Do not reuse Busking's artist funds or shared router as if AsteRoid were funded. Settlements require separate owner-reviewed contract/asset/fund verification, funding, authorization and receipt reconciliation. No signing key, spending workflow or automatic transfer is installed.
+`payroll-assets.json` records the donor Base ART/USDC identities as configuration, **not verified treasury integration**. It deliberately has `routerAddress: null` and `settlementEnabled: false`; `asteroid-repo-dev` is a legacy proposed ledger scope, not a deployed/funded fund or current product name. Do not reuse Busking's artist funds or shared router as if Voyager were funded. Settlements require separate owner-reviewed contract/asset/fund verification, funding, authorization and receipt reconciliation. No signing key, spending workflow or automatic transfer is installed.
 
 This subset pays only the merged implementer's approved bounty; Busking's idea splits, retained credits, artist/radio payroll, testing bounties and settlement tooling are intentionally not transplanted. Existing same-repo accrual records are the source of truth; queueing does not promise available funds or a payment date.
 

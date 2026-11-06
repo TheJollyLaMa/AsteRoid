@@ -1,4 +1,4 @@
-AsteRoid receiving need: optional wallet, opt-in progress backups, About, and stopped-by-default cockpit radio, served under relative static/IPFS paths.
+Decent Voyager receiving need: optional wallet, opt-in progress backups, About, and stopped-by-default cockpit radio, served under relative static/IPFS paths.
 
 DecentHead 2.0.0: TheJollyLaMa/DecentHead @ 8542720.
 Exact docs/ADOPTING.md vendor manifest copied to decent-head/2.0.0/ without modifications. The unchanged docs/ADOPTING.md and docs/IPFS-HOST.md are also shipped because the donor controls link to the local storage setup guide.

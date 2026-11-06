@@ -3181,7 +3181,7 @@ async function previewBattleCard(record) {
         tab.document.body.style.cssText = 'margin:0;background:#05030c;display:grid;place-items:center;min-height:100vh';
         const img = tab.document.createElement('img');
         img.src = url;
-        img.alt = `AsteRoid battle card for level ${chosen.level}`;
+        img.alt = `Decent Voyager battle card for level ${chosen.level}`;
         img.style.cssText = 'max-width:100vw;max-height:100vh;image-rendering:pixelated';
         tab.document.body.appendChild(img);
     }
@@ -3293,7 +3293,7 @@ function sampleRecord(seed = 7) {
     return {
         schema: 'asteroid-level-record/1',
         id: `2026-11-05T17:45:00.000Z-pilot-L7-sample${seed}`,
-        game: 'AsteRoid: Galactic Gauntlet',
+        game: 'Decent Voyager: Galactic Gauntlet',
         gameVersion: '2.0.0',
         level: 7,
         levelName: 'Meteor Rain',
@@ -6088,7 +6088,7 @@ function validateSave(input) {
     if (!isPlainObject(obj)) fail('Save file is empty or not an object.');
     assertJsonData(obj);
     if (isLegacyShape(obj)) return migrateLegacy(obj);
-    if (obj.app !== SAVE_APP) fail('This file is not an AsteRoid: Galactic Gauntlet save.');
+    if (obj.app !== SAVE_APP) fail('This file is not a Decent Voyager: Galactic Gauntlet save.');
     if (!Number.isInteger(obj.version)) fail('Save file has no version number.');
     if (obj.version > SAVE_VERSION) fail(`Save version ${obj.version} is newer than this game supports (${SAVE_VERSION}). Update the game first.`);
     if (obj.version < 1) fail(`Save version ${obj.version} is not supported.`);
@@ -6334,7 +6334,7 @@ const WEAPON_TYPES = ['blaster', 'spread', 'rapid', 'plasma', 'nova', 'prism', '
 const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield', 'nova', 'prism', 'singularity'];
 const COMBO_WINDOW = 2;
 const RECORD_SCHEMA = 'asteroid-level-record/1';
-const GAME_NAME = 'AsteRoid: Galactic Gauntlet';
+const GAME_NAME = 'Decent Voyager: Galactic Gauntlet';
 const GAME_VERSION = '2.0.0';
 const WORLD_WIDTH = 800;
 const BATTLE_LOG_CAPS = { path: 300, kills: 400, hitsTaken: 200, pickups: 100, misses: 400 };

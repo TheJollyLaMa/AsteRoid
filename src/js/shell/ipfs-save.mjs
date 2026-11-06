@@ -115,7 +115,7 @@ export function installProgressPanel(host = window) {
   host.addEventListener('asteroid:ready', update);
   host.addEventListener('decenthead:ipfs', update);
   return {
-    version: 1, label: 'AsteRoid flight progress',
+    version: 1, label: 'Decent Voyager flight progress',
     capabilities: { backup: { open: () => {
       update();
       if (host.asteroidGame?.state === 'playing') { host.asteroidGame.handleAction('pause'); host.asteroidDraw?.(); }

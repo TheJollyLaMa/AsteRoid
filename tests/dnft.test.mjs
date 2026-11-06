@@ -11,10 +11,11 @@ const image = 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3t67vyk7hedwhkcx7o7a7lbp
 const tokenURI = 'ipfs://bafybeihs45httneokxvobxm3outngl2w677gssgkjxzklgqxafj32c42pi';
 function record() { return { schema: 'asteroid-level-record/1', id: '2026-11-05-ace-L3-1', game: 'AsteRoid: Galactic Gauntlet', gameVersion: '2.0.0', level: 3, levelName: 'Pebble Lanes', difficulty: 'ace', difficultyLabel: 'Ace', seed: 42, completedAt: '2026-11-05T18:00:00.000Z', startedAt: '2026-11-05T17:59:00.000Z', durationSec: 60, score: { total: 600, level: 450, bonus: 150 }, ship: { livesRemaining: 2, livesLost: 1, finalPower: 80, finalWeapon: { type: 'plasma', tier: 2 }, view: 'pov' }, stats: { shotsFired: 100, shotsByWeapon: { blaster: 10, spread: 20, rapid: 30, plasma: 40 }, hits: 70, accuracy: .7, asteroidsSpawned: 60, asteroidsDestroyed: 55, asteroidsMissed: 5, shootersDestroyed: 2, fragmentsDestroyed: 10, enemyShotsFired: 20, enemyShotsDodged: 19, hitsTaken: 1, collisions: 0, shieldBlocks: 2, damageTaken: 20, pickupsCollected: { spread: 1, rapid: 2, plasma: 3, power: 1, shield: 1 }, pickupsMissed: 0, maxCombo: 12, timeInPov: 20, timeInOverview: 40, closestCall: null, futureStat: 42 }, battleLog: { levelLength: 1000, worldWidth: 800, path: [[1, 2]], kills: [], hitsTaken: [], pickups: [], misses: [] } }; }
 function claim() { return buildClaim(record(), { tokenURI, image, claimant: wallet, requestedAt: '2026-11-05T18:00:01.000Z' }); }
-test('metadata flattens every stat, ship and score, preserves raw JSON and date', () => {
+test('metadata preserves a legacy record verbatim under current Voyager stamp branding', () => {
   const input = record(), metadata = buildMetadata(input, { image, claimant: wallet });
   assert.equal(metadata.name, 'Decent Voyager Victory · L3 Pebble Lanes · Ace');
   assert.equal(metadata.external_url, 'https://thejollylama.github.io/DecentVoyager/');
+  assert.equal(metadata.properties.game, input.game);
   const attrs = new Map(metadata.attributes.map(item => [item.trait_type, item]));
   function check(value, prefix) { for (const [key, item] of Object.entries(value)) { const path = `${prefix}.${key}`; if (item !== null && typeof item === 'object') check(item, path); else assert.equal(attrs.get(path)?.value, item === null ? 'Unavailable' : item); } }
   for (const key of ['stats', 'ship', 'score']) check(input[key], key);
@@ -44,6 +45,9 @@ test('issue parser accepts form/plain/fence and rejects ambiguous or executable 
 test('queue append dedupes record and token URI across pending/minted', () => {
   const initial = { pending: [], minted: [] }, first = appendClaim(initial, claim(), { number: 12, url: 'https://github.com/TheJollyLaMa/AsteRoid/issues/12' });
   assert.equal(first.added, true); assert.equal(initial.pending.length, 0); assert.equal(first.queue.pending[0].issueNumber, 12);
+  assert.equal(first.queue.pending[0].issueUrl, 'https://github.com/TheJollyLaMa/DecentVoyager/issues/12');
+  const current = appendClaim(initial, claim(), { number: 12, url: 'https://github.com/TheJollyLaMa/DecentVoyager/issues/12' });
+  assert.equal(current.queue.pending[0].issueUrl, first.queue.pending[0].issueUrl);
   assert.equal(appendClaim(first.queue, claim()).added, false);
   assert.equal(appendClaim(first.queue, { ...claim(), recordId: 'other' }).added, false);
   assert.equal(appendClaim({ pending: [], minted: first.queue.pending }, claim()).added, false);
