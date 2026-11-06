@@ -36,7 +36,8 @@ async function main() {
     assert.equal(metadata.image, manifest.front);
     assert.equal(metadata.external_url, 'https://github.com/TheJollyLaMa/DecentVoyager/releases/tag/v1.0.0');
     assert.equal(/asteroid/i.test(JSON.stringify(metadata)), false);
-    const provider = new ethers.JsonRpcProvider('https://base-rpc.publicnode.com', 8453, { staticNetwork: true });
+    const provider = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL || 'https://mainnet.base.org', 8453,
+        { staticNetwork: true, batchMaxCount: 1 });
     try {
         assert.equal((await provider.getNetwork()).chainId, 8453n);
         const wallet = new ethers.Wallet(process.env.JOLLY_PRIVATE_KEY, provider);
@@ -72,7 +73,14 @@ async function main() {
                 console.log(key, tx.hash);
             }
             assert.equal(saved.data, data, 'Resumed calldata differs');
-            const receipt = await provider.waitForTransaction(saved.hash, 3, 180000);
+            const deadline = Date.now() + 180000;
+            let receipt;
+            while (Date.now() < deadline) {
+                receipt = await provider.getTransactionReceipt(saved.hash);
+                if (receipt && await provider.getBlockNumber() >= receipt.blockNumber + 2) break;
+                receipt = null;
+                await new Promise(resolve => setTimeout(resolve, 4000));
+            }
             assert.ok(receipt && receipt.status === 1, `${key} not confirmed`);
             const tx = await provider.getTransaction(saved.hash);
             assert.equal(tx.from, OWNER); assert.equal(tx.to, saved.to);

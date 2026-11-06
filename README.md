@@ -10,7 +10,7 @@ unlock **Sector II** (levels 11–20), win Supporter DNFTs, earn on-chain victor
 - Play: https://thejollylama.github.io/DecentVoyager/ (GitHub Pages, from `src/` via `.github/workflows/pages.yml`) · ENS: `voyager.decentagency.eth`.
 - Referee: https://decent-voyager-referee.onrender.com (Render Starter, `render.yaml`; signer `0x3197DDde77b859A8177607ca82E88938B31C02f4`)
 - Base contracts: see `contracts/deployments/base.json` and `contracts/deployments/base-rewards.json`.
-  Supporter DNFT v1.0.0: token 80 on `0xe63E…439B`, replacement DecentMarket escrow listing 18
+  Supporter DNFT v1.0.0: token 80 on `0xe63E…439B`, corrected DecentMarket escrow listing 19
   (900 × 10 USDC at reserve cutover; 100 held for game rewards). Frozen mint evidence records original listing 10.
 - Current mobile/reward ENS snapshot: `bafybeighqehjm3pfqovsdrqghdwxgjxrpzhglzibv5qwp3w622yhpqapdy`
   (frontend from merge `fdac2a6`). The pinned bundle SHA-256 matches Pages:
@@ -21,10 +21,13 @@ unlock **Sector II** (levels 11–20), win Supporter DNFTs, earn on-chain victor
   Pages is the verified play route.
 
 The canonical project and repository are **Decent Voyager** / `TheJollyLaMa/DecentVoyager`.
-Supporter token #80's prepared branding correction will update its metadata,
-provenance art and active sale note without reminting editions or changing the
-v1 source commit. **The chain/IPFS correction is pending execution permission**;
-the existing token URI and historical escrow note are not yet changed.
+Supporter token #80's branding correction is verified on Base: current metadata,
+provenance art and active listing19 use DecentVoyager without reminting editions
+or changing the v1 source commit. See [correction evidence](contracts/deployments/supporter-branding-correction.json).
+The corrected frontend is pinned at
+`bafybeib2gcanocvsn672opkxewptwrv37gfxfhtdu2g7nbpkddlwqe6amu` and
+`voyager.decentagency.eth` points to it. [Pin/ENS verification](contracts/deployments/branding-frontend.json)
+includes the matching bundle hash and browser-tested public IPFS gateway.
 Historical transactions and content-addressed original archives cannot be rewritten.
 Legacy payroll references, save keys, API identifiers and record schemas remain
 readable for compatibility; they are not current project names. New records, saves

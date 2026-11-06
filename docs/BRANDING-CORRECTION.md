@@ -8,30 +8,42 @@ Game records, sample battle cards, image descriptions, save labels/errors,
 documentation, the package lock and current claim links now use that name.
 Legacy claim links are accepted and rewritten to the canonical repository.
 
-**Token/IPFS/ENS deployment is not complete.** The host execution gate blocked
-the local artwork/pinning command, including after explicit owner approval.
-No token URI, escrow listing or ENS mutation was sent by this correction.
-Do not infer success from the existence of the preparation scripts.
+**Token metadata and sale correction are verified on Base.** After the host
+blocked deployment commands, the owner ran the preparation and correction
+from their terminal. The corrected metadata is
+`ipfs://QmYyFwg2BXcz63uVRSFF6L2crxe1Avhb234fzXdkwYCQaU`;
+listing **19** has the canonical Voyager note, 900 sale editions at 10 USDC.
+The reward escrow still holds 100 Voyager editions. All three receipts
+succeeded and their calldata/state were independently checked. See the
+[transaction journal](../contracts/deployments/supporter-branding-correction.json).
+The corrected game is also pinned and the ENS record updated; see the
+[frontend deployment receipt](../contracts/deployments/branding-frontend.json).
 
 The independently read ENS registry resolver remains
 `0xF29100983E058B709F3D539b0c765937B804AC15`. Its contenthash matches
-`ipfs://bafybeighqehjm3pfqovsdrqghdwxgjxrpzhglzibv5qwp3w622yhpqapdy`.
+`ipfs://bafybeib2gcanocvsn672opkxewptwrv37gfxfhtdu2g7nbpkddlwqe6amu`.
 The fetched bundle SHA-256 is
-`f69025c28cffb4582b3f1bacf7eea220f96e01ac973fbc1c41e4414ef370822a`.
-That is the previous verified mobile/reward build, **not** this branding build.
+`befffd3f3f238174bd5ec17ea5595799a78da0d785b80402f32baea7a4075b68`.
+This is the corrected branding build, retaining mobile/reward gameplay.
 The public Pinata gateway rejects HTML serving with HTTP 403; fetching the
-JavaScript and verifying its hash does not establish a working HTML gateway.
+JavaScript and verifying its hash alone does not establish a working HTML
+gateway. Filebase served the exact pinned HTML and loaded the actual bundled
+game with the Voyager title/sample record and no browser page errors.
+The 155-file pin includes relative-path assets. Ethereum transaction
+`0x8a526c62bb3f4e196b726ceaf156db119475bdb3393e1865052606f4cf1b5160`
+updated the contenthash; independent registry/resolver readback matches.
 
 ## Existing token, not a replacement mint
 
 Base collection `0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B`, token **80**,
 has an admin-settable per-token URI. Its original metadata URI is
 `ipfs://QmacnQSJCxmqjWnMxDqhkLXCJv1zqp1EKoeF7nY782rGpe`.
-The name says Voyager, but repository properties, external/source links and the
-back artwork still name the old repository. Active listing 18 inherited that
-old note. Neither error is solved just by GitHub redirects.
+The original repository properties, external/source links and back artwork
+named the old repository; listing18 inherited that note. Current metadata,
+artwork and active listing19 now correct those errors. Original mint
+transactions and inactive listings10/18 retain their historical evidence.
 
-The prepared correction keeps token ID, 1,000-edition cap, original release
+The verified correction keeps token ID, 1,000-edition cap, original release
 commit `f7b71fbd7f5a549f0b2be3f6c35b38f3b655b9f8`, original code archive,
 10 USDC price, royalties, holders and reward reserves unchanged:
 
@@ -50,7 +62,7 @@ commit `f7b71fbd7f5a549f0b2be3f6c35b38f3b655b9f8`, original code archive,
    separately from pin persistence and byte-integrity checks.
 
 [`correct-supporter-branding.js`](../contracts/scripts/correct-supporter-branding.js)
-is a **prepared, not live-executed** correction script. It requires
+is the **owner-executed** correction script. It requires
 `EXECUTE_VOYAGER_BRANDING=yes`, a prepared-artifact directory argument and
 `JOLLY_PRIVATE_KEY` supplied privately through the approved deployment
 environment. It journals hashes before waiting, validates role/network/stock,
@@ -78,5 +90,10 @@ erase historical naming; the correction records provenance instead.
 
 Validation: 145 game and 17 referee tests pass; the browser bundle rebuilds.
 Canopy's focused tests cover canonical-name fallback, repository aliasing,
-project discovery and preserving raw on-chain notes. Physical-wallet execution
-and corrected-pin/ENS verification remain blocked, not passed.
+project discovery and preserving raw on-chain notes. The pinned corrected
+metadata/back-image bytes match the preparation files exactly. A PublicNode
+archive-request HTTP403 appeared during receipt polling, but execution
+continued and the final receipts/state succeeded. Receipt polling now uses
+individual transaction-receipt/current-head reads rather than archive-sensitive
+block polling. The corrected-game pin's entrypoint, bundle, disc, rock and
+configuration bytes match; IPFS browser readiness and ENS readback pass.
