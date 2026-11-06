@@ -10,7 +10,7 @@ const wallet = '0x807061DF657A7697c04045dA7d16D941861cAABc';
 const image = 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3t67vyk7hedwhkcx7o7a7lbpi';
 const tokenURI = 'ipfs://bafybeihs45httneokxvobxm3outngl2w677gssgkjxzklgqxafj32c42pi';
 function record() { return { schema: 'asteroid-level-record/1', id: '2026-11-05-ace-L3-1', game: 'AsteRoid: Galactic Gauntlet', gameVersion: '2.0.0', level: 3, levelName: 'Pebble Lanes', difficulty: 'ace', difficultyLabel: 'Ace', seed: 42, completedAt: '2026-11-05T18:00:00.000Z', startedAt: '2026-11-05T17:59:00.000Z', durationSec: 60, score: { total: 600, level: 450, bonus: 150 }, ship: { livesRemaining: 2, livesLost: 1, finalPower: 80, finalWeapon: { type: 'plasma', tier: 2 }, view: 'pov' }, stats: { shotsFired: 100, shotsByWeapon: { blaster: 10, spread: 20, rapid: 30, plasma: 40 }, hits: 70, accuracy: .7, asteroidsSpawned: 60, asteroidsDestroyed: 55, asteroidsMissed: 5, shootersDestroyed: 2, fragmentsDestroyed: 10, enemyShotsFired: 20, enemyShotsDodged: 19, hitsTaken: 1, collisions: 0, shieldBlocks: 2, damageTaken: 20, pickupsCollected: { spread: 1, rapid: 2, plasma: 3, power: 1, shield: 1 }, pickupsMissed: 0, maxCombo: 12, timeInPov: 20, timeInOverview: 40, closestCall: null, futureStat: 42 }, battleLog: { levelLength: 1000, worldWidth: 800, path: [[1, 2]], kills: [], hitsTaken: [], pickups: [], misses: [] } }; }
-function claim() { return buildClaim(record(), { tokenURI, image, claimant: wallet, requestedAt: '2026-11-05T18:00:01.000Z' }); }
+function claim() { return buildClaim({ ...record(), level: 20 }, { tokenURI, image, claimant: wallet, requestedAt: '2026-11-05T18:00:01.000Z' }); }
 test('metadata preserves a legacy record verbatim under current Voyager stamp branding', () => {
   const input = record(), metadata = buildMetadata(input, { image, claimant: wallet });
   assert.equal(metadata.name, 'Decent Voyager Victory · L3 Pebble Lanes · Ace');
@@ -31,6 +31,7 @@ test('metadata and claims reject unsafe data, invalid wallet, missing pin', () =
   assert.throws(() => buildMetadata(record(), { image: 'https://bad', claimant: wallet }));
 });
 test('claim validation is strict and strips untrusted extras', () => {
+  assert.throws(() => buildClaim(record(), { tokenURI, image, claimant: wallet }), /only for completing level 20/);
   const input = claim(); assert.deepEqual(validateClaim(input), input);
   for (const patch of [{ schema: 'x' }, { tokenURI: 'https://bad' }, { image: 'ipfs://../bad' }, { claimant: `0x${'0'.repeat(40)}` }, { level: 0 }, { level: 21 }, { level: 11, difficulty: 'cadet' }, { difficulty: 'easy' }, { completedAt: 'never' }, { requestedAt: '2020-01-01T00:00:00Z' }, { score: { total: -1, level: 0, bonus: 0 } }]) assert.throws(() => validateClaim({ ...input, ...patch }));
   assert.equal(validateClaim({ ...input, command: 'danger' }).command, undefined);
@@ -51,6 +52,7 @@ test('queue append dedupes record and token URI across pending/minted', () => {
   assert.equal(appendClaim(first.queue, claim()).added, false);
   assert.equal(appendClaim(first.queue, { ...claim(), recordId: 'other' }).added, false);
   assert.equal(appendClaim({ pending: [], minted: first.queue.pending }, claim()).added, false);
+  assert.throws(() => appendClaim(initial, { ...claim(), level: 3 }), /level 20/);
 });
 test('vault merges restored records while retaining pin/request status durably', () => {
   const values = new Map(), storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
@@ -76,7 +78,9 @@ test('receiving game actual levelRecord passes vault, metadata, claim and queue 
   const Game = createRequire(import.meta.url)('../src/js/game.js');
   let clock = Date.parse('2026-11-05T12:00:00Z');
   const game = new Game({ now: () => (clock += 1000) });
-  game.selectedDifficulty = 'ace'; game.startCampaign(3); game.asteroids = []; game.pickups = [];
+  game.setPilot({ address: wallet, isPilot: true });
+  game.save.progress.byDifficulty.ace.sector2Unlocked = true;
+  game.selectedDifficulty = 'ace'; game.startCampaign(20); game.asteroids = []; game.pickups = [];
   game.update(.016, { fire: true }); game.scrollY = game.level.length; game.update(.016, {});
   const emitted = game.drainEvents().find(event => event.type === 'levelRecord'); assert.ok(emitted);
   const vault = new VictoryVault({ getItem: () => null, setItem() {} }); vault.merge(game.getWinRecords());

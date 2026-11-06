@@ -23,6 +23,10 @@ function bulletWeaponType(bullet) {
 
 // ---------------------------------------------------------------- glow sprites
 const glowCache = new Map();
+let glowBudget = Infinity;
+function setGlowBudget(limit = Infinity) {
+    glowBudget = limit;
+}
 function glowSprite(color) {
     if (glowCache.has(color)) return glowCache.get(color);
     const canvas = makeCanvas(64, 64);
@@ -43,6 +47,8 @@ function glowSprite(color) {
 // Additive soft glow: much cheaper than shadowBlur.
 function drawGlow(ctx, x, y, radius, color, alpha = 1) {
     if (!(radius > 0) || !(alpha > 0)) return;
+    if (glowBudget <= 0) return;
+    glowBudget -= 1;
     const sprite = glowSprite(color);
     const prevOp = ctx.globalCompositeOperation;
     const prevAlpha = ctx.globalAlpha;
@@ -227,6 +233,20 @@ function drawBreathe(ctx, x, y, radius, time, alpha = 1) {
 }
 
 function drawPickup(ctx, pickup, x, y, radius, time, alpha = 1) {
+    if (pickup.type === 'life') {
+        const lotus = getImage('white-lotus');
+        drawGlow(ctx, x, y, radius * 2.3, '#e8f6ff', alpha * 0.5);
+        if (lotus) {
+            const size = radius * 2.8;
+            ctx.save();
+            ctx.globalAlpha *= alpha;
+            const height = size * lotus.naturalHeight / lotus.naturalWidth;
+            ctx.drawImage(lotus, x - size / 2, y - height / 2, size, height);
+            ctx.restore();
+        }
+        pixelText(ctx, '+1 LIFE', x, y + radius * 1.8, { size: 14, color: '#ffffff', align: 'center', alpha, crisp: true });
+        return;
+    }
     if (pickup.type === 'power') {
         drawBreathe(ctx, x, y, radius, time, alpha);
         return;
@@ -546,6 +566,7 @@ module.exports = {
     SHIP_PALETTE,
     bulletWeaponType,
     glowSprite,
+    setGlowBudget,
     drawGlow,
     drawGlowDot,
     pixelSprite,

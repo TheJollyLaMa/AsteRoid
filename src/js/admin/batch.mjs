@@ -15,7 +15,11 @@ export function buildProducts(claims, { adminWallet, royaltyFeeBps = 500 }) {
   if (!Array.isArray(claims) || !claims.length || claims.length > 20) throw new Error('Select 1–20 stamps');
   if (!validAddress(adminWallet) || !Number.isInteger(royaltyFeeBps) || royaltyFeeBps < 0 || royaltyFeeBps > 10000) throw new Error('Invalid royalty configuration');
   if (new Set(claims.map(claim => claim.tokenURI)).size !== claims.length || new Set(claims.map(claim => claim.recordId)).size !== claims.length) throw new Error('Duplicate stamps selected');
-  return claims.map(input => { const claim = validateClaim(input); return { recipient: claim.claimant, amount: 1, maxSupply: 1, tokenURI: claim.tokenURI, royaltyReceiver: adminWallet, royaltyFeeBps }; });
+  return claims.map(input => {
+    const claim = validateClaim(input);
+    if (claim.level !== 20 || claim.difficulty === 'cadet') throw new Error('New achievement mints require a Pilot or Ace level 20 win. Historical queue records are retained.');
+    return { recipient: claim.claimant, amount: 1, maxSupply: 1, tokenURI: claim.tokenURI, royaltyReceiver: adminWallet, royaltyFeeBps };
+  });
 }
 export async function verifyContract(provider, Contract, config) {
   const code = await provider.getCode(config.contractAddress);

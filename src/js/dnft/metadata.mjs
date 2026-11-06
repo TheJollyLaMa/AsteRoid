@@ -23,5 +23,6 @@ export function buildMetadata(record, { image, claimant, externalUrl = 'https://
 }
 export function buildClaim(record, { tokenURI, image, claimant, requestedAt = new Date().toISOString() }) {
   if (record.difficulty === 'cadet') throw new Error('Cadet flights are practice only; fly Pilot or Ace to earn tokens.');
+  if (record.level !== 20) throw new Error('Achievement NFTs are awarded only for completing level 20. Other level records remain flight history.');
   return validateClaim({ schema: 'asteroid-dnft-claim/1', recordId: record.id, tokenURI, image, claimant, level: record.level, difficulty: record.difficulty, completedAt: record.completedAt, score: record.score, requestedAt });
 }

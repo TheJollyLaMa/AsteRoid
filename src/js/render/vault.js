@@ -61,11 +61,15 @@ function drawGenerator(ctx, x, y, scale, time) {
     ctx.restore();
 }
 
-function drawGuards(ctx, guards, project, time, sector2 = false) {
+function drawGuards(ctx, guards, project, time, sector2 = false, world = []) {
+    const rendered = new Set(world.map(rock => rock.id));
     guards.forEach((guard) => {
+        if (rendered.has(guard.id)) return;
         const point = project(guard);
         if (!point) return;
-        drawAsteroid(ctx, { ...guard, shooter: true }, point.x, point.y, Number(guard.size) || 22, 1, time, sector2);
+        const radius = Math.min(160, (Number(guard.size) || 22) * (point.scale || 1));
+        if (point.x + radius < 0 || point.x - radius > VIEW.width || point.y + radius < 0 || point.y - radius > VIEW.height) return;
+        drawAsteroid(ctx, { ...guard, shooter: true }, point.x, point.y, radius, 1, time, sector2);
     });
 }
 
@@ -73,7 +77,7 @@ function drawVault(ctx, game, scrollY, time, project, onScreen) {
     const vault = game && game.vault;
     if (!vault || vault.active === false || vault.captured) return;
     const guards = guardList(game, vault);
-    drawGuards(ctx, guards, (point) => project(point, scrollY), time, Number(game.level && game.level.number) >= 11);
+    drawGuards(ctx, guards, (point) => project(point, scrollY), time, Number(game.level && game.level.number) >= 11, game.asteroids || []);
     const point = project(vault, scrollY);
     if (!point || (onScreen && !onScreen(point, 100))) return;
     drawVaultGlyph(ctx, point.x, point.y, Math.max(16, Number(vault.size) || 28), time, vault, guards);
@@ -88,11 +92,13 @@ function drawVaultPov(ctx, game, camera, project, time) {
     const vault = game && game.vault;
     if (!vault || vault.active === false || vault.captured) return;
     const guards = guardList(game, vault);
-    drawGuards(ctx, guards, (point) => project(point, camera), time, Number(game.level && game.level.number) >= 11);
+    drawGuards(ctx, guards, (point) => project(point, camera), time, Number(game.level && game.level.number) >= 11, game.asteroids || []);
     const point = project(vault, camera);
     if (point) {
         const scale = Math.min(20, Math.max(0.35, point.scale));
-        drawVaultGlyph(ctx, point.x, point.y, Math.max(9, (Number(vault.size) || 24) * scale), time, vault, guards);
+        const radius = Math.min(160, Math.max(9, (Number(vault.size) || 24) * scale));
+        if (point.x + radius * 2 < 0 || point.x - radius * 2 > VIEW.width || point.y + radius * 2 < 0 || point.y - radius * 2 > VIEW.height) return;
+        drawVaultGlyph(ctx, point.x, point.y, radius, time, vault, guards);
         const generator = vault.generator || vault.shieldGenerator || guards.find((guard) => guard.kind === 'generator');
         const genPoint = generator && project(generator, camera);
         if (genPoint) drawGenerator(ctx, genPoint.x, genPoint.y, Math.min(8, genPoint.scale), time);

@@ -80,7 +80,7 @@ test('header config is public Base-only with HTTPS project links and small local
   assert.equal(config.appName,'Decent Voyager'); assert.equal(config.chain.chainId,8453); assert.equal(config.voyager.chainId,8453); assert.equal(config.voyager.testnetChainId,84532);
   assert.equal(config.providers.default,'pinata'); assert.equal(config.ens.enabled,true);
   const supporter=config.supporterDnft;
-  assert.equal(supporter.contract,'0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B'); assert.equal(supporter.tokenId,'80'); assert.equal(supporter.listingId,'18');
+  assert.equal(supporter.contract,'0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B'); assert.equal(supporter.tokenId,'80'); assert.equal(supporter.listingId,'19');
   assert.equal(supporter.escrowAddress,'0x31b07b83e99A9bdF379bf40225b8A80d3804C89d'); assert.equal(supporter.chain.chainId,8453); assert.equal(supporter.expectedPriceAmount,'10000000');
   assert.match(supporter.marketUrl,/^https:\/\//);
   assert.ok(statSync(new URL(`../src/assets/${supporter.image}`,import.meta.url)).size<=250000);
@@ -103,7 +103,7 @@ test('static shell preserves bundle/canvas and host-module ordering for relative
 test('about content covers rewards, tutorials and the multiplayer walkthrough without dropdowns', () => {
   const source=readFileSync(new URL('../src/js/shell/about-modal.mjs',import.meta.url),'utf8');
   assert.doesNotMatch(source,/<details/);
-  for (const title of ['Level-pass DNFT','Guarded Supporter pickups','Marathon and Perfect awards','Sector II · Far Future','Arena pot']) assert.ok(ABOUT.rewards.some(item => item.title===title));
+  for (const title of ['Level 20 achievement NFT','Guarded Supporter pickups','Marathon and Perfect awards','Sector II · Far Future','Arena pot']) assert.ok(ABOUT.rewards.some(item => item.title===title));
   assert.ok(ABOUT.couch.length>=3); assert.ok(ABOUT.online.length>=5);
   assert.match(source,/Coming soon/); assert.match(source,/purchaseWithToken/);
   const html=readFileSync(new URL('../src/index.html',import.meta.url),'utf8');

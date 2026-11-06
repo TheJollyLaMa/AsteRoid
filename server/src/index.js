@@ -265,7 +265,7 @@ function createService(options = {}) {
     const pinResults = [];
     for (const record of records) {
       if (!record || typeof record.id !== 'string') throw new Error('Replay produced a level record without an id.');
-      if (run.difficulty === 'cadet') continue;
+      if (run.difficulty === 'cadet' || record.level !== 20) continue;
       const card = run.battleCards && run.battleCards[record.id] || (records.length === 1 ? run.battleCard || run.card : null);
       const pinning = await pinata.pinRecord(record, card);
       const voucher = await vouchers.stamp({ player: address, record, metadataURI: pinning.metadataURI, deadline });

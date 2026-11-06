@@ -8,8 +8,8 @@ const { normalizeEvent } = require('./events');
 const { getImage } = require('./assets');
 const { drawSupporterToken } = require('./vault');
 
-const MAX_WORLD_PARTICLES = 650;
-const MAX_SCREEN_PARTICLES = 700;
+const MAX_WORLD_PARTICLES = 360;
+const MAX_SCREEN_PARTICLES = 450;
 const ROCK_COLORS = ['#7fffe0', '#ff8ae6', '#b9a8ff', '#ffffff', '#9ff3ff', '#ffe18a'];
 const SHOOTER_COLORS = ['#ff5a1c', '#ff8a5c', '#ffd25c', '#ffffff', '#ff3a1c'];
 const FIREWORK_COLORS = ['#3fb8ff', '#7fd7ff', '#7dff8c', '#ffe65c', '#d8e4ef', '#ffffff', '#ffb347'];
@@ -19,6 +19,7 @@ const rand = (min, max) => min + Math.random() * (max - min);
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
 function pickupLabel(kind, weapon) {
+    if (kind === 'life') return '+1 LIFE';
     if (kind === 'power') return '+POWER';
     if (kind === 'shield') return 'SHIELD UP';
     const tier = weapon && weapon.type === kind && weapon.tier ? ` LV${weapon.tier}` : '';
@@ -52,12 +53,18 @@ function createFx() {
     };
 
     function addWorld(p) {
-        if (world.length >= MAX_WORLD_PARTICLES) world.splice(0, world.length - MAX_WORLD_PARTICLES + 1);
+        if (world.length >= MAX_WORLD_PARTICLES) {
+            if (['ring', 'flash', 'text'].includes(p.kind)) {
+                const expendable = world.findIndex(item => ['debris', 'spark', 'thrust'].includes(item.kind));
+                if (expendable >= 0) world[expendable] = p;
+            }
+            return;
+        }
         world.push(p);
     }
 
     function addScreen(p) {
-        if (screen.length >= MAX_SCREEN_PARTICLES) screen.splice(0, screen.length - MAX_SCREEN_PARTICLES + 1);
+        if (screen.length >= MAX_SCREEN_PARTICLES) return;
         screen.push(p);
     }
 
@@ -242,6 +249,8 @@ function createFx() {
                 case 'levelStart':
                 case 'respawn':
                     if (e.type === 'levelStart') {
+                        world.length = 0;
+                        ripples.length = 0;
                         state.celebrateTime = -1;
                         state.celebrateKind = null;
                         screen.length = 0;
@@ -283,14 +292,16 @@ function createFx() {
         for (const r of ripples) r.age += dt;
         while (ripples.length && ripples[0].age > ripples[0].life) ripples.shift();
 
+        const expiredRockets = [];
         for (const p of screen) {
             p.life -= dt;
             if (p.gravity) p.vy += p.gravity * dt;
             p.x += p.vx * dt;
             p.y += p.vy * dt;
-            if (p.kind === 'rocket' && p.life <= 0) firework(p.x, p.y, p.color, game && game.state === 'victory' ? 60 : 44);
+            if (p.kind === 'rocket' && p.life <= 0) expiredRockets.push(p);
         }
         for (let i = screen.length - 1; i >= 0; i--) if (screen[i].life <= 0) screen.splice(i, 1);
+        for (const p of expiredRockets) firework(p.x, p.y, p.color, game && game.state === 'victory' ? 60 : 44);
 
         if (state.celebrateTime >= 0) state.celebrateTime += dt;
         const celebrating = game && (game.state === 'levelComplete' || game.state === 'victory');
@@ -469,6 +480,15 @@ function createFx() {
         shakeOffset,
         timeScale,
         firework,
+        clear() {
+            world.length = 0;
+            screen.length = 0;
+            ripples.length = 0;
+            state.shake = 0;
+            state.hitStop = 0;
+            state.slowMo = 0;
+            state.flash = 0;
+        },
         get worldCount() {
             return world.length;
         },

@@ -17,7 +17,7 @@ export function mountRewards() {
   const root = createDialog('✦ Rewards waiting', 'voyager-rewards');
   const status = node('p', '', { role: 'status', 'aria-live': 'polite', className: 'asteroid-status' });
   const list = node('section', '', { 'aria-label': 'Rewards ready to claim' });
-  root.append(node('p', 'Level-pass DNFTs and Supporter Vault prizes you earn as a Decent Pilot are signed by the referee and queued for minting. They wait here every time you log in. Claim each one on Base whenever you like.'), status, list);
+  root.append(node('p', 'Completing level 20 earns an achievement NFT; intermediate levels are flight history, not new NFT mints. Supporter Vault prizes remain separate rewards. Sign your flight log to queue eligible rewards with the referee, then claim on Base. Previously issued vouchers remain valid.'), status, list);
   let opener = null;
   const announce = count => window.dispatchEvent(new CustomEvent('voyager:rewards-count', { detail: { count } }));
   window.addEventListener('voyager:open-rewards', event => { opener = event.detail?.opener || null; void load(); openDialog(root); });
@@ -35,9 +35,9 @@ export function mountRewards() {
       list.replaceChildren();
       const entries = [...vouchers.stamps.map(voucher => ({ kind: 'stamp', voucher })), ...vouchers.prizes.map(voucher => ({ kind: 'prize', voucher }))];
       announce(entries.length);
-      if (!entries.length) { message('Nothing waiting yet. Clear a level, then sign your flight log at the end of the run.'); return; }
+      if (!entries.length) { message('Nothing waiting yet. Complete level 20 or capture a Supporter Vault, then sign your flight log at the end of the run.'); return; }
       for (const entry of entries) {
-        const { kind, voucher } = entry, title = kind === 'stamp' ? `Level-pass DNFT · level ${voucher.level ?? voucher.voucher?.level ?? '—'}` : `Supporter Prize · token ${voucher.tokenId ?? voucher.voucher?.tokenId ?? '—'}`;
+        const { kind, voucher } = entry, title = kind === 'stamp' ? `${Number(voucher.level ?? voucher.voucher?.level) === 20 ? 'Achievement NFT' : 'Previously issued level-pass DNFT'} · level ${voucher.level ?? voucher.voucher?.level ?? '—'}` : `Supporter Prize · token ${voucher.tokenId ?? voucher.voucher?.tokenId ?? '—'}`;
         const row = document.createElement('article'); row.append(document.createElement('h3'));
         row.firstChild.textContent = title;
         if (voucher.awardKind) row.append(node('p', voucher.awardKind.replaceAll('-', ' ')));

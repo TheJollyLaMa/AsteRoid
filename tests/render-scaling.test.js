@@ -11,6 +11,11 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
     let allocations = 0;
     let logicalWidth;
     let smoothingDuringRender;
+    let crtDraws = 0;
+    let nextFrame;
+    const updates = [];
+    const toasts = [];
+    let cleared = 0;
     const ctx = {
         imageSmoothingEnabled: true,
         setTransform(...args) { this.transform = args; },
@@ -36,14 +41,19 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
     const noop = () => {};
     const renderer = () => { smoothingDuringRender = ctx.imageSmoothingEnabled; };
     const modules = {
-        './game': class { constructor() { this.view = 'overview'; this.time = 0; } },
+        './game': class {
+            constructor() { this.view = 'overview'; this.time = 0; this.particles = []; }
+            handleAction(action) { if (action === 'pause') this.state = 'paused'; }
+            update(dt) { updates.push(dt); }
+            drainEvents() { return []; }
+        },
         './audio': { createAudio: () => ({ setSector2: noop }) },
         './render/overview': { createOverviewRenderer: () => renderer },
         './render/pov': { createPovRenderer: () => renderer },
-        './render/hud': { createHud: () => ({ drawHud: noop }) },
+        './render/hud': { createHud: () => ({ drawHud: noop, setToast: message => toasts.push(message) }) },
         './render/screens': { drawOverlay: noop },
-        './render/fx': { createFx: () => ({ shakeOffset: () => ({ x: 0, y: 0 }), drawScreen: noop }) },
-        './render/post': { drawCrt: noop },
+        './render/fx': { createFx: () => ({ shakeOffset: () => ({ x: 0, y: 0 }), drawScreen: noop, timeScale: () => 1, update: noop, clear: () => { cleared++; } }) },
+        './render/post': { drawCrt: () => { crtDraws++; } },
         './render/projection': {
             setViewWidth(value) {
                 logicalWidth = Math.round(Math.max(800, Math.min(1600, value)));
@@ -53,7 +63,8 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
         './render/assets': { loadAssets: noop },
         './render/battleCard': { renderBattleCard: noop, previewBattleCard: noop },
         './render/cardMath': { sampleRecord: noop },
-        './input': { createInput: () => ({}) }
+        './render/shapes': { setGlowBudget: noop },
+        './input': { createInput: () => ({ poll: () => [{}], clear: noop }) }
     };
     vm.runInNewContext(source, {
         require(name) { assert.ok(modules[name], name); return modules[name]; },
@@ -63,27 +74,43 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
             constructor(callback) { resize = callback; }
             observe() {}
         } : undefined,
-        requestAnimationFrame: noop,
+        requestAnimationFrame: callback => { nextFrame = callback; },
         CustomEvent: class {}
     });
     return {
         canvas, ctx, window,
         draw: () => window.asteroidDraw(),
+        frame: timestamp => nextFrame(timestamp),
+        updates, toasts,
+        get cleared() { return cleared; },
         resize(width, height) {
             rect = { width, height };
             (resize || listeners.resize)();
         },
         get allocations() { return allocations; },
         get logicalWidth() { return logicalWidth; },
+        get crtDraws() { return crtDraws; },
         get smoothingDuringRender() { return smoothingDuringRender; }
     };
 }
 
+test('title text is not covered by CRT scanlines while gameplay keeps its filter', () => {
+    const view = fixture(800, 600);
+    view.window.asteroidGame.state = 'title';
+    view.draw();
+    assert.equal(view.crtDraws, 0);
+    view.window.asteroidGame.state = 'playing';
+    view.draw();
+    assert.equal(view.crtDraws, 1);
+});
+
 for (const ratio of [1, 1.25, 2, 3]) {
-    test(`backing store matches device pixels at DPR ${ratio}`, () => {
+    test(`backing store stays within its GPU pixel budget at DPR ${ratio}`, () => {
         const view = fixture(1368, 720, ratio);
-        assert.equal(view.canvas.width, Math.round(1368 * ratio));
-        assert.equal(view.canvas.height, Math.round(720 * ratio));
+        const effective = Math.min(ratio, 2, Math.sqrt(3_000_000 / (1368 * 720)));
+        assert.equal(view.canvas.width, Math.floor(1368 * effective));
+        assert.equal(view.canvas.height, Math.floor(720 * effective));
+        assert.ok(view.canvas.width * view.canvas.height <= 3_000_000);
         view.draw();
         assert.deepEqual(view.ctx.transform, [view.canvas.width / view.logicalWidth, 0, 0, view.canvas.height / 600, 0, 0]);
         assert.equal(view.smoothingDuringRender, false);
@@ -93,15 +120,15 @@ for (const ratio of [1, 1.25, 2, 3]) {
 test('fractional layout sizes round only the final contained device dimensions', () => {
     const view = fixture(1365.5, 720.25, 1.25);
     const shownWidth = Math.min(1365.5, 720.25 * view.logicalWidth / 600);
-    assert.equal(view.canvas.width, Math.round(shownWidth * 1.25));
-    assert.equal(view.canvas.height, Math.round(shownWidth * 600 / view.logicalWidth * 1.25));
+    assert.equal(view.canvas.width, Math.floor(shownWidth * 1.25));
+    assert.equal(view.canvas.height, Math.floor(shownWidth * 600 / view.logicalWidth * 1.25));
 });
 
 test('portrait and ultrawide decks preserve the contained view aspect', () => {
     const portrait = fixture(390, 700, 3);
     assert.equal(portrait.logicalWidth, 800);
-    assert.equal(portrait.canvas.width, 1170);
-    assert.equal(portrait.canvas.height, 878);
+    assert.equal(portrait.canvas.width, 780);
+    assert.equal(portrait.canvas.height, 585);
     const wide = fixture(2400, 600, 1.25);
     assert.equal(wide.logicalWidth, 1600);
     assert.equal(wide.canvas.width, 2000);
@@ -124,9 +151,51 @@ test('device pixel ratio changes resize on draw without layout events', () => {
     const view = fixture(800, 600);
     view.window.devicePixelRatio = 3;
     view.draw();
-    assert.equal(view.canvas.width, 2400);
-    assert.equal(view.canvas.height, 1800);
+    assert.equal(view.canvas.width, 1600);
+    assert.equal(view.canvas.height, 1200);
     assert.equal(view.smoothingDuringRender, false);
+});
+
+test('a long stall freezes local battle, clears cosmetic load and allows recovery', () => {
+    const view = fixture(1200, 600, 2);
+    view.window.asteroidGame.state = 'playing';
+    view.window.asteroidGame.particles.push({});
+    view.frame(0);
+    view.frame(400);
+    assert.equal(view.window.asteroidGame.state, 'paused');
+    assert.equal(view.updates.at(-1), 0, 'no battle catch-up during overload');
+    assert.equal(view.window.asteroidGame.particles.length, 0);
+    assert.equal(view.cleared, 1);
+    assert.match(view.toasts[0], /Performance pause/);
+    assert.ok(view.canvas.width < 2400);
+    view.window.asteroidGame.state = 'playing';
+    view.frame(416);
+    assert.equal(view.window.asteroidGame.state, 'playing');
+    assert.equal(view.updates.at(-1), 0.016);
+});
+
+test('online overload reduces visuals without pretending to pause the referee', () => {
+    const view = fixture(800, 600, 2);
+    view.window.asteroidGame.state = 'playing';
+    view.window.voyager.setNetworkMode({});
+    view.frame(0);
+    view.frame(400);
+    assert.equal(view.window.asteroidGame.state, 'playing');
+    assert.match(view.toasts[0], /Online battle continues/);
+});
+
+test('repeated overload stays bounded and quality only recovers during healthy play', () => {
+    const view = fixture(800, 600, 2);
+    view.window.asteroidGame.state = 'playing';
+    view.frame(0);
+    for (const time of [400, 800, 1200, 1600]) view.frame(time);
+    assert.equal(view.canvas.width, 560);
+    for (let frame = 1; frame <= 610; frame++) view.frame(1600 + frame * 16);
+    assert.equal(view.canvas.width, 560, 'paused scene does not prematurely restore heavy rendering');
+    view.window.asteroidGame.state = 'playing';
+    for (let frame = 611; frame <= 1210; frame++) view.frame(1600 + frame * 16);
+    assert.ok(view.canvas.width > 560);
+    assert.ok(view.canvas.width <= 800, 'quality returns gradually, not as an immediate GPU spike');
 });
 
 test('window resize is a fallback when ResizeObserver is unavailable', () => {

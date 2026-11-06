@@ -5,6 +5,47 @@ like Galaga: fly a corridor of Mandelblum rocks, blast through gauntlets, dodge 
 **Sector I** (levels 1–10) is free for everyone with no wallet. **Decent Pilots** (the DecentAgency whitelist) can
 unlock **Sector II** (levels 11–20), win Supporter DNFTs, earn on-chain victory stamps and join paid arena rounds.
 
+### Lotus marathon rules
+
+New voyages and game-over retries start at **level 1**, with a fresh score,
+loadout, flight log and seed. Saved best scores, flight history and Sector II
+access remain intact; they are not restart checkpoints. Losing one life still
+respawns you in the current run. White Lotus pickups in levels **3, 7, 12 and 16**
+grant the collecting ship one extra life; the ENS breathing icon still restores
+power instead. Extra lives collected and lives lost are tracked independently,
+so collecting a life cannot erase a loss for Perfect rewards.
+
+Only completing **level 20** on Pilot/Ace earns a new achievement NFT.
+Intermediate battle records remain available locally and in IPFS progress saves.
+Guarded Supporter pickups and marathon/Perfect awards are unchanged.
+Previously signed vouchers remain claimable; new referee issuance and admin
+requests enforce level 20. The ruleset is `voyager-1.2-lotus-marathon`; deploy the
+referee before the matching frontend and start a new flight after updating.
+Old unsent flight logs are rejected with the existing ruleset-mismatch message,
+not replayed against changed game rules.
+
+Crowded-level safeguards include ordered spatial collision queries, capped
+cosmetic debris/fireworks and a maximum 3-million-pixel / 2x-DPR canvas. A long
+stall (over 250ms) or eight consecutive frames over 50ms freezes solo/local play,
+clears transient effects and reduces rendering resolution. Resume with P or the
+mobile Resume control. Online play reduces visual load but cannot pause the
+authoritative referee. Healthy frames gradually restore rendering quality.
+Menus and paused/end screens do not accumulate replay-log frames.
+Glow passes are budgeted separately from visible ships, bullets and asteroids;
+no gameplay hazards are dropped to meet the cosmetic budget. Repeated overload
+can reduce resolution to 35% of the capped DPR; ten seconds of healthy play
+restore quality in small steps. Title text returns to the normal sharp budget.
+
+Validation: client and referee suites cover level-20-only issuance, deterministic
+Lotus placement/collection, fresh-run restart, collision-order equivalence,
+particle limits and overload pause/resume. A frame-paced Chromium stress fixture
+with five firing ships in levels 9, 19 and 20 (both views) measured recovery-mode
+p95 step+draw submission at 2.2–5.3ms versus 5.3–11.1ms in the preceding bundle;
+core particles remained at most 256 rather than 2,666 in that paced baseline.
+These are synthetic local measurements, not guaranteed frame rates on phones.
+Cold audio initialization still produced a single long frame; the overload
+pause is deliberately retained rather than claiming all stalls are eliminated.
+
 ## Live v1
 
 - Play: https://thejollylama.github.io/DecentVoyager/ (GitHub Pages, from `src/` via `.github/workflows/pages.yml`) · ENS: `voyager.decentagency.eth`.
@@ -34,6 +75,13 @@ readable for compatibility; they are not current project names. New records, sav
 and issue links display Decent Voyager.
 
 ## Play locally
+
+The starter screen uses full-resolution monospace text, larger high-contrast
+instructions and a steady launch prompt. Pixel-art ships and battle effects are
+unchanged; the optional CRT filter applies during play, not over starter text.
+The IPFS gateway startup limitation is tracked in
+[issue #10](https://github.com/TheJollyLaMa/DecentVoyager/issues/10); use Pages for
+the complete wallet/header experience until that separate fix is verified.
 
 ```sh
 npm install

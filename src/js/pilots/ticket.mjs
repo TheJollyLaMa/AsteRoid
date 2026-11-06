@@ -35,9 +35,9 @@ export function createRunTicketManager({
     return !!(pilot.isPilot && pilot.address && baseUrl() && typeof game?.setNextRunSeed === 'function');
   }
 
-  function applyIfTitle() {
+  function applyBeforeLaunch() {
     const game = getGame();
-    if (!ready() || game?.state !== 'title' || !ticket || isExpired(ticket.ticket, now()) || appliedId === ticket.ticket.id) return false;
+    if (!ready() || !['title', 'gameOver'].includes(game?.state) || !ticket || isExpired(ticket.ticket, now()) || appliedId === ticket.ticket.id) return false;
     try {
       game.setNextRunSeed(ticket.seed, { ticket: ticket.ticket, mac: ticket.mac });
       appliedId = ticket.ticket.id;
@@ -68,7 +68,7 @@ export function createRunTicketManager({
       }
       ticket = { ticket: value, mac: result.mac, seed };
       appliedId = null;
-      applyIfTitle();
+      applyBeforeLaunch();
       return ticket;
     } catch (error) {
       if (token === generation) report(`Rewards need a referee flight ticket (${error.message}). GitHub fallback: ☥ profile → Victory Vault → Request mint on GitHub.`);
@@ -78,7 +78,7 @@ export function createRunTicketManager({
 
   function ensureTicket() {
     if (!ready()) return Promise.resolve(null);
-    if (ticket && !isExpired(ticket.ticket, now())) { applyIfTitle(); return Promise.resolve(ticket); }
+    if (ticket && !isExpired(ticket.ticket, now())) { applyBeforeLaunch(); return Promise.resolve(ticket); }
     if (inFlight) return inFlight;
     const request = fetchTicket().finally(() => { if (inFlight === request) inFlight = null; });
     inFlight = request;
@@ -110,7 +110,7 @@ export function createRunTicketManager({
   const timer = setIntervalImpl(() => {
     if (!pilot.isPilot) return;
     const game = getGame();
-    if (game?.state === 'title') { void ensureTicket(); applyIfTitle(); }
+    if (['title', 'gameOver'].includes(game?.state)) { void ensureTicket(); applyBeforeLaunch(); }
   }, pollInterval);
   return {
     ensureTicket,

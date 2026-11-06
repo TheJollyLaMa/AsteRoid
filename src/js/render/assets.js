@@ -26,6 +26,7 @@ const MANIFEST = {
     'mars-domicile': 'mars-domicile.jpg',
     'breathe-sheet': 'breathe-sheet.png',
     'breathe-still': 'breathe-still.png',
+    'white-lotus': 'white-lotus-clear.png',
     'future-rock-1': 'future-rock-1.png',
     'future-rock-2': 'future-rock-2.png',
     'future-rock-3': 'future-rock-3.png',

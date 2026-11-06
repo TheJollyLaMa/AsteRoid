@@ -16,7 +16,7 @@
 // - closestCall: smallest gap in px between the ship's and a dodged enemy bullet's edges
 //   (-1 when no enemy bullet was dodged).
 const WEAPON_TYPES = ['blaster', 'spread', 'rapid', 'plasma', 'nova', 'prism', 'singularity'];
-const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield', 'nova', 'prism', 'singularity'];
+const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield', 'nova', 'prism', 'singularity', 'life'];
 const COMBO_WINDOW = 2;
 const RECORD_SCHEMA = 'asteroid-level-record/1';
 const GAME_NAME = 'Decent Voyager: Galactic Gauntlet';
@@ -75,7 +75,7 @@ function minCall(a, b) {
 function mergeTotals(totals, stats, { outcome, livesLost = 0, durationSec = 0 } = {}) {
     for (const key of COUNTER_FIELDS) totals[key] = round((totals[key] || 0) + (stats[key] || 0));
     for (const key of WEAPON_TYPES) totals.shotsByWeapon[key] += stats.shotsByWeapon[key] || 0;
-    for (const key of PICKUP_TYPES) totals.pickupsCollected[key] += stats.pickupsCollected[key] || 0;
+    for (const key of PICKUP_TYPES) totals.pickupsCollected[key] = (totals.pickupsCollected[key] || 0) + (stats.pickupsCollected[key] || 0);
     totals.maxCombo = Math.max(totals.maxCombo, stats.maxCombo || 0);
     totals.closestCall = minCall(totals.closestCall, stats.closestCall);
     totals.levelsPlayed += 1;

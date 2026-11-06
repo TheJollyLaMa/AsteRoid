@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_ADMIN, isAdmin, adminConfig } from '../src/js/admin/config.mjs';
 import { splitMintBatches, buildProducts, parseQueue, verifyContract, reconcileReceipt } from '../src/js/admin/batch.mjs';
 import { parseWorkers, loadLedger, assertLegacySupporterRelease } from '../src/js/admin/admin-panel.mjs';
-const claim = { schema: 'asteroid-dnft-claim/1', recordId: 'test-L1', tokenURI: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3t67vyk7hedwhkcx7o7a7lbpi', image: 'ipfs://bafybeihs45httneokxvobxm3outngl2w677gssgkjxzklgqxafj32c42pi', claimant: DEFAULT_ADMIN, level: 1, difficulty: 'cadet', completedAt: '2026-11-05T18:00:00Z', requestedAt: '2026-11-05T18:00:01Z', score: { total: 1, level: 1, bonus: 0 } };
+const claim = { schema: 'asteroid-dnft-claim/1', recordId: 'test-L20', tokenURI: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3t67vyk7hedwhkcx7o7a7lbpi', image: 'ipfs://bafybeihs45httneokxvobxm3outngl2w677gssgkjxzklgqxafj32c42pi', claimant: DEFAULT_ADMIN, level: 20, difficulty: 'pilot', completedAt: '2026-11-05T18:00:00Z', requestedAt: '2026-11-05T18:00:01Z', score: { total: 1, level: 1, bonus: 0 } };
 test('legacy admin release cannot split an atomic reward bundle', () => {
   assert.doesNotThrow(() => assertLegacySupporterRelease([{ tokenId: '70' }]));
   assert.throws(() => assertLegacySupporterRelease([{ protocol: 'reward-bundle/1', tokenId: '76' }]), /omit signed assets/);
@@ -16,6 +16,7 @@ test('batch splitting is limited to twenty; tuples fix recipient/one-of-one/roya
   assert.deepEqual(buildProducts([claim], { adminWallet: DEFAULT_ADMIN })[0], { recipient: claim.claimant, amount: 1, maxSupply: 1, tokenURI: claim.tokenURI, royaltyReceiver: DEFAULT_ADMIN, royaltyFeeBps: 500 });
   assert.throws(() => buildProducts([claim, claim], { adminWallet: DEFAULT_ADMIN }));
   assert.throws(() => buildProducts([claim], { adminWallet: DEFAULT_ADMIN, royaltyFeeBps: 10001 }));
+  assert.throws(() => buildProducts([{ ...claim, level: 3 }], { adminWallet: DEFAULT_ADMIN }), /level 20/);
 });
 test('queues and workers reject malformed/duplicate identities and filter non-whitelisted', () => {
   assert.equal(parseQueue({ pending: [claim], minted: [] }).pending.length, 1);

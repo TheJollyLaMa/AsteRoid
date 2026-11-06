@@ -9,6 +9,43 @@ const { SHIP_TOP, SHIP_CHASE, SHIP_PALETTE, bulletWeaponType } = require('../src
 const { createFx, MAX_WORLD_PARTICLES, MAX_SCREEN_PARTICLES } = require('../src/js/render/fx');
 const card = require('../src/js/render/cardMath');
 const { renderBattleCard } = require('../src/js/render/battleCard');
+const { pixelText } = require('../src/js/render/font');
+const { drawOverlay } = require('../src/js/render/screens');
+
+test('crisp menu text uses full-size glyphs and measures before restoring the font', () => {
+    const calls = [];
+    const ctx = {
+        globalAlpha: 1,
+        save() { this.previousFont = this.font; },
+        restore() { this.font = this.previousFont; },
+        measureText() { return { width: this.font.includes('24px') ? 120 : 10 }; },
+        fillText(value, x, y) { calls.push({ value, x, y, font: this.font, baseline: this.textBaseline }); }
+    };
+    assert.equal(pixelText(ctx, 'LAUNCH', 400, 344, { size: 24, crisp: true }), 120);
+    assert.match(calls[0].font, /24px/);
+    assert.equal(calls[0].baseline, 'alphabetic');
+    assert.equal(ctx.globalAlpha, 1);
+});
+
+test('starter instructions stay visible and use readable full-resolution text', () => {
+    const calls = [];
+    const noop = () => {};
+    const gradient = { addColorStop: noop };
+    const ctx = new Proxy({
+        globalAlpha: 1,
+        measureText: value => ({ width: value.length * 8 }),
+        fillText(value) { calls.push({ value, font: this.font }); },
+        createRadialGradient: () => gradient,
+        createLinearGradient: () => gradient
+    }, { get(target, key) { return key in target ? target[key] : noop; } });
+    for (const time of [0, 0.5]) {
+        calls.length = 0;
+        drawOverlay(ctx, { state: 'title', time, selectedLevel: 1 }, {});
+        assert.equal(calls.filter(call => call.value === 'PRESS ENTER TO LAUNCH').length, 1);
+        assert.match(calls.find(call => call.value === 'FIRE (HOLD)').font, /16px/);
+        assert.match(calls.find(call => call.value === 'ORIGINAL TUNING').font, /14px/);
+    }
+});
 
 test('overview projection keeps the ship line and scrolls with the world', () => {
     const p = projectOverview({ x: 120, y: 500 }, 500);

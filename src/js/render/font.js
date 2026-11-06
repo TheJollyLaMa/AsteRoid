@@ -64,19 +64,21 @@ function rasterize(value, size, color, outline, weight) {
 }
 
 // Draws pixel text; returns the drawn width in canvas pixels.
-function pixelText(ctx, value, x, y, { size = 14, color = '#e8f6ff', align = 'left', outline = '#05030c', weight = 'bold', alpha = 1, scale = 1 } = {}) {
+function pixelText(ctx, value, x, y, { size = 14, color = '#e8f6ff', align = 'left', outline = '#05030c', weight = 'bold', alpha = 1, scale = 1, crisp = false } = {}) {
     const str = String(value);
     if (!str) return 0;
-    const entry = rasterize(str, size, color, outline, weight);
+    const entry = crisp ? null : rasterize(str, size, color, outline, weight);
     if (!entry) {
         ctx.save();
         ctx.globalAlpha *= alpha;
         ctx.font = fontFor(size * scale, weight);
         ctx.textAlign = align;
+        ctx.textBaseline = 'alphabetic';
         ctx.fillStyle = color;
+        const width = ctx.measureText ? ctx.measureText(str).width : 0;
         ctx.fillText(str, x, y);
         ctx.restore();
-        return ctx.measureText ? ctx.measureText(str).width : 0;
+        return width;
     }
     const k = PIXEL * scale;
     const w = entry.width * k;

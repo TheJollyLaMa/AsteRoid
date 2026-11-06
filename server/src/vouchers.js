@@ -50,6 +50,7 @@ function makeVoucherService({ privateKey, chainId = 84532, arenaAddress, stampsA
     address: signer ? signer.address : null,
     domainFor,
     async stamp({ player, record, metadataURI = '', deadline }) {
+      if (record.level !== 20 || record.difficulty === 'cadet') throw new Error('New achievement vouchers require a Pilot or Ace level 20 win.');
       const value = {
         player: getAddress(player),
         recordId: keccak256(toUtf8Bytes(record.id)),

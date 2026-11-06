@@ -5,6 +5,10 @@ arrows to steer, tap or hold **Fire**, press **Nova** for the special attack, an
 use **Next weapon** to cycle owned weapons. Charging and release behavior remains
 weapon-specific. Keyboard and gamepads still work; **E** also cycles weapons.
 Launch/continue, pause/resume and view controls do not require a keyboard.
+After game over, Launch/continue starts a fresh voyage at level 1. White Lotus
+pickups grant an extra life in levels 3, 7, 12 and 16. A performance pause freezes
+solo/local battle after a long stall; use Pause/resume to continue after visual
+load has been reduced. Online rounds cannot be paused by one player's device.
 
 **Enable tilt** is optional and only requests motion permission after a tap.
 Hold the device comfortably while the first valid reading calibrates neutral.
