@@ -289,11 +289,12 @@ function drawScene() {
             ctx.translate(shake.x, shake.y);
             renderers[game.view](ctx, game, fx);
         } finally { ctx.restore(); }
+        // CRT texture stays under screen text so the HUD and win screens remain sharp.
+        if (display.crt) drawCrt(ctx, game.time || 0);
         fx.drawScreen(ctx, game);
     }
     hud.drawHud(ctx, game, fx, { muted: audio.muted, crt: display.crt });
     drawOverlay(ctx, game, fx);
-    if (display.crt && game.state !== 'title') drawCrt(ctx, game.time || 0);
 }
 
 let last = null;
@@ -307,6 +308,17 @@ let frameSamples = 0;
 let maxFrameMs = 0;
 let maxDrawMs = 0;
 let maxStepMs = 0;
+// The live fault shown over the canvas. Persisted diagnostics keep the history;
+// this clears as soon as the battle recovers.
+let activeFault = null;
+function setFault(kind, message) {
+    activeFault = kind ? { kind, message, at: Date.now() } : null;
+}
+function clearFault() {
+    if (!activeFault) return;
+    activeFault = null;
+    window.dispatchEvent(new CustomEvent('voyager:diagnostic'));
+}
 function freezeBattle() {
     input.clear();
     if (!networkMode && game.state === 'playing') game.handleAction('pause');
@@ -314,6 +326,7 @@ function freezeBattle() {
 function frameError(error) {
     frameFault = true;
     freezeBattle();
+    setFault('frame-error', 'The battle hit an error and is paused.');
     diagnostics.record('frame-error', error);
     hud.setToast('Flight error: open Flight reports below to save diagnostics and recover.', 12000);
 }
@@ -341,10 +354,12 @@ function advanceFrame(timestamp) {
         } else {
             hud.setToast('Reduced visual load. Online battle continues on the referee.', 12000);
         }
+        setFault('performance-pause', networkMode ? 'Visuals reduced; the online battle continues.' : 'Battle frozen to recover frame rate. Press P to resume.');
         diagnostics.record('performance-pause', networkMode ? 'Online visuals reduced; referee continues.' : 'Local battle paused after a slow frame.', { elapsedMs: Math.round(elapsed * 1000), quality: renderQuality });
         healthyFrames = 0;
         slowFrames = 0;
     }
+    if (activeFault?.kind === 'performance-pause' && (networkMode ? Date.now() - activeFault.at > 10000 : game.state !== 'paused')) clearFault();
     healthyFrames = game.state === 'playing' && elapsed > 0 && elapsed < 0.025 ? healthyFrames + 1 : 0;
     if (game.state === 'playing' && healthyFrames >= 600 && renderQuality < 1) {
         renderQuality = Math.min(1, renderQuality + 0.05);
@@ -374,34 +389,42 @@ canvas.addEventListener('contextlost', event => {
     contextLost = true;
     graphicsRecoveryPending = true;
     freezeBattle();
+    setFault('context-lost', networkMode ? 'Graphics are restarting; the online battle continues.' : 'Graphics are restarting; the battle is paused.');
     diagnostics.record('context-lost', 'Canvas graphics context lost. Battle paused locally; online referee continues.');
     releaseGraphicsResources();
 });
+function restartRendering() {
+    frameFault = false;
+    last = null;
+    sampleTime = null;
+    frameSamples = maxFrameMs = maxDrawMs = maxStepMs = 0;
+    slowFrames = healthyFrames = 0;
+    fx.clear();
+    input.clear();
+    if (typeof ctx.reset === 'function') ctx.reset();
+    else canvas.width = canvas.width;
+    if (graphicsRecoveryPending) {
+        renderQuality = Math.min(renderQuality, 0.65);
+        fitBacking();
+        graphicsRecoveryPending = false;
+    }
+}
 canvas.addEventListener('contextrestored', () => {
     contextLost = false;
-    frameFault = true;
-    diagnostics.record('context-restored', 'Graphics restored. Use Resume battle in Flight reports.');
+    restartRendering();
+    setFault(null);
+    hud.setToast(networkMode ? 'Graphics restored.' : 'Graphics restored. Press P to resume.', 8000);
+    diagnostics.record('context-restored', 'Graphics restored automatically at reduced quality.');
 });
 window.addEventListener('error', event => diagnostics.record('window-error', event.error || event.message || 'Resource load failed'));
 window.addEventListener('unhandledrejection', event => diagnostics.record('unhandled-rejection', event.reason));
 window.voyagerDiagnostics = {
     report: diagnostics.report,
+    activeFault: () => activeFault && { ...activeFault },
     resume() {
         if (contextLost) throw new Error('Graphics context has not recovered. Download the report, then reload.');
-        frameFault = false;
-        last = null;
-        sampleTime = null;
-        frameSamples = maxFrameMs = maxDrawMs = maxStepMs = 0;
-        slowFrames = healthyFrames = 0;
-        fx.clear();
-        input.clear();
-        if (typeof ctx.reset === 'function') ctx.reset();
-        else canvas.width = canvas.width;
-        if (graphicsRecoveryPending) {
-            renderQuality = Math.min(renderQuality, 0.65);
-            fitBacking();
-            graphicsRecoveryPending = false;
-        }
+        restartRendering();
+        setFault(null);
         if (!networkMode && game.state === 'paused') game.handleAction('confirm');
         diagnostics.record('manual-resume', 'Pilot requested recovery.');
     }

@@ -111,7 +111,11 @@ test('about content covers rewards, tutorials and the multiplayer walkthrough wi
   assert.match(source,/Coming soon/); assert.match(source,/purchaseWithToken/);
   assert.match(ABOUT.recovery, /Online rounds continue/);
   assert.match(ABOUT.diagnostics, /Nothing is sent automatically/);
-  assert.match(ABOUT.recovery, /bounded, reusable caches/);
+  assert.match(ABOUT.recovery, /bounded, reusable cache/);
+  assert.match(ABOUT.recovery, /built-in pixel font/);
+  assert.match(ABOUT.recovery, /redraws by itself/);
+  assert.ok(ABOUT.pickups.some(item => item.sheet && /Mini emblem[\s\S]*5, 9, 14 and 18[\s\S]*five hits/.test(item.text)));
+  assert.match(ABOUT.mission, /elephant escort/);
   assert.match(ABOUT.diagnostics, /not measurements of actual GPU memory/);
   const html=readFileSync(new URL('../src/index.html',import.meta.url),'utf8');
   assert.ok(html.indexOf('about-modal.mjs')<html.indexOf('js/shell/main.mjs'));

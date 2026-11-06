@@ -12,7 +12,7 @@ const ERC20_ABI = ['function allowance(address,address) view returns (uint256)',
 export const ABOUT = {
   tagline: 'Navigate the cosmic fabric. Every sector you clear is stamped into your flight record.',
   stats: [['20', 'levels across two sectors'], ['3', 'difficulties · Cadet → Ace'], ['5', 'ships per battle group']],
-  mission: 'Decent Voyager is the DecentAgency arcade: an 8-bit gauntlet with modern firepower. Fly through drifting Mandelblum fields, blast the cores that shoot back, grab weapon upgrades, and survive to the end of each level. Sector I (levels 1–10) is free for everyone, no wallet needed. Decent Pilots fly for real rewards.',
+  mission: 'Decent Voyager is the DecentAgency arcade: an 8-bit gauntlet with modern firepower. Fly through drifting Mandelblum fields, blast the cores that shoot back, grab weapon upgrades, and survive to the end of each level. Clear level 10 or 20 and the Mandelblum elephant escort salutes you. Sector I (levels 1–10) is free for everyone, no wallet needed. Decent Pilots fly for real rewards.',
   rewards: [
     { icon: '◈', title: 'Level 20 achievement NFT', body: 'Only completing level 20 on Pilot or Ace earns a new achievement NFT. Earlier levels keep their battle records and stats without minting an NFT. The final achievement carries the date, time, difficulty, telemetry and battle rendering; a full solo marathon also records all 20 levels. Cadet flights are practice only.', note: 'Queued after signing the flight log. It waits in ☥ → Rewards waiting each time you log in. Previously issued vouchers remain valid.' },
     { icon: '⬢', title: 'Guarded Supporter pickups', body: 'Whitelisted Pilot and Ace players find a guarded pickup near levels 9–10 and another near 19–20. Sector I offers DecentHead or DecentMarket; Sector II offers DecentCalendar, DecentCanopy or DecentPilgrimages. Destroy every guard and fly through the token.', note: 'Each capture refills health; the first unlocks your difficulty’s levels 11–20. Transfers require funded custody and referee verification.' },
@@ -33,6 +33,7 @@ export const ABOUT = {
     { img: 'brand/voyager-disc.png', text: 'Fly through glowing capsules for upgrades: S Spread Cannon, R Rapid Laser, P Plasma Lance, O Shield.' },
     { img: 'vendor-breathe', text: 'The breathing ENS·ETH emblem refills your power bar.' },
     { img: 'game/white-lotus-clear.png', text: 'White Lotus grants one extra life to the ship that collects it. Find one in levels 3, 7, 12 and 16 for a second chance.' },
+    { img: 'game/mini-emblem-sheet.png', sheet: true, text: 'The spinning Mini emblem flies down at you in levels 5, 9, 14 and 18. Catch it to shrink your ship to half size; five hits bring you back to full size. Hits still cost power, shield-blocked hits do not count, and losing a life ends Mini mode.' },
     { img: null, text: 'Orange cores shoot back. Clear them before the gauntlet reaches you.' },
   ],
   couch: [
@@ -51,7 +52,7 @@ export const ABOUT = {
   ],
   pilots: 'Wallet features (level 20 achievement NFTs, Supporter Vaults, Sector II rewards and online rounds) are open to whitelisted DecentAgency collaborators, the Decent Pilots. Not on the list yet? Ask in the DecentAgency Discord. Levels 1–10 stay free for everyone.',
   saving: 'Your progress lives in this browser. Use the left IPFS orb to back it up or restore it with your own pinning provider. IPFS is public, so only game progress is exported.',
-  recovery: 'Busy battles reduce cosmetic load without removing hazards. Glow and text sprites use bounded, reusable caches so graphics surfaces cannot accumulate with each changing combo colour or score. A long stall pauses solo/local play; use P, the mobile Pause/resume control, or Resume battle below the game. Online rounds continue on the referee. Close-up hit glints are subdued and full-screen flashes are replaced with edge pulses. Graphics loss releases cached surfaces; after restoration, explicitly resume at reduced resolution while caches rebuild.',
+  recovery: 'Busy battles reduce cosmetic load without removing hazards. Glow sprites use a bounded, reusable cache, and HUD and win-screen text uses a built-in pixel font snapped to your screen’s pixels, so it stays sharp and changing scores create no new graphics surfaces. A long stall pauses solo/local play; use P, the mobile Pause/resume control, or Resume battle below the game. Online rounds continue on the referee. Close-up hit glints are subdued and full-screen flashes are replaced with edge pulses. Graphics loss releases cached surfaces; when the browser restores graphics the game redraws by itself at reduced resolution and stays paused until you press P or Resume battle. The warning strip above the game shows only a problem happening right now; earlier visits stay listed in Flight reports.',
   diagnostics: 'Flight reports & recovery below the game lets you download a bounded local report with the build/ruleset, recent errors, stack locations, battle state, entity counts, canvas size and graphics-resource samples every 15 seconds of active play. Cache counts, allocation totals and estimated surface bytes help diagnose gradual growth; these are not measurements of actual GPU memory or utilization. Reports survive reloads when browser storage is available. Wallet addresses, signatures, pinning credentials, replay inputs and save data are not collected. Nothing is sent automatically; review the JSON before sharing it with a Flight reports issue. If graphics do not recover, download first, then reload.',
 };
 
@@ -99,7 +100,9 @@ p { margin:0 0 14px; } .lead { font-size:17px; color:#d6e6f5; max-width:70ch; }
 kbd { flex:none; min-width:112px; text-align:center; padding:6px 10px; border:1px solid #c9d6e355; border-bottom-width:3px; border-radius:9px; background:#0b1630; font:700 12px ui-monospace,Menlo,monospace; color:var(--gold); }
 .pickups { display:flex; flex-wrap:wrap; gap:14px; margin-top:22px; }
 .pickup { flex:1 1 240px; display:flex; gap:12px; align-items:center; padding:12px 14px; border-radius:14px; background:#0b1630a8; border:1px solid #7dff8c2a; font-size:13.5px; color:#c3d3e3; }
-.pickup img { width:34px; height:34px; object-fit:contain; } .pickup .dot { width:14px; height:14px; margin:0 10px; border-radius:50%; background:#fff1c2; box-shadow:0 0 12px 5px #ff5a1c; flex:none; }
+.pickup img { width:34px; height:34px; object-fit:contain; } .pickup img.sheet { object-fit:cover; object-position:0 50%; animation:about-sheet 1s steps(12, jump-none) infinite; }
+@keyframes about-sheet { to { object-position:100% 50%; } }
+.pickup .dot { width:14px; height:14px; margin:0 10px; border-radius:50%; background:#fff1c2; box-shadow:0 0 12px 5px #ff5a1c; flex:none; }
 .modes { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.5fr); gap:22px; }
 .track { padding:26px; border-radius:18px; border:1px solid #c9d6e324; background:#0a1428c0; }
 .track h3 { margin:0 0 4px; font-size:18px; } .track .price { font:700 12px ui-monospace,Menlo,monospace; letter-spacing:.12em; color:var(--green); text-transform:uppercase; }
@@ -163,7 +166,7 @@ export class VoyagerAbout extends Base {
       </div></section>
       <section aria-labelledby="school"><h2 id="school">Flight school</h2>
         <div class="keys">${ABOUT.school.map(item => `<div class="key"><kbd>${esc(item.key)}</kbd><span>${esc(item.text)}</span></div>`).join('')}</div>
-        <div class="pickups">${ABOUT.pickups.map(item => `<div class="pickup">${item.img === 'vendor-breathe' ? `<img src="${esc(breathe)}" alt="">` : item.img ? `<img src="${esc(art(item.img))}" alt="">` : '<span class="dot" aria-hidden="true"></span>'}<span>${esc(item.text)}</span></div>`).join('')}</div>
+        <div class="pickups">${ABOUT.pickups.map(item => `<div class="pickup">${item.img === 'vendor-breathe' ? `<img src="${esc(breathe)}" alt="">` : item.img ? `<img${item.sheet ? ' class="sheet"' : ''} src="${esc(art(item.img))}" alt="">` : '<span class="dot" aria-hidden="true"></span>'}<span>${esc(item.text)}</span></div>`).join('')}</div>
       </section>
       <section aria-labelledby="multiplayer"><h2 id="multiplayer">Multiplayer walkthrough</h2><div class="modes">
         <div class="track"><h3>Same screen</h3><div class="price">Free · 2–5 ships</div><ol>${ABOUT.couch.map(step => `<li>${esc(step)}</li>`).join('')}</ol></div>

@@ -1,5 +1,5 @@
 const { WEAPONS } = require('../weapons');
-const { getImage, getTinted, rockKeyFor, futureRockKeyFor, makeCanvas, BREATHE_FRAMES } = require('./assets');
+const { getImage, getTinted, rockKeyFor, futureRockKeyFor, makeCanvas, BREATHE_FRAMES, MINI_EMBLEM_FRAMES } = require('./assets');
 const { pixelText } = require('./font');
 
 const PICKUP_STYLE = {
@@ -7,7 +7,9 @@ const PICKUP_STYLE = {
     rapid: { color: WEAPONS.rapid.color, label: 'R' },
     plasma: { color: WEAPONS.plasma.color, label: 'P' },
     power: { color: '#7dff8c', label: '+' },
-    shield: { color: '#6fa8ff', label: 'O' }
+    shield: { color: '#6fa8ff', label: 'O' },
+    life: { color: '#ffffff', label: '+' },
+    mini: { color: '#ff7ae6', label: 'M' }
 };
 
 const COLOR_TO_WEAPON = Object.keys(WEAPONS).reduce((map, type) => {
@@ -284,6 +286,10 @@ function drawPickup(ctx, pickup, x, y, radius, time, alpha = 1) {
         drawBreathe(ctx, x, y, radius, time, alpha);
         return;
     }
+    if (pickup.type === 'mini') {
+        drawMiniEmblem(ctx, x, y, radius, time, alpha);
+        return;
+    }
     const style = PICKUP_STYLE[pickup.type] || PICKUP_STYLE.power;
     drawGlow(ctx, x, y, radius * 2.6, style.color, alpha * 0.55);
     ctx.save();
@@ -311,6 +317,68 @@ function drawPickup(ctx, pickup, x, y, radius, time, alpha = 1) {
         ctx.stroke();
     } else {
         pixelText(ctx, style.label, 0, radius * 0.4, { size: Math.max(8, Math.round(radius * 1.1)), color: style.color, align: 'center' });
+    }
+    ctx.restore();
+}
+
+// Spinning Compos token: shrinks the ship for five hits.
+function drawMiniEmblem(ctx, x, y, radius, time, alpha = 1, label = true) {
+    const color = PICKUP_STYLE.mini.color;
+    const sheet = getImage('mini-emblem-sheet');
+    const pulse = 1 + 0.08 * Math.sin(time * 6);
+    drawGlow(ctx, x, y, radius * 3 * pulse, color, alpha * 0.6);
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    const size = radius * 2.6 * pulse;
+    if (sheet) {
+        const frame = Math.floor(time * 12) % MINI_EMBLEM_FRAMES;
+        const fw = sheet.naturalWidth / MINI_EMBLEM_FRAMES;
+        ctx.drawImage(sheet, frame * fw, 0, fw, sheet.naturalHeight, x - size / 2, y - size / 2, size, size);
+    } else {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(x, y, radius * Math.abs(Math.cos(time * 3)) + 2, radius, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    // Inward chevrons hint at shrinking.
+    ctx.fillStyle = color;
+    const reach = radius * (1.7 - 0.25 * ((time * 2) % 1));
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        ctx.save();
+        ctx.translate(x + dx * reach, y + dy * reach);
+        ctx.rotate(Math.atan2(-dy, -dx));
+        ctx.beginPath();
+        ctx.moveTo(4, 0);
+        ctx.lineTo(-3, -4);
+        ctx.lineTo(-3, 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+    ctx.restore();
+    if (label) pixelText(ctx, 'MINI', x, y + radius * 2.3, { size: 13, color, align: 'center', alpha });
+}
+
+// Pink halo with one pip per hit left while the ship is shrunk (drawn in ship space).
+function drawMiniAura(ctx, ship, time, radius = 38) {
+    const hits = Math.max(0, Math.min(5, Number(ship.miniHits) || 0));
+    if (!hits) return;
+    const color = PICKUP_STYLE.mini.color;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.globalAlpha *= 0.55 + 0.25 * Math.sin(time * 5);
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    ctx.lineDashOffset = -time * 30;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    for (let i = 0; i < hits; i++) {
+        const a = -Math.PI / 2 + (i - (hits - 1) / 2) * 0.42;
+        ctx.fillRect(Math.cos(a) * (radius + 8) - 3, Math.sin(a) * (radius + 8) - 3, 6, 6);
     }
     ctx.restore();
 }
@@ -609,6 +677,8 @@ module.exports = {
     drawAsteroid,
     drawBreathe,
     drawPickup,
+    drawMiniEmblem,
+    drawMiniAura,
     drawShipTop,
     drawShipChase,
     drawShield,

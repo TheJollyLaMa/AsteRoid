@@ -290,11 +290,12 @@ function drawScene() {
             ctx.translate(shake.x, shake.y);
             renderers[game.view](ctx, game, fx);
         } finally { ctx.restore(); }
+        // CRT texture stays under screen text so the HUD and win screens remain sharp.
+        if (display.crt) drawCrt(ctx, game.time || 0);
         fx.drawScreen(ctx, game);
     }
     hud.drawHud(ctx, game, fx, { muted: audio.muted, crt: display.crt });
     drawOverlay(ctx, game, fx);
-    if (display.crt && game.state !== 'title') drawCrt(ctx, game.time || 0);
 }
 
 let last = null;
@@ -308,6 +309,17 @@ let frameSamples = 0;
 let maxFrameMs = 0;
 let maxDrawMs = 0;
 let maxStepMs = 0;
+// The live fault shown over the canvas. Persisted diagnostics keep the history;
+// this clears as soon as the battle recovers.
+let activeFault = null;
+function setFault(kind, message) {
+    activeFault = kind ? { kind, message, at: Date.now() } : null;
+}
+function clearFault() {
+    if (!activeFault) return;
+    activeFault = null;
+    window.dispatchEvent(new CustomEvent('voyager:diagnostic'));
+}
 function freezeBattle() {
     input.clear();
     if (!networkMode && game.state === 'playing') game.handleAction('pause');
@@ -315,6 +327,7 @@ function freezeBattle() {
 function frameError(error) {
     frameFault = true;
     freezeBattle();
+    setFault('frame-error', 'The battle hit an error and is paused.');
     diagnostics.record('frame-error', error);
     hud.setToast('Flight error: open Flight reports below to save diagnostics and recover.', 12000);
 }
@@ -342,10 +355,12 @@ function advanceFrame(timestamp) {
         } else {
             hud.setToast('Reduced visual load. Online battle continues on the referee.', 12000);
         }
+        setFault('performance-pause', networkMode ? 'Visuals reduced; the online battle continues.' : 'Battle frozen to recover frame rate. Press P to resume.');
         diagnostics.record('performance-pause', networkMode ? 'Online visuals reduced; referee continues.' : 'Local battle paused after a slow frame.', { elapsedMs: Math.round(elapsed * 1000), quality: renderQuality });
         healthyFrames = 0;
         slowFrames = 0;
     }
+    if (activeFault?.kind === 'performance-pause' && (networkMode ? Date.now() - activeFault.at > 10000 : game.state !== 'paused')) clearFault();
     healthyFrames = game.state === 'playing' && elapsed > 0 && elapsed < 0.025 ? healthyFrames + 1 : 0;
     if (game.state === 'playing' && healthyFrames >= 600 && renderQuality < 1) {
         renderQuality = Math.min(1, renderQuality + 0.05);
@@ -375,34 +390,42 @@ canvas.addEventListener('contextlost', event => {
     contextLost = true;
     graphicsRecoveryPending = true;
     freezeBattle();
+    setFault('context-lost', networkMode ? 'Graphics are restarting; the online battle continues.' : 'Graphics are restarting; the battle is paused.');
     diagnostics.record('context-lost', 'Canvas graphics context lost. Battle paused locally; online referee continues.');
     releaseGraphicsResources();
 });
+function restartRendering() {
+    frameFault = false;
+    last = null;
+    sampleTime = null;
+    frameSamples = maxFrameMs = maxDrawMs = maxStepMs = 0;
+    slowFrames = healthyFrames = 0;
+    fx.clear();
+    input.clear();
+    if (typeof ctx.reset === 'function') ctx.reset();
+    else canvas.width = canvas.width;
+    if (graphicsRecoveryPending) {
+        renderQuality = Math.min(renderQuality, 0.65);
+        fitBacking();
+        graphicsRecoveryPending = false;
+    }
+}
 canvas.addEventListener('contextrestored', () => {
     contextLost = false;
-    frameFault = true;
-    diagnostics.record('context-restored', 'Graphics restored. Use Resume battle in Flight reports.');
+    restartRendering();
+    setFault(null);
+    hud.setToast(networkMode ? 'Graphics restored.' : 'Graphics restored. Press P to resume.', 8000);
+    diagnostics.record('context-restored', 'Graphics restored automatically at reduced quality.');
 });
 window.addEventListener('error', event => diagnostics.record('window-error', event.error || event.message || 'Resource load failed'));
 window.addEventListener('unhandledrejection', event => diagnostics.record('unhandled-rejection', event.reason));
 window.voyagerDiagnostics = {
     report: diagnostics.report,
+    activeFault: () => activeFault && { ...activeFault },
     resume() {
         if (contextLost) throw new Error('Graphics context has not recovered. Download the report, then reload.');
-        frameFault = false;
-        last = null;
-        sampleTime = null;
-        frameSamples = maxFrameMs = maxDrawMs = maxStepMs = 0;
-        slowFrames = healthyFrames = 0;
-        fx.clear();
-        input.clear();
-        if (typeof ctx.reset === 'function') ctx.reset();
-        else canvas.width = canvas.width;
-        if (graphicsRecoveryPending) {
-            renderQuality = Math.min(renderQuality, 0.65);
-            fitBacking();
-            graphicsRecoveryPending = false;
-        }
+        restartRendering();
+        setFault(null);
         if (!networkMode && game.state === 'paused') game.handleAction('confirm');
         diagnostics.record('manual-resume', 'Pilot requested recovery.');
     }
@@ -448,7 +471,7 @@ window.asteroidReady = true;
 window.dispatchEvent(new CustomEvent('asteroid:ready', { detail: { game } }));
 requestAnimationFrame(frame);
 
-},{"./audio":3,"./diagnostics":6,"./game":8,"./input":9,"./render/assets":15,"./render/battleCard":17,"./render/cardMath":18,"./render/font":20,"./render/fx":21,"./render/hud":22,"./render/overview":23,"./render/post":25,"./render/pov":26,"./render/projection":27,"./render/screens":28,"./render/shapes":29}],2:[function(require,module,exports){
+},{"./audio":3,"./diagnostics":6,"./game":8,"./input":9,"./render/assets":15,"./render/battleCard":17,"./render/cardMath":18,"./render/font":21,"./render/fx":22,"./render/hud":23,"./render/overview":24,"./render/post":26,"./render/pov":27,"./render/projection":28,"./render/screens":29,"./render/shapes":30}],2:[function(require,module,exports){
 const { range } = require('./rng');
 
 const WORLD_WIDTH = 800;
@@ -530,7 +553,7 @@ Asteroid.WORLD_WIDTH = WORLD_WIDTH;
 
 module.exports = Asteroid;
 
-},{"./rng":31}],3:[function(require,module,exports){
+},{"./rng":32}],3:[function(require,module,exports){
 // Synthesized 8-bit-meets-arcade sound effects (WebAudio only, no files).
 // The AudioContext is created lazily on the first key press (autoplay rules).
 const { normalizeEvent } = require('./render/events');
@@ -766,12 +789,19 @@ function createAudio({ onError = error => console.error('Voyager audio:', error)
                 // Ens Eth breathe: rising shimmering chime.
                 arpeggio([3, 7, 10, 15, 19, 22], { step: 0.055, type: 'triangle', volume: 0.07, length: 0.35 });
                 arpeggio([15, 19, 22, 27], { step: 0.055, type: 'sine', volume: 0.04, length: 0.5, delay: 0.03 });
+            } else if (e.pickupType === 'mini') {
+                // Shrink: a quick falling warble.
+                tone({ frequency: 1600, endFrequency: 220, duration: 0.35, type: 'square', volume: 0.05, vibrato: 30 });
+                arpeggio([24, 19, 15, 12, 7], { step: 0.045, type: 'triangle', volume: 0.05, length: 0.12 });
             } else if (e.pickupType === 'shield') {
                 tone({ frequency: 300, endFrequency: 1200, duration: 0.3, type: 'sine', volume: 0.08, vibrato: 18 });
                 arpeggio([7, 14], { step: 0.1, type: 'triangle', volume: 0.05, length: 0.25 });
             } else {
                 arpeggio([0, 4, 7, 12], { step: 0.05, type: 'square', volume: 0.05, length: 0.09 });
             }
+        },
+        miniEnded: () => {
+            tone({ frequency: 220, endFrequency: 1200, duration: 0.3, type: 'triangle', volume: 0.06 });
         },
         asteroidMissed: () => {
             if (!throttle('missed', 0.25)) return;
@@ -841,7 +871,7 @@ function createAudio({ onError = error => console.error('Voyager audio:', error)
 
 module.exports = { createAudio };
 
-},{"./render/events":19}],4:[function(require,module,exports){
+},{"./render/events":20}],4:[function(require,module,exports){
 // World-space projectile. `y` is forward distance along the level.
 class Bullet {
     constructor({ x, y, vx = 0, vy = 0, size = 3, damage = 1, pierce = false, life = 1.4, owner = 'player', color = '#fff', radius = 0, maxRadius = 0, age = 0, playerIndex = 0, ownerWeapon = null }) {
@@ -893,7 +923,7 @@ module.exports = checkCollision;
 const RULESET = require('./ruleset');
 const KEY = 'voyager.diagnostics.v1';
 const LIMIT = 40;
-const BUILD = 'bounded-graphics-2';
+const BUILD = 'readable-hud-3';
 const NUMERIC_FIELDS = [
     'level', 'particles', 'rocks', 'bullets', 'width', 'height', 'dpr', 'elapsedMs', 'quality',
     'glowSprites', 'glowAllocations', 'shapePixels', 'textSprites', 'textAllocations', 'textPixels',
@@ -908,7 +938,14 @@ function redact(value) {
         .slice(0, 1800);
 }
 
-function createDiagnostics({ storage, snapshot = () => ({}), notify = () => {}, now = () => Date.now() } = {}) {
+function sessionId(now) {
+    const random = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+    return `${now().toString(36)}-${random.slice(0, 8)}`;
+}
+
+// Entries persist across reloads for flight reports; `session` lets the page
+// tell faults from this visit apart from historical ones.
+function createDiagnostics({ storage, snapshot = () => ({}), notify = () => {}, now = () => Date.now(), session = sessionId(now) } = {}) {
     let entries = [];
     let storageError = storage ? null : 'Browser storage unavailable';
     try {
@@ -920,12 +957,12 @@ function createDiagnostics({ storage, snapshot = () => ({}), notify = () => {}, 
                 ...Object.fromEntries(NUMERIC_FIELDS
                     .filter(key => Number.isFinite(item[key])).map(key => [key, item[key]])),
                 ...Object.fromEntries(['contextLost', 'contextAlpha'].filter(key => typeof item[key] === 'boolean').map(key => [key, item[key]])),
-                ...Object.fromEntries(['state', 'difficulty', 'view', 'build'].filter(key => typeof item[key] === 'string').map(key => [key, redact(item[key])]))
+                ...Object.fromEntries(['state', 'difficulty', 'view', 'build', 'session'].filter(key => typeof item[key] === 'string').map(key => [key, redact(item[key])]))
             }));
         }
     } catch (error) { storageError = redact(error.message); }
     const report = () => ({
-        schema: 'voyager-diagnostics/1', build: BUILD, ruleset: RULESET,
+        schema: 'voyager-diagnostics/1', build: BUILD, ruleset: RULESET, session,
         browser: typeof navigator === 'undefined' ? 'unavailable' : redact(navigator.userAgent),
         storageError, current: snapshot(), entries: entries.map(entry => ({ ...entry }))
     });
@@ -934,7 +971,7 @@ function createDiagnostics({ storage, snapshot = () => ({}), notify = () => {}, 
         const previous = entries.at(-1);
         const at = now();
         if (previous?.kind === kind && previous.message === message && at - previous.at < 5000) return;
-        entries.push({ at, kind: redact(kind), message, stack: redact(error?.stack), build: BUILD, ...snapshot(), ...details });
+        entries.push({ at, kind: redact(kind), message, stack: redact(error?.stack), build: BUILD, session, ...snapshot(), ...details });
         entries = entries.slice(-LIMIT);
         try { storage?.setItem(KEY, JSON.stringify(entries)); }
         catch (failure) { storageError = redact(failure.message); }
@@ -943,9 +980,9 @@ function createDiagnostics({ storage, snapshot = () => ({}), notify = () => {}, 
     return { record, report };
 }
 
-module.exports = { createDiagnostics, redact, KEY, LIMIT };
+module.exports = { createDiagnostics, redact, KEY, LIMIT, BUILD };
 
-},{"./ruleset":32}],7:[function(require,module,exports){
+},{"./ruleset":33}],7:[function(require,module,exports){
 // Difficulty presets. Cadet is the original tuning and must stay unchanged;
 // pilot and ace scale the per-level knobs produced by levels.js.
 const DIFFICULTY_IDS = ['cadet', 'pilot', 'ace'];
@@ -1143,8 +1180,13 @@ const RESPAWN_TIME = 1.8;
 const FIXED_STEP = 1 / 60;
 const WARP_TIME = 2.2;
 const MAX_PARTICLES = 256;
+const MINI_EMBLEM_HITS = 5;
+const MINI_SCALE = 0.5;
+const MINI_EMBLEM_SPEED = 70;
+const MINI_EMBLEM_RANGE = 700;
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
+const shipSize = (ship) => ship.baseSize * (ship.scale || 1) * (ship.miniHits > 0 ? MINI_SCALE : 1);
 
 function defaultSeedSource() {
     if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
@@ -1368,7 +1410,7 @@ class Game {
             const current = this.ships[i];
             const savedLives = current.lives; const savedWeapon = current.weapon;
             current.reset(); current.lives = savedLives; current.weapon = savedWeapon;
-            current.scale = scaleForPlayers(this.playerCount); current.size = current.baseSize * current.scale;
+            current.scale = scaleForPlayers(this.playerCount); current.size = shipSize(current);
             current.x = 400 + (i - (this.playerCount - 1) / 2) * Math.min(42, 320 / this.playerCount);
             current.y = current.offset; current.invulnerable = LEVEL_INTRO_TIME;
         }
@@ -1412,7 +1454,7 @@ class Game {
         this.ships = Array.from({ length: count }, (_, index) => {
             const ship = index < previous.length ? previous[index] : this.createShip();
             ship.scale = scale;
-            ship.size = ship.baseSize * scale;
+            ship.size = shipSize(ship);
             ship.x = 400 + (index - (count - 1) / 2) * Math.min(42, 320 / count);
             ship.y = this.scrollY + ship.offset;
             return ship;
@@ -1600,6 +1642,7 @@ class Game {
         }
 
         this.updateAsteroids(dt);
+        this.updatePickups(dt);
         this.playerBullets.forEach((bullet) => bullet.update(dt));
         this.enemyBullets.forEach((bullet) => bullet.update(dt));
         this.resolvePlayerHits();
@@ -1617,6 +1660,16 @@ class Game {
                 });
                 if (canEndLevel(gatePlayers, this.mode)) this.completeLevel();
             }
+        }
+    }
+
+    // The Mini emblem flies down the battlefield toward the ship, weaving side to side.
+    updatePickups(dt) {
+        for (const pickup of this.pickups) {
+            if (pickup.type !== 'mini' || pickup.collected || pickup.y - this.scrollY > MINI_EMBLEM_RANGE) continue;
+            pickup.drift = (pickup.drift || 0) + dt;
+            pickup.y -= MINI_EMBLEM_SPEED * dt;
+            pickup.x = Math.max(60, Math.min(740, (pickup.homeX ?? pickup.x) + Math.sin(pickup.drift * 1.6) * 150));
         }
     }
 
@@ -1858,11 +1911,21 @@ class Game {
         ship.invulnerable = 0.6;
         this.tracker.damaged(before - ship.power, x, y);
         this.emit('shipHit', { x, y, power: ship.power });
+        if (ship.miniHits > 0) {
+            ship.miniHits -= 1;
+            this.tracker.miniHit();
+            if (ship.miniHits === 0) {
+                ship.size = shipSize(ship);
+                this.emit('miniEnded', { x: ship.x, y: ship.y, player: playerIndex });
+            }
+        }
         if (ship.power <= 0) this.destroyShip(ship, playerIndex);
     }
 
     destroyShip(ship = this.ship, playerIndex = 0) {
         const shipIndex = this.ships.indexOf(ship);
+        ship.miniHits = 0;
+        ship.size = shipSize(ship);
         if (this.playerCount > 1) {
             ship.lives -= 1; ship.power = 0; ship.respawnTimer = ship.lives > 0 ? RESPAWN_TIME : 0;
             if (this.playerStats[shipIndex]) { this.playerStats[shipIndex].livesLost += 1; this.playerStats[shipIndex].alive = ship.lives > 0; }
@@ -1906,7 +1969,10 @@ class Game {
 
     collectPickup(pickup, targetShip = this.ship, playerIndex = 0) {
         const ship = targetShip;
-        if (pickup.type === 'power') {
+        if (pickup.type === 'mini') {
+            ship.miniHits = MINI_EMBLEM_HITS;
+            ship.size = shipSize(ship);
+        } else if (pickup.type === 'power') {
             ship.power = Math.min(ship.maxPower, ship.power + (this.level.powerRestore ?? 40));
         } else if (pickup.type === 'life') {
             ship.lives += 1;
@@ -2137,7 +2203,7 @@ Game.groupPlayers = require('./multiplayer').groupPlayers;
 
 module.exports = Game;
 
-},{"./bullet":4,"./collision":5,"./difficulty":7,"./inputlog":10,"./levelLayout":11,"./levels":12,"./multiplayer":13,"./prizes":14,"./rng":31,"./ruleset":32,"./save":33,"./spaceship":34,"./stats":35,"./vault":36,"./weapons":37}],9:[function(require,module,exports){
+},{"./bullet":4,"./collision":5,"./difficulty":7,"./inputlog":10,"./levelLayout":11,"./levels":12,"./multiplayer":13,"./prizes":14,"./rng":32,"./ruleset":33,"./save":34,"./spaceship":35,"./stats":36,"./vault":37,"./weapons":38}],9:[function(require,module,exports){
 const ACTIONS = Object.freeze({
     start: 9,
     view: 3,
@@ -2455,6 +2521,7 @@ const SAFE_START = 520;
 const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield'];
 const FUTURE_PICKUPS = ['nova', 'prism', 'singularity'];
 const EXTRA_LIFE_LEVELS = [3, 7, 12, 16];
+const MINI_EMBLEM_LEVELS = [5, 9, 14, 18];
 
 function scatterAsteroid(level, rng, y) {
     const size = range(rng, 14, 26 + level.number * 1.6);
@@ -2574,14 +2641,18 @@ function populateLevel(level, rng) {
     if (EXTRA_LIFE_LEVELS.includes(level.number)) {
         pickups.push({ x: WORLD_WIDTH / 2, y: level.length * 0.6, type: 'life', size: 20 });
     }
+    if (MINI_EMBLEM_LEVELS.includes(level.number)) {
+        const homeX = 240 + ((level.number * 149) % 320);
+        pickups.push({ x: homeX, homeX, y: level.length * 0.4, type: 'mini', size: 16 });
+    }
     asteroids.sort((a, b) => a.y - b.y);
     pickups.sort((a, b) => a.y - b.y);
     return { asteroids, pickups };
 }
 
-module.exports = { populateLevel, PICKUP_TYPES, FUTURE_PICKUPS, EXTRA_LIFE_LEVELS, SAFE_START };
+module.exports = { populateLevel, PICKUP_TYPES, FUTURE_PICKUPS, EXTRA_LIFE_LEVELS, MINI_EMBLEM_LEVELS, SAFE_START };
 
-},{"./asteroid":2,"./rng":31}],12:[function(require,module,exports){
+},{"./asteroid":2,"./rng":32}],12:[function(require,module,exports){
 const { applyDifficulty } = require('./difficulty');
 
 const LEVEL_COUNT = 10;
@@ -2711,6 +2782,9 @@ const FUTURE_ROCK_KEYS = ['future-rock-1', 'future-rock-2', 'future-rock-3', 'fu
 const BACKDROP_KEYS = ['bg-galaxy', 'bg-royal', 'bg-2a', 'bg-tec', 'bg-zz'];
 const SECTOR2_BACKDROP_KEYS = ['bg-sector2-lotus', 'bg-sector2-mars', 'bg-sector2-top'];
 const BREATHE_FRAMES = 8;
+const MINI_EMBLEM_FRAMES = 12;
+const ELEPHANT_FRAMES = 20;
+const ELEPHANT_COLUMNS = 5;
 
 const MANIFEST = {
     'rock-1': 'rock-1.png',
@@ -2731,6 +2805,8 @@ const MANIFEST = {
     'breathe-sheet': 'breathe-sheet.png',
     'breathe-still': 'breathe-still.png',
     'white-lotus': 'white-lotus-clear.png',
+    'mini-emblem-sheet': 'mini-emblem-sheet.png',
+    'elephant-sheet': 'elephant-sheet.jpg',
     'future-rock-1': 'future-rock-1.png',
     'future-rock-2': 'future-rock-2.png',
     'future-rock-3': 'future-rock-3.png',
@@ -2872,6 +2948,9 @@ module.exports = {
     BACKDROP_KEYS,
     SECTOR2_BACKDROP_KEYS,
     BREATHE_FRAMES,
+    MINI_EMBLEM_FRAMES,
+    ELEPHANT_FRAMES,
+    ELEPHANT_COLUMNS,
     isImageReady,
     getImage,
     loadAssets,
@@ -2980,7 +3059,7 @@ function createOverviewBackground() {
 
 module.exports = { LEVEL_TINTS, SECTOR2_TINTS, levelTint, createStarfield, drawNebula, createOverviewBackground };
 
-},{"./assets":15,"./projection":27}],17:[function(require,module,exports){
+},{"./assets":15,"./projection":28}],17:[function(require,module,exports){
 // Collectible "battle card" renderer: a deterministic image of one cleared level.
 const { getImage, loadAssets, makeCanvas, ROCK_KEYS, FUTURE_ROCK_KEYS, backdropKeyFor, rockKeyFor } = require('./assets');
 const { pixelText } = require('./font');
@@ -3102,7 +3181,8 @@ function drawHeader(ctx, record, accent) {
     pixelText(ctx, TITLE, header.x, header.y + 30, { size: 24, color: '#7fd7ff' });
     const levelText = `LEVEL ${String(num(record.level, 1)).padStart(2, '0')}`;
     drawGlow(ctx, header.x + 150, header.y + 78, 260, accent, 0.35);
-    pixelText(ctx, levelText, header.x, header.y + 96, { size: 60, color: '#fff4c8', outline: accent });
+    pixelText(ctx, levelText, header.x + 6, header.y + 102, { size: 60, color: accent, outline: null });
+    pixelText(ctx, levelText, header.x, header.y + 96, { size: 60, color: '#fff4c8' });
     pixelText(ctx, String(record.levelName || '').toUpperCase(), header.x, header.y + 138, { size: 30, color: accent });
     const captures = Array.isArray(record.captures) ? record.captures.length : (record.supporterCaptured || record.capture ? 1 : 0);
     const sector = num(record.level) >= 11 || record.sector === 2 ? 'SECTOR II · FAR FUTURE' : 'SECTOR I · GALACTIC GAUNTLET';
@@ -3448,7 +3528,7 @@ async function previewBattleCard(record) {
 
 module.exports = { renderBattleCard, previewBattleCard, latestRecord };
 
-},{"./assets":15,"./cardMath":18,"./font":20,"./hud":22,"./shapes":29}],18:[function(require,module,exports){
+},{"./assets":15,"./cardMath":18,"./font":21,"./hud":23,"./shapes":30}],18:[function(require,module,exports){
 // Pure helpers for the battle card (testable in Node).
 const WORLD_WIDTH = 800;
 
@@ -3589,156 +3669,289 @@ module.exports = {
 };
 
 },{}],19:[function(require,module,exports){
+// Framed 8-bit "transmission" viewscreen playing the Mandelblum flying
+// elephant. Shared by the Sector I / Sector II win screens and the warp.
+const { getImage, ELEPHANT_FRAMES, ELEPHANT_COLUMNS } = require('./assets');
+const { pixelText } = require('./font');
+const { drawGlow } = require('./shapes');
+
+const ELEPHANT_FPS = 6;
+const ELEPHANT_ASPECT = 236 / 360;
+const HEADER_H = 20;
+
+function elephantFrame(time) {
+    const frame = Math.floor(Math.max(0, time) * ELEPHANT_FPS) % ELEPHANT_FRAMES;
+    return { frame, column: frame % ELEPHANT_COLUMNS, row: Math.floor(frame / ELEPHANT_COLUMNS) };
+}
+
+// (x, y) is the top-left of the header bar; returns the total drawn height.
+function drawElephantVision(ctx, x, y, width, time, { label = 'ELEPHANT ESCORT', color = '#ffe65c', alpha = 1 } = {}) {
+    const w = Math.round(width);
+    const h = Math.round(w * ELEPHANT_ASPECT);
+    const left = Math.round(x);
+    const top = Math.round(y);
+    const screenTop = top + HEADER_H;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    drawGlow(ctx, left + w / 2, screenTop + h / 2, w * 0.8, color, 0.28 + 0.08 * Math.sin(time * 3));
+
+    // Bezel with stepped 8-bit corners.
+    ctx.fillStyle = '#05030c';
+    ctx.fillRect(left - 6, top - 2, w + 12, HEADER_H + h + 8);
+    ctx.fillRect(left - 2, top - 6, w + 4, HEADER_H + h + 16);
+    ctx.fillStyle = color;
+    ctx.fillRect(left - 4, top - 4, w + 8, 2);
+    ctx.fillRect(left - 4, screenTop + h + 2, w + 8, 2);
+    ctx.fillRect(left - 4, top - 4, 2, HEADER_H + h + 8);
+    ctx.fillRect(left + w + 2, top - 4, 2, HEADER_H + h + 8);
+
+    // Header strip.
+    ctx.fillRect(left, top, w, HEADER_H - 2);
+    pixelText(ctx, label, left + 8, top + 14, { size: 13, color: '#05030c', outline: null });
+    if (Math.floor(time * 2) % 2 === 0) {
+        ctx.fillStyle = '#ff3a5c';
+        ctx.fillRect(left + w - 34, top + 5, 8, 8);
+    }
+    pixelText(ctx, 'REC', left + w - 8, top + 14, { size: 10, color: '#05030c', outline: null, align: 'right' });
+
+    const sheet = getImage('elephant-sheet');
+    if (sheet) {
+        const cell = elephantFrame(time);
+        const fw = sheet.naturalWidth / ELEPHANT_COLUMNS;
+        const fh = sheet.naturalHeight / Math.ceil(ELEPHANT_FRAMES / ELEPHANT_COLUMNS);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(sheet, cell.column * fw, cell.row * fh, fw, fh, left, screenTop, w, h);
+    } else {
+        ctx.fillStyle = '#10131f';
+        ctx.fillRect(left, screenTop, w, h);
+        pixelText(ctx, 'NO SIGNAL', left + w / 2, screenTop + h / 2 + 5, { size: 13, color: '#9fb4c8', align: 'center' });
+    }
+    // Monitor scanlines stay inside the picture so they never cross text.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+    for (let line = screenTop + 1; line < screenTop + h; line += 3) ctx.fillRect(left, line, w, 1);
+    const sweep = screenTop + ((time * 40) % h);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.fillRect(left, sweep, w, 6);
+    ctx.restore();
+    return HEADER_H + h;
+}
+
+module.exports = { drawElephantVision, elephantFrame, ELEPHANT_FPS, ELEPHANT_ASPECT };
+
+},{"./assets":15,"./font":21,"./shapes":30}],20:[function(require,module,exports){
 // Normalises game events for presentation. Older game builds emitted pickups
 // as `{ type: 'power' }` (the pickup kind overwrote the event name); newer
 // builds emit `{ type: 'pickup', pickupType: 'power' }`.
 const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield'];
+const PICKUP_KINDS = [...PICKUP_TYPES, 'nova', 'prism', 'singularity', 'life', 'mini'];
 
 function normalizeEvent(event) {
     if (!event || typeof event !== 'object') return { type: 'unknown' };
     if (PICKUP_TYPES.includes(event.type)) return { ...event, type: 'pickup', pickupType: event.type };
     if (event.type === 'pickup') {
         const kind = event.pickupType || event.pickup || event.kind;
-        return { ...event, pickupType: PICKUP_TYPES.includes(kind) ? kind : 'power' };
+        return { ...event, pickupType: PICKUP_KINDS.includes(kind) ? kind : 'power' };
     }
     return event;
 }
 
-module.exports = { PICKUP_TYPES, normalizeEvent };
+module.exports = { PICKUP_TYPES, PICKUP_KINDS, normalizeEvent };
 
-},{}],20:[function(require,module,exports){
-// Crisp "8-bit" text: glyphs are rasterised at a low resolution into a cached
-// offscreen canvas and scaled up with smoothing disabled, giving chunky
-// pixels without shipping a font file. Falls back to plain fillText in
-// environments without an offscreen canvas.
-const { makeCanvas } = require('./assets');
-
+},{}],21:[function(require,module,exports){
+// 8-bit text from a built-in 5x7 bitmap font. Each glyph pixel becomes a
+// rectangle snapped to whole device pixels, so text stays sharp and readable at
+// any canvas scale without offscreen canvases or pixel readback. Strings with
+// characters outside the font fall back to the system font.
 const FONT_STACK = 'Menlo, Monaco, Consolas, "DejaVu Sans Mono", "Courier New", monospace';
-const PIXEL = 2;
-const CACHE_LIMIT = 128;
+const CELL = 6;
+const ASCENT = 7;
+const DESCENT = 2;
+const CACHE_LIMIT = 256;
 const cache = new Map();
 let allocations = 0;
+
+const GLYPHS = {
+    ' ': '', '!': '00100/00100/00100/00100/00100/00000/00100', '"': '01010/01010/01010', '#': '01010/01010/11111/01010/11111/01010/01010',
+    '$': '00100/01111/10100/01110/00101/11110/00100', '%': '11000/11001/00010/00100/01000/10011/00011', '&': '01100/10010/10100/01000/10101/10010/01101',
+    "'": '00100/00100/01000', '(': '00010/00100/01000/01000/01000/00100/00010', ')': '01000/00100/00010/00010/00010/00100/01000',
+    '*': '00000/00100/10101/01110/10101/00100', '+': '00000/00100/00100/11111/00100/00100', ',': '00000/00000/00000/00000/01100/00100/01000',
+    '-': '00000/00000/00000/11111', '.': '00000/00000/00000/00000/00000/01100/01100', '/': '00000/00001/00010/00100/01000/10000',
+    0: '01110/10001/10011/10101/11001/10001/01110', 1: '00100/01100/00100/00100/00100/00100/01110', 2: '01110/10001/00001/00010/00100/01000/11111',
+    3: '11111/00010/00100/00010/00001/10001/01110', 4: '00010/00110/01010/10010/11111/00010/00010', 5: '11111/10000/11110/00001/00001/10001/01110',
+    6: '00110/01000/10000/11110/10001/10001/01110', 7: '11111/00001/00010/00100/01000/01000/01000', 8: '01110/10001/10001/01110/10001/10001/01110',
+    9: '01110/10001/10001/01111/00001/00010/01100', ':': '00000/01100/01100/00000/01100/01100', ';': '00000/01100/01100/00000/01100/00100/01000',
+    '<': '00010/00100/01000/10000/01000/00100/00010', '=': '00000/00000/11111/00000/11111', '>': '01000/00100/00010/00001/00010/00100/01000',
+    '?': '01110/10001/00001/00010/00100/00000/00100', '@': '01110/10001/00001/01101/10101/10101/01110',
+    A: '01110/10001/10001/11111/10001/10001/10001', B: '11110/10001/10001/11110/10001/10001/11110', C: '01110/10001/10000/10000/10000/10001/01110',
+    D: '11100/10010/10001/10001/10001/10010/11100', E: '11111/10000/10000/11110/10000/10000/11111', F: '11111/10000/10000/11110/10000/10000/10000',
+    G: '01110/10001/10000/10111/10001/10001/01111', H: '10001/10001/10001/11111/10001/10001/10001', I: '01110/00100/00100/00100/00100/00100/01110',
+    J: '00111/00010/00010/00010/00010/10010/01100', K: '10001/10010/10100/11000/10100/10010/10001', L: '10000/10000/10000/10000/10000/10000/11111',
+    M: '10001/11011/10101/10101/10001/10001/10001', N: '10001/10001/11001/10101/10011/10001/10001', O: '01110/10001/10001/10001/10001/10001/01110',
+    P: '11110/10001/10001/11110/10000/10000/10000', Q: '01110/10001/10001/10001/10101/10010/01101', R: '11110/10001/10001/11110/10100/10010/10001',
+    S: '01111/10000/10000/01110/00001/00001/11110', T: '11111/00100/00100/00100/00100/00100/00100', U: '10001/10001/10001/10001/10001/10001/01110',
+    V: '10001/10001/10001/10001/10001/01010/00100', W: '10001/10001/10001/10101/10101/10101/01010', X: '10001/10001/01010/00100/01010/10001/10001',
+    Y: '10001/10001/10001/01010/00100/00100/00100', Z: '11111/00001/00010/00100/01000/10000/11111',
+    '[': '01110/01000/01000/01000/01000/01000/01110', '\\': '00000/10000/01000/00100/00010/00001', ']': '01110/00010/00010/00010/00010/00010/01110',
+    '^': '00100/01010/10001', _: '00000/00000/00000/00000/00000/00000/11111', '`': '01000/00100/00010',
+    a: '00000/00000/01110/00001/01111/10001/01111', b: '10000/10000/10110/11001/10001/10001/11110', c: '00000/00000/01110/10000/10000/10001/01110',
+    d: '00001/00001/01101/10011/10001/10001/01111', e: '00000/00000/01110/10001/11111/10000/01110', f: '00110/01001/01000/11100/01000/01000/01000',
+    g: '00000/00000/01111/10001/10001/10011/01101/00001/01110', h: '10000/10000/10110/11001/10001/10001/10001', i: '00100/00000/01100/00100/00100/00100/01110',
+    j: '00010/00000/00110/00010/00010/00010/00010/10010/01100', k: '10000/10000/10010/10100/11000/10100/10010', l: '01100/00100/00100/00100/00100/00100/01110',
+    m: '00000/00000/11010/10101/10101/10101/10001', n: '00000/00000/10110/11001/10001/10001/10001', o: '00000/00000/01110/10001/10001/10001/01110',
+    p: '00000/00000/11110/10001/10001/10001/11110/10000/10000', q: '00000/00000/01111/10001/10001/10001/01111/00001/00001',
+    r: '00000/00000/10110/11001/10000/10000/10000', s: '00000/00000/01111/10000/01110/00001/11110', t: '01000/01000/11100/01000/01000/01001/00110',
+    u: '00000/00000/10001/10001/10001/10011/01101', v: '00000/00000/10001/10001/10001/01010/00100', w: '00000/00000/10001/10001/10101/10101/01010',
+    x: '00000/00000/10001/01010/00100/01010/10001', y: '00000/00000/10001/10001/10001/10001/01111/00001/01110', z: '00000/00000/11111/00010/00100/01000/11111',
+    '{': '00010/00100/00100/01000/00100/00100/00010', '|': '00100/00100/00100/00100/00100/00100/00100', '}': '01000/00100/00100/00010/00100/00100/01000',
+    '~': '00000/00000/01000/10101/00010', '·': '00000/00000/00000/01100/01100', '×': '00000/10001/01010/00100/01010/10001',
+    '♥': '00000/01010/11111/11111/01110/00100', '◇': '00000/00100/01010/10001/01010/00100'
+};
+const GLYPH_ROWS = new Map(Object.entries(GLYPHS).map(([ch, rows]) => [ch, rows ? rows.split('/').map((row) => parseInt(row, 2)) : []]));
 
 function fontFor(size, weight = 'bold') {
     return `${weight} ${size}px ${FONT_STACK}`;
 }
 
-let scratch = null;
-function scratchContext() {
-    if (scratch) return scratch;
-    const canvas = makeCanvas(256, 64);
-    if (!canvas) return null;
-    scratch = canvas.getContext('2d', { willReadFrequently: true });
-    return scratch;
+function runsOf(mask, width, height, offset) {
+    const runs = [];
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (!mask[y * width + x]) continue;
+            const start = x;
+            while (x < width && mask[y * width + x]) x++;
+            runs.push(start - offset, y - offset, x - start);
+        }
+    }
+    return runs;
 }
 
-function rasterize(value, size, color, outline, weight) {
-    const small = Math.max(5, Math.round(size / PIXEL));
-    const key = `${value}|${small}|${color}|${outline}|${weight}`;
-    const hit = cache.get(key);
+function pathOf(runs) {
+    if (typeof Path2D !== 'function') return null;
+    const path = new Path2D();
+    for (let i = 0; i < runs.length; i += 3) path.rect(runs[i], runs[i + 1], runs[i + 2], 1);
+    return path;
+}
+
+// Glyph runs for a whole string, plus a one-pixel outline/drop-shadow mask.
+function layout(value) {
+    const hit = cache.get(value);
     if (hit) {
-        cache.delete(key);
-        cache.set(key, hit);
+        cache.delete(value);
+        cache.set(value, hit);
         return hit;
     }
-    const sctx = scratchContext();
-    if (!sctx) return null;
-    sctx.font = fontFor(small, weight);
-    const width = Math.ceil(sctx.measureText(value).width) + 4;
-    const height = Math.ceil(small * 1.35) + 4;
-    if (sctx.canvas.width < width || sctx.canvas.height < height) {
-        sctx.canvas.width = Math.max(sctx.canvas.width, width);
-        sctx.canvas.height = Math.max(sctx.canvas.height, height);
+    const chars = [...value];
+    if (!chars.every((ch) => GLYPH_ROWS.has(ch))) return null;
+    const cols = Math.max(1, chars.length * CELL - 1);
+    const width = cols + 2;
+    const height = ASCENT + DESCENT + 2;
+    const glyphs = new Uint8Array(width * height);
+    chars.forEach((ch, index) => {
+        GLYPH_ROWS.get(ch).forEach((bits, row) => {
+            for (let col = 0; col < 5; col++) if (bits & (16 >> col)) glyphs[(row + 1) * width + 1 + index * CELL + col] = 1;
+        });
+    });
+    const outline = new Uint8Array(width * height);
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (!glyphs[y * width + x]) continue;
+            for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1], [1, 1]]) {
+                const nx = x + dx; const ny = y + dy;
+                if (nx >= 0 && ny >= 0 && nx < width && ny < height) outline[ny * width + nx] = 1;
+            }
+        }
     }
-    sctx.clearRect(0, 0, width, height);
-    sctx.font = fontFor(small, weight);
-    sctx.textBaseline = 'alphabetic';
-    const baseline = Math.round(small * 1.02) + 2;
-    if (outline) {
-        sctx.fillStyle = outline;
-        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [1, 1]]) sctx.fillText(value, 2 + dx, baseline + dy);
-    }
-    sctx.fillStyle = color;
-    sctx.fillText(value, 2, baseline);
-    // Threshold alpha so glyph edges stay hard like a bitmap font. The scratch
-    // canvas is CPU-backed (willReadFrequently) so this readback stays cheap.
-    const data = sctx.getImageData(0, 0, width, height);
-    const px = data.data;
-    for (let i = 3; i < px.length; i += 4) px[i] = px[i] > 110 ? 255 : 0;
-    let canvas;
-    if (cache.size >= CACHE_LIMIT) {
-        const oldest = cache.keys().next().value;
-        canvas = cache.get(oldest).canvas;
-        cache.delete(oldest);
-        if (canvas.width !== width) canvas.width = width;
-        if (canvas.height !== height) canvas.height = height;
-    } else {
-        canvas = makeCanvas(width, height);
-        allocations++;
-    }
-    canvas.getContext('2d').putImageData(data, 0, 0);
-    const entry = { canvas, width, height, baseline };
-    cache.set(key, entry);
+    const fill = runsOf(glyphs, width, height, 1);
+    const edge = runsOf(outline, width, height, 1);
+    if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value);
+    const entry = { cols, fill, edge, fillPath: pathOf(fill), edgePath: pathOf(edge) };
+    allocations++;
+    cache.set(value, entry);
     return entry;
 }
 
+function axisAligned(ctx) {
+    const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+    return m && !m.b && !m.c && m.a > 0 && m.d > 0 ? m : null;
+}
+
+// Logical size of one font pixel, rounded to whole device pixels when the
+// canvas transform allows it.
+function units(ctx, size, scale = 1, matrix = axisAligned(ctx)) {
+    const k = (size / 10) * scale;
+    if (!matrix) return { x: k, y: k };
+    const snap = (factor) => (k * factor >= 0.75 ? Math.max(1, Math.round(k * factor)) / factor : k);
+    return { x: snap(matrix.a), y: snap(matrix.d) };
+}
+
+function pixelTextMetrics(ctx, { size = 14, scale = 1 } = {}) {
+    const unit = units(ctx, size, scale);
+    return { unitX: unit.x, unitY: unit.y, advance: CELL * unit.x, ascent: ASCENT * unit.y };
+}
+
 function getFontResources() {
-    return {
-        textSprites: cache.size, textAllocations: allocations,
-        textPixels: [...cache.values()].reduce((total, entry) => total + entry.canvas.width * entry.canvas.height, 0)
-            + (scratch ? scratch.canvas.width * scratch.canvas.height : 0)
-    };
+    return { textSprites: cache.size, textAllocations: allocations, textPixels: 0 };
 }
 
 function clearFontResources() {
-    for (const entry of cache.values()) { entry.canvas.width = 0; entry.canvas.height = 0; }
     cache.clear();
-    if (scratch) { scratch.canvas.width = 0; scratch.canvas.height = 0; }
-    scratch = null;
 }
 
-// Draws pixel text; returns the drawn width in canvas pixels.
+function systemText(ctx, str, x, y, { size, color, align, weight, alpha, scale }) {
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.font = fontFor(size * scale, weight);
+    ctx.textAlign = align;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = color;
+    const width = ctx.measureText ? ctx.measureText(str).width : 0;
+    ctx.fillText(str, x, y);
+    ctx.restore();
+    return width;
+}
+
+function fillRuns(ctx, path, runs) {
+    if (path) { ctx.fill(path); return; }
+    for (let i = 0; i < runs.length; i += 3) ctx.fillRect(runs[i], runs[i + 1], runs[i + 2], 1);
+}
+
+// Draws pixel text with its baseline at y; returns the drawn width.
 function pixelText(ctx, value, x, y, { size = 14, color = '#e8f6ff', align = 'left', outline = '#05030c', weight = 'bold', alpha = 1, scale = 1, crisp = false } = {}) {
     const str = String(value);
     if (!str) return 0;
-    const entry = crisp ? null : rasterize(str, size, color, outline, weight);
-    if (!entry) {
-        ctx.save();
-        ctx.globalAlpha *= alpha;
-        ctx.font = fontFor(size * scale, weight);
-        ctx.textAlign = align;
-        ctx.textBaseline = 'alphabetic';
-        ctx.fillStyle = color;
-        const width = ctx.measureText ? ctx.measureText(str).width : 0;
-        ctx.fillText(str, x, y);
-        ctx.restore();
-        return width;
+    const entry = crisp ? null : layout(str);
+    if (!entry) return systemText(ctx, str, x, y, { size, color, align, weight, alpha, scale });
+    const matrix = axisAligned(ctx);
+    const unit = units(ctx, size, scale, matrix);
+    const width = entry.cols * unit.x;
+    let left = align === 'center' ? x - width / 2 : align === 'right' ? x - width : x;
+    let top = y - ASCENT * unit.y;
+    if (matrix) {
+        left = (Math.round(left * matrix.a + matrix.e) - matrix.e) / matrix.a;
+        top = (Math.round(top * matrix.d + matrix.f) - matrix.f) / matrix.d;
     }
-    const k = PIXEL * scale;
-    const w = entry.width * k;
-    let left = x;
-    if (align === 'center') left = x - w / 2;
-    else if (align === 'right') left = x - w;
-    const top = y - entry.baseline * k;
-    const smoothing = ctx.imageSmoothingEnabled;
-    ctx.imageSmoothingEnabled = false;
-    const prevAlpha = ctx.globalAlpha;
-    ctx.globalAlpha = prevAlpha * alpha;
-    ctx.drawImage(entry.canvas, Math.round(left), Math.round(top), Math.round(w), Math.round(entry.height * k));
-    ctx.globalAlpha = prevAlpha;
-    ctx.imageSmoothingEnabled = smoothing;
-    return w;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.translate(left, top);
+    ctx.scale(unit.x, unit.y);
+    if (outline) { ctx.fillStyle = outline; fillRuns(ctx, entry.edgePath, entry.edge); }
+    ctx.fillStyle = color;
+    fillRuns(ctx, entry.fillPath, entry.fill);
+    ctx.restore();
+    return width;
 }
 
-function measurePixelText(value, { size = 14, weight = 'bold', scale = 1 } = {}) {
-    const entry = rasterize(String(value), size, '#fff', null, weight);
-    if (!entry) return String(value).length * size * 0.6 * scale;
-    return entry.width * PIXEL * scale;
+function measurePixelText(value, { size = 14, scale = 1 } = {}, ctx = null) {
+    const str = String(value);
+    const entry = layout(str);
+    const unit = ctx ? units(ctx, size, scale) : { x: (size / 10) * scale };
+    if (!entry) return str.length * size * 0.6 * scale;
+    return entry.cols * unit.x;
 }
 
-module.exports = { FONT_STACK, fontFor, pixelText, measurePixelText, CACHE_LIMIT, getFontResources, clearFontResources };
+module.exports = { FONT_STACK, fontFor, pixelText, measurePixelText, pixelTextMetrics, CACHE_LIMIT, GLYPHS, getFontResources, clearFontResources };
 
-},{"./assets":15}],21:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 // Client-side juice: explosions, debris, shockwaves, thruster trails, shield
 // ripples, floating text, fireworks, screen shake, hit-stop and slow-mo.
 // Driven purely by drained game events so game.js stays deterministic.
@@ -3748,13 +3961,14 @@ const { VIEW } = require('./projection');
 const { normalizeEvent } = require('./events');
 const { getImage } = require('./assets');
 const { drawSupporterToken } = require('./vault');
+const { drawElephantVision } = require('./elephant');
 
 const MAX_WORLD_PARTICLES = 360;
 const MAX_SCREEN_PARTICLES = 450;
 const ROCK_COLORS = ['#7fffe0', '#ff8ae6', '#b9a8ff', '#ffffff', '#9ff3ff', '#ffe18a'];
 const SHOOTER_COLORS = ['#ff5a1c', '#ff8a5c', '#ffd25c', '#ffffff', '#ff3a1c'];
 const FIREWORK_COLORS = ['#3fb8ff', '#7fd7ff', '#7dff8c', '#ffe65c', '#d8e4ef', '#ffffff', '#ffb347'];
-const PICKUP_COLORS = { spread: '#5fffd0', rapid: '#ffe65c', plasma: '#d8e4ef', power: '#7dff8c', shield: '#6fa8ff' };
+const PICKUP_COLORS = { spread: '#5fffd0', rapid: '#ffe65c', plasma: '#d8e4ef', power: '#7dff8c', shield: '#6fa8ff', life: '#ffffff', mini: '#ff7ae6' };
 
 const rand = (min, max) => min + Math.random() * (max - min);
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
@@ -3763,6 +3977,7 @@ function pickupLabel(kind, weapon) {
     if (kind === 'life') return '+1 LIFE';
     if (kind === 'power') return '+POWER';
     if (kind === 'shield') return 'SHIELD UP';
+    if (kind === 'mini') return 'MINI SHIP · 5 HITS';
     const tier = weapon && weapon.type === kind && weapon.tier ? ` LV${weapon.tier}` : '';
     return `${String(kind || 'BONUS').toUpperCase()}${tier}`;
 }
@@ -3911,6 +4126,10 @@ function createFx() {
                     }
                     break;
                 }
+                case 'miniEnded':
+                    addWorld({ kind: 'ring', x: e.x ?? ship.x, y: e.y ?? ship.y, vx: 0, vy: drift, life: 0.6, maxLife: 0.6, radius: 6, grow: 70, color: PICKUP_COLORS.mini });
+                    floatText(e.x ?? ship.x, (e.y ?? ship.y) + 34, 'FULL SIZE', PICKUP_COLORS.mini, 1.1, 15);
+                    break;
                 case 'asteroidMissed':
                     if (e.x !== undefined) floatText(e.x, e.y + 20, 'MISS', '#8a93a6', 0.8, 11);
                     break;
@@ -4163,6 +4382,9 @@ function createFx() {
                 ctx.translate(cx, cy); ctx.rotate(t * 3); ctx.drawImage(image, -size / 2, -size / 2, size, size);
             }
             ctx.restore();
+            // Level 10 finale: the elephant escort rides the warp with you.
+            const escortAlpha = Math.min(1, state.warpTime * 3, (2.5 - state.warpTime) * 3);
+            if (escortAlpha > 0) drawElephantVision(ctx, cx - 110, 34, 220, state.warpTime, { label: 'ELEPHANT ESCORT', color: '#bafcff', alpha: escortAlpha });
             pixelText(ctx, t < 0.8 ? 'WARPING TO SECTOR II' : 'FAR FUTURE · ARRIVAL', cx, VIEW.height - 70, { size: 20, align: 'center', color: '#bafcff' });
         }
         if (state.captureTime >= 0) {
@@ -4244,16 +4466,24 @@ function createFx() {
 
 module.exports = { createFx, MAX_WORLD_PARTICLES, MAX_SCREEN_PARTICLES };
 
-},{"./assets":15,"./events":19,"./font":20,"./projection":27,"./shapes":29,"./vault":30}],22:[function(require,module,exports){
+},{"./assets":15,"./elephant":19,"./events":20,"./font":21,"./projection":28,"./shapes":30,"./vault":31}],23:[function(require,module,exports){
 const { VIEW } = require('./projection');
 const { WEAPONS, MAX_TIER } = require('../weapons');
 const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('../levels');
 const { PICKUP_STYLE, SHIP_TOP, SHIP_PALETTE, pixelSprite, drawBreathe, drawGlow } = require('./shapes');
-const { pixelText } = require('./font');
+const { pixelText, measurePixelText, pixelTextMetrics } = require('./font');
 const { getPlayers, versusMode } = require('./players');
 
 const DIFFICULTY_COLORS = { cadet: '#7dff8c', pilot: '#ffd25c', ace: '#ff3c5a' };
 const POWER_SEGMENTS = 16;
+const FOOTER_STEPS = [
+    { size: 13, name: true, flags: true, scoreLabel: true, difficulty: true },
+    { size: 13, name: false, flags: true, scoreLabel: true, difficulty: true },
+    { size: 13, name: false, flags: false, scoreLabel: false, difficulty: true },
+    { size: 11, name: true, flags: true, scoreLabel: true, difficulty: true },
+    { size: 11, name: false, flags: false, scoreLabel: false, difficulty: false },
+    { size: 10, name: false, flags: false, scoreLabel: false, difficulty: false }
+];
 
 function difficultyColor(id) {
     return DIFFICULTY_COLORS[id] || '#9fb4c8';
@@ -4331,90 +4561,135 @@ function createHud() {
     function drawToast(ctx) {
         if (!view.toast || Date.now() >= view.toastUntil) return;
         const alpha = Math.min(1, (view.toastUntil - Date.now()) / 300);
-        panelBox(ctx, VIEW.width / 2 - 150, 14, 300, 26, '#7fd7ff', 0.45);
-        pixelText(ctx, view.toast, VIEW.width / 2, 32, { size: 12, align: 'center', color: '#ffffff', alpha });
+        const width = Math.min(VIEW.width - 40, Math.max(300, measurePixelText(view.toast, { size: 13 }, ctx) + 32));
+        panelBox(ctx, VIEW.width / 2 - width / 2, 14, width, 28, '#7fd7ff', 0.72);
+        pixelText(ctx, view.toast, VIEW.width / 2, 28 + pixelTextMetrics(ctx, { size: 13 }).ascent / 2, { size: 13, align: 'center', color: '#ffffff', alpha });
     }
 
     // One slim, see-through strip along the bottom edge keeps the play field clear.
     const STRIP_H = 24;
+    const GAP = 18;
+
+    function footerText(game, step, opts) {
+        const sector = game.level.number >= 11 ? 'II · ' : '';
+        const total = game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT;
+        const name = step.name ? ` ${String(game.level.name || '').toUpperCase()}` : '';
+        const flags = step.flags ? `${opts.muted ? 'M:OFF ' : ''}${opts.crt ? 'CRT ' : ''}[V] ${game.view === 'pov' ? 'POV' : 'MAP'}` : `${opts.muted ? 'M:OFF ' : ''}${game.view === 'pov' ? 'POV' : 'MAP'}`;
+        return { label: `${sector}LV ${game.level.number}/${total}${name}`, flags };
+    }
+
+    // Widest layout that fits: larger text first, then optional labels drop away.
+    function footerLayout(ctx, game, opts) {
+        const ship = game.ship || {};
+        const weapon = ship.weapon || { type: 'blaster', tier: 1 };
+        const spec = WEAPONS[weapon.type] || WEAPONS.blaster;
+        const lives = Math.max(0, Number(ship.lives) || 0);
+        const charging = weapon.type === 'nova' || weapon.type === 'singularity';
+        const key = [VIEW.width, pixelTextMetrics(ctx, { size: 13 }).unitX, game.level.number, game.level.name, spec.name, lives, charging,
+            opts.muted, opts.crt, game.view, game.difficulty, ship.miniHits > 0].join('|');
+        if (view.footerKey === key) return view.footer;
+        let chosen;
+        for (const step of FOOTER_STEPS) {
+            const m = (value) => measurePixelText(value, { size: step.size }, ctx);
+            const text = footerText(game, step, opts);
+            const left = 20 + POWER_SEGMENTS * 7 + 4 + m('100') + 10 + m('◇0.0') + 10 + m(spec.name.toUpperCase()) + 6 + MAX_TIER * 9 + 6
+                + (charging ? 70 + m('100%') + 6 : 0) + (ship.miniHits > 0 ? m('MINI') + 6 + 5 * 6 + 6 : 0);
+            const centre = m(text.label) + 8 + 96 + (step.difficulty && game.difficulty ? 10 + m(difficultyName(game).toUpperCase()) : 0);
+            const right = m(text.flags) + 10 + lives * 15 + 10 + m('x99') + 10 + m('0000000') + (step.scoreLabel ? 6 + m('SCORE') : 0);
+            chosen = { ...step, ...text, left, centre, right };
+            if (20 + left + centre + right + GAP * 2 <= VIEW.width) break;
+        }
+        view.footerKey = key;
+        view.footer = chosen;
+        return chosen;
+    }
 
     function drawStrip(ctx, game, dt, opts) {
         const ship = game.ship || {};
         const time = game.time || 0;
+        const layout = footerLayout(ctx, game, opts);
+        const size = layout.size;
         const y0 = VIEW.height - STRIP_H;
-        const base = y0 + 16;
+        const mid = y0 + STRIP_H / 2;
+        const base = mid + pixelTextMetrics(ctx, { size }).ascent / 2;
         ctx.save();
         const bg = ctx.createLinearGradient(0, y0 - 10, 0, VIEW.height);
         bg.addColorStop(0, 'rgba(4, 8, 22, 0)');
-        bg.addColorStop(0.35, 'rgba(4, 8, 22, 0.34)');
-        bg.addColorStop(1, 'rgba(4, 8, 22, 0.5)');
+        bg.addColorStop(0.35, 'rgba(4, 8, 22, 0.55)');
+        bg.addColorStop(1, 'rgba(4, 8, 22, 0.78)');
         ctx.fillStyle = bg;
         ctx.fillRect(0, y0 - 10, VIEW.width, STRIP_H + 10);
-        ctx.fillStyle = 'rgba(86, 237, 255, 0.18)';
+        ctx.fillStyle = 'rgba(86, 237, 255, 0.24)';
         ctx.fillRect(0, y0, VIEW.width, 1);
-        ctx.globalAlpha = 0.9;
 
         // Power (Breathe = re-up) with the drain ghost, then shield.
         let x = 10;
         const fraction = (Number(ship.power) || 0) / Math.max(1, Number(ship.maxPower) || 100);
         view.power += (fraction - view.power) * 0.15;
-        drawBreathe(ctx, x + 8, y0 + 12, 7, time, 0.9);
+        drawBreathe(ctx, x + 8, mid, 7, time, 0.95);
         x += 20;
         const lit = litSegments(fraction);
         const ghost = litSegments(view.power);
         const low = fraction <= 0.3 && Math.floor(time * 5) % 2 === 0;
         const color = low ? '#ffffff' : powerColor(fraction);
         for (let i = 0; i < POWER_SEGMENTS; i++) {
-            ctx.fillStyle = i < lit ? color : i < ghost ? 'rgba(255, 90, 60, 0.55)' : 'rgba(255,255,255,0.1)';
-            ctx.fillRect(x + i * 7, y0 + 8, 5, 9);
+            ctx.fillStyle = i < lit ? color : i < ghost ? 'rgba(255, 90, 60, 0.55)' : 'rgba(255,255,255,0.12)';
+            ctx.fillRect(x + i * 7, mid - 5, 5, 10);
         }
         x += POWER_SEGMENTS * 7 + 4;
-        x += pixelText(ctx, String(Math.round(Number(ship.power) || 0)), x, base, { size: 10, color: powerColor(fraction) }) + 10;
+        x += pixelText(ctx, String(Math.round(Number(ship.power) || 0)), x, base, { size, color: powerColor(fraction) }) + 10;
         if (ship.shield > 0) {
             ctx.fillStyle = PICKUP_STYLE.shield.color;
-            ctx.fillRect(30, y0 + 19, (POWER_SEGMENTS * 7 - 2) * Math.min(1, ship.shield / 7), 2);
-            x += pixelText(ctx, `◇${ship.shield.toFixed(1)}`, x, base, { size: 10, color: PICKUP_STYLE.shield.color }) + 10;
+            ctx.fillRect(30, mid + 7, (POWER_SEGMENTS * 7 - 2) * Math.min(1, ship.shield / 7), 2);
+            x += pixelText(ctx, `◇${ship.shield.toFixed(1)}`, x, base, { size, color: PICKUP_STYLE.shield.color }) + 10;
         }
 
         // Weapon, tier pips and the charge meter for Nova-class weapons.
         const weapon = ship.weapon || { type: 'blaster', tier: 1 };
         const spec = WEAPONS[weapon.type] || WEAPONS.blaster;
-        ctx.fillStyle = 'rgba(255,255,255,0.12)';
-        ctx.fillRect(x - 6, y0 + 6, 1, 12);
-        x += pixelText(ctx, spec.name.toUpperCase(), x, base, { size: 10, color: spec.color }) + 6;
+        ctx.fillStyle = 'rgba(255,255,255,0.14)';
+        ctx.fillRect(x - 6, mid - 6, 1, 12);
+        x += pixelText(ctx, spec.name.toUpperCase(), x, base, { size, color: spec.color === '#1c3f8a' ? '#8fb2ff' : spec.color }) + 6;
         for (let i = 0; i < MAX_TIER; i++) {
-            ctx.fillStyle = i < (weapon.tier || 1) ? spec.color : 'rgba(255,255,255,0.12)';
-            ctx.fillRect(x + i * 9, y0 + 9, 7, 7);
+            ctx.fillStyle = i < (weapon.tier || 1) ? spec.color : 'rgba(255,255,255,0.14)';
+            ctx.fillRect(x + i * 9, mid - 4, 7, 8);
         }
         x += MAX_TIER * 9 + 6;
         const charge = Math.max(0, Math.min(1, Number(game.charge ?? ship.charge ?? 0) || 0));
         if (charge > 0 || game.charging || ship.charging) {
-            ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(x, y0 + 10, 64, 5);
-            ctx.fillStyle = spec.color; ctx.fillRect(x, y0 + 10, 64 * charge, 5);
-            drawGlow(ctx, x + 64 * charge, y0 + 12, 10 + charge * 16, spec.color, 0.25 + charge * 0.5);
+            ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(x, mid - 2, 64, 5);
+            ctx.fillStyle = spec.color; ctx.fillRect(x, mid - 2, 64 * charge, 5);
+            drawGlow(ctx, x + 64 * charge, mid, 10 + charge * 16, spec.color, 0.25 + charge * 0.5);
             x += 70;
-            x += pixelText(ctx, `${Math.round(charge * 100)}%`, x, base, { size: 9, color: '#ffffff' }) + 6;
+            x += pixelText(ctx, `${Math.round(charge * 100)}%`, x, base, { size, color: '#ffffff' }) + 6;
+        }
+        if (ship.miniHits > 0) {
+            x += pixelText(ctx, 'MINI', x, base, { size, color: PICKUP_STYLE.mini.color }) + 6;
+            for (let i = 0; i < 5; i++) {
+                ctx.fillStyle = i < ship.miniHits ? PICKUP_STYLE.mini.color : 'rgba(255,255,255,0.14)';
+                ctx.fillRect(x + i * 6, mid - 3, 4, 6);
+            }
         }
 
-        // Centre: level, progress and difficulty.
-        const sector = game.level.number >= 11 ? 'II · ' : '';
-        const label = `${sector}LV ${game.level.number}/${game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT} ${game.level.name.toUpperCase()}`;
-        const cx = Math.max(x + 150, VIEW.width / 2);
-        pixelText(ctx, label, cx - 4, base, { size: 10, align: 'right', color: '#c9d6e3' });
-        const pw = 110;
-        ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(cx + 4, y0 + 10, pw, 4);
-        ctx.fillStyle = '#7dff8c'; ctx.fillRect(cx + 4, y0 + 10, pw * Math.max(0, Math.min(1, game.levelProgress || 0)), 4);
-        if (game.difficulty) pixelText(ctx, difficultyName(game).toUpperCase(), cx + pw + 10, base, { size: 9, color: difficultyColor(game.difficulty) });
+        // Centre: level, progress and difficulty, centred in the space between clusters.
+        const regionStart = 10 + layout.left + GAP;
+        const regionEnd = VIEW.width - 10 - layout.right - GAP;
+        const cx = Math.max(regionStart, Math.min(regionEnd - layout.centre, (VIEW.width - layout.centre) / 2));
+        const labelWidth = pixelText(ctx, layout.label, cx, base, { size, color: '#dce7f2' });
+        const pw = 96;
+        const px = cx + labelWidth + 8;
+        ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(px, mid - 2, pw, 4);
+        ctx.fillStyle = '#7dff8c'; ctx.fillRect(px, mid - 2, pw * Math.max(0, Math.min(1, game.levelProgress || 0)), 4);
+        if (layout.difficulty && game.difficulty) pixelText(ctx, difficultyName(game).toUpperCase(), px + pw + 10, base, { size, color: difficultyColor(game.difficulty) });
 
         // Right: view flags, lives, combo, score.
         let rx = VIEW.width - 10;
-        const flags = `${opts.muted ? 'M:OFF ' : ''}${opts.crt ? 'CRT ' : ''}[V] ${game.view === 'pov' ? 'POV' : 'MAP'}`;
-        rx -= pixelText(ctx, flags, rx, base, { size: 9, color: '#9fb4c8', align: 'right' }) + 10;
+        rx -= pixelText(ctx, layout.flags, rx, base, { size, color: '#a9bccf', align: 'right' }) + 10;
         const sprite = pixelSprite('lives', SHIP_TOP, SHIP_PALETTE, 1);
         const lives = Math.max(0, Number(ship.lives) || 0);
         for (let i = 0; i < lives; i++) {
             rx -= 15;
-            if (sprite) { ctx.imageSmoothingEnabled = false; ctx.drawImage(sprite, rx, y0 + 4, 13, sprite.height * 13 / sprite.width); }
+            if (sprite) { ctx.imageSmoothingEnabled = false; ctx.drawImage(sprite, rx, mid - 8, 13, sprite.height * 13 / sprite.width); }
         }
         rx -= 10;
         const combo = Number(game.combo) || 0;
@@ -4423,14 +4698,14 @@ function createHud() {
         view.comboPop = Math.max(0, view.comboPop - dt * 3);
         if (combo >= 2) {
             const hue = Math.round((150 + 45 * Math.sin(time * 4)) / 15) * 15;
-            const scale = 1 + view.comboPop * 0.4;
-            drawGlow(ctx, rx - 20, y0 + 12, 22 * scale, `hsl(${hue}, 100%, 60%)`, 0.2);
-            rx -= pixelText(ctx, `x${combo}`, rx, base, { size: Math.round(12 * scale), color: `hsl(${hue}, 100%, 70%)`, align: 'right' }) + 10;
+            const pop = 1 + view.comboPop * 0.4;
+            drawGlow(ctx, rx - 20, mid, 22 * pop, `hsl(${hue}, 100%, 60%)`, 0.2);
+            rx -= pixelText(ctx, `x${combo}`, rx, base, { size: Math.round(size * pop), color: `hsl(${hue}, 100%, 72%)`, align: 'right' }) + 10;
         }
         view.score = rollUp(view.score, game.score, dt);
         const rolling = Math.round(view.score) !== game.score;
-        rx -= pixelText(ctx, String(Math.round(view.score)).padStart(7, '0'), rx, base, { size: 12, color: rolling ? '#ffe65c' : '#e8f6ff', align: 'right' }) + 6;
-        pixelText(ctx, 'SCORE', rx, base, { size: 9, color: '#9fb4c8', align: 'right' });
+        rx -= pixelText(ctx, String(Math.round(view.score)).padStart(7, '0'), rx, base, { size, color: rolling ? '#ffe65c' : '#ffffff', align: 'right' }) + 6;
+        if (layout.scoreLabel) pixelText(ctx, 'SCORE', rx, base, { size, color: '#a9bccf', align: 'right' });
         ctx.restore();
     }
 
@@ -4511,9 +4786,9 @@ function createHud() {
 
 module.exports = { createHud, rollUp, litSegments, difficultyColor, difficultyName, panelBox, POWER_SEGMENTS, DIFFICULTY_COLORS };
 
-},{"../levels":12,"../weapons":37,"./font":20,"./players":24,"./projection":27,"./shapes":29}],23:[function(require,module,exports){
+},{"../levels":12,"../weapons":38,"./font":21,"./players":25,"./projection":28,"./shapes":30}],24:[function(require,module,exports){
 const { VIEW, projectOverview } = require('./projection');
-const { drawAsteroid, drawPickup, drawShipTop, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
+const { drawAsteroid, drawPickup, drawShipTop, drawMiniAura, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { createOverviewBackground } = require('./background');
 const { getImage } = require('./assets');
 const { pixelText } = require('./font');
@@ -4624,6 +4899,7 @@ function createOverviewRenderer() {
                 if (charge > 0) drawGlow(ctx, 0, 0, 48 + charge * 48, ship.weapon && ship.weapon.type === 'singularity' ? '#b67aff' : '#d6a1ff', 0.45 + charge * 0.45);
                 drawGlow(ctx, 0, 0, 34, color, 0.42);
                 drawShipTop(ctx, ship, 0, 0, time, fx ? fx.ripples : []);
+                drawMiniAura(ctx, ship, time, 38);
                 ctx.fillStyle = color; ctx.fillRect(-6, 6, 12, 4); ctx.fillRect(-10, 11, 5, 3); ctx.fillRect(5, 11, 5, 3);
                 ctx.restore();
             });
@@ -4633,7 +4909,7 @@ function createOverviewRenderer() {
 
 module.exports = { createOverviewRenderer };
 
-},{"./assets":15,"./background":16,"./font":20,"./players":24,"./projection":27,"./shapes":29,"./vault":30}],24:[function(require,module,exports){
+},{"./assets":15,"./background":16,"./font":21,"./players":25,"./projection":28,"./shapes":30,"./vault":31}],25:[function(require,module,exports){
 const PLAYER_COLORS = ['#7fd7ff', '#d8e4ef', '#7dff8c', '#ffe65c', '#ff8a5c'];
 
 function getPlayers(game) {
@@ -4651,20 +4927,23 @@ function getPlayers(game) {
     return result.slice(0, 5).map((entry, index) => ({ ...entry, color: PLAYER_COLORS[entry.index % PLAYER_COLORS.length] || PLAYER_COLORS[index] }));
 }
 
+const MINI_DRAW_SCALE = 0.5;
+
 function playerScale(count, ship) {
-    if (Number.isFinite(Number(ship && ship.scale))) return Number(ship.scale);
-    if (count <= 2) return 1;
-    if (count === 3) return 0.8;
-    return 0.7;
+    const mini = Number(ship && ship.miniHits) > 0 ? MINI_DRAW_SCALE : 1;
+    if (Number.isFinite(Number(ship && ship.scale))) return Number(ship.scale) * mini;
+    if (count <= 2) return mini;
+    if (count === 3) return 0.8 * mini;
+    return 0.7 * mini;
 }
 
 function versusMode(game) {
     return Boolean(game && (game.mode === 'versus' || game.multiplayerMode === 'versus' || game.multiplayer && game.multiplayer.mode === 'versus'));
 }
 
-module.exports = { PLAYER_COLORS, getPlayers, playerScale, versusMode };
+module.exports = { PLAYER_COLORS, getPlayers, playerScale, versusMode, MINI_DRAW_SCALE };
 
-},{}],25:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 // Optional CRT post layer: scanlines + vignette, pre-rendered once.
 const { VIEW } = require('./projection');
 const { makeCanvas } = require('./assets');
@@ -4710,9 +4989,9 @@ function drawCrt(ctx, time = 0) {
 
 module.exports = { drawCrt, getPostResources, clearPostResources };
 
-},{"./assets":15,"./projection":27}],26:[function(require,module,exports){
+},{"./assets":15,"./projection":28}],27:[function(require,module,exports){
 const { VIEW, MAX_VIEW_WIDTH, POV, povCamera, projectPov, povFade } = require('./projection');
-const { drawAsteroid, drawPickup, drawShipChase, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
+const { drawAsteroid, drawPickup, drawShipChase, drawMiniAura, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { levelTint, createStarfield, drawNebula } = require('./background');
 const { getImage } = require('./assets');
 const { getPlayers, playerScale } = require('./players');
@@ -4908,6 +5187,7 @@ function createPovRenderer() {
                 if (index === 0) drawReticle(ctx, camera, ship, time);
                 ctx.save(); ctx.translate(shipPoint.x, shipPoint.y); ctx.scale(size, size);
                 drawShipChase(ctx, ship, 0, 0, time, fx ? fx.ripples : []);
+                drawMiniAura(ctx, ship, time, 72);
                 ctx.fillStyle = color; ctx.fillRect(-8, 3, 16, 5);
                 ctx.restore();
             });
@@ -4917,7 +5197,7 @@ function createPovRenderer() {
 
 module.exports = { createPovRenderer };
 
-},{"./assets":15,"./background":16,"./players":24,"./projection":27,"./shapes":29,"./vault":30}],27:[function(require,module,exports){
+},{"./assets":15,"./background":16,"./players":25,"./projection":28,"./shapes":30,"./vault":31}],28:[function(require,module,exports){
 // The world is always 800 wide; the view can be wider and centres the world with offsetX.
 const WORLD_VIEW_WIDTH = 800;
 const MAX_VIEW_WIDTH = 1600;
@@ -4973,7 +5253,7 @@ function povFade(depth) {
 
 module.exports = { VIEW, setViewWidth, WORLD_VIEW_WIDTH, MAX_VIEW_WIDTH, OVERVIEW_SHIP_LINE, POV, projectOverview, povCamera, projectPov, povFade };
 
-},{}],28:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 // Full-screen overlays: title, intro, pause, level clear celebration,
 // victory finale and game over.
 const { VIEW } = require('./projection');
@@ -4982,6 +5262,7 @@ const { getImage, ROCK_KEYS } = require('./assets');
 const { pixelText } = require('./font');
 const { drawGlow, drawBreathe, pixelSprite, SHIP_TOP, SHIP_PALETTE } = require('./shapes');
 const { panelBox, difficultyColor, difficultyName } = require('./hud');
+const { drawElephantVision } = require('./elephant');
 
 const DIFFICULTY_OPTIONS = [
     { id: 'cadet', label: 'CADET', tagline: 'ORIGINAL TUNING' },
@@ -5129,14 +5410,14 @@ function drawIntro(ctx, game) {
     const cy = VIEW.height / 2;
     const slide = (1 - easeOutBack(t)) * VIEW.width;
     ctx.fillStyle = 'rgba(2, 3, 12, 0.55)';
-    ctx.fillRect(0, cy - 70, VIEW.width, 110);
+    ctx.fillRect(0, cy - 70, VIEW.width, 120);
     ctx.fillStyle = '#3fb8ff';
     ctx.fillRect(0, cy - 72, VIEW.width, 2);
-    ctx.fillRect(0, cy + 40, VIEW.width, 2);
+    ctx.fillRect(0, cy + 50, VIEW.width, 2);
     pixelText(ctx, `${game.level.number >= 11 ? 'SECTOR II · FAR FUTURE' : 'LEVEL ' + game.level.number}`, cx - slide, cy - 20, { size: 44, align: 'center', color: '#7fd7ff' });
     pixelText(ctx, game.level.number >= 11 ? `LEVEL ${game.level.number}: ${game.level.name}`.toUpperCase() : game.level.name.toUpperCase(), cx + slide, cy + 14, { size: 20, align: 'center', color: '#ffb347' });
     if (game.difficulty) {
-        pixelText(ctx, `${difficultyName(game).toUpperCase()} MODE  GET READY`, cx, cy + 34, { size: 11, align: 'center', color: difficultyColor(game.difficulty) });
+        pixelText(ctx, `${difficultyName(game).toUpperCase()} MODE  GET READY`, cx, cy + 38, { size: 13, align: 'center', color: difficultyColor(game.difficulty) });
     }
 }
 
@@ -5185,22 +5466,30 @@ function drawLevelClear(ctx, game, fx) {
     const record = latestRecord(game, fx);
     const rows = tallyRows(record, game);
     const boxH = 34 + rows.length * 24;
-    panelBox(ctx, cx - 210, 214, 420, boxH, '#7dff8c');
+    const finale = isSectorFinale(game);
+    const px = finale ? cx - 140 : cx;
+    panelBox(ctx, px - 210, 214, 420, boxH, '#7dff8c', 0.86);
     rows.forEach(([label, value], i) => {
         const appear = t - 0.6 - i * 0.18;
         if (appear < 0) return;
         const y = 244 + i * 24;
-        pixelText(ctx, label, cx - 190, y, { size: 13, color: '#9fb4c8' });
-        pixelText(ctx, value, cx + 190, y, { size: 13, color: '#e8f6ff', align: 'right', alpha: Math.min(1, appear * 4) });
+        pixelText(ctx, label, px - 190, y, { size: 13, color: '#b4c6d8' });
+        pixelText(ctx, value, px + 190, y, { size: 13, color: '#ffffff', align: 'right', alpha: Math.min(1, appear * 4) });
     });
+    if (finale) drawElephantVision(ctx, px + 232, 222, 240, time, { label: 'ELEPHANT ESCORT', alpha: Math.min(1, Math.max(0, t - 0.4) * 2) });
     const after = 0.6 + rows.length * 0.18 + 0.2;
     if (record && t > after) {
         const pulse = 0.6 + 0.4 * Math.sin(time * 6);
         drawGlow(ctx, cx, 234 + boxH + 26, 150, '#ffe65c', 0.25 * pulse);
-        pixelText(ctx, '* VICTORY STAMP READY *', cx, 240 + boxH + 30, { size: 16, align: 'center', color: '#ffe65c', alpha: pulse });
+        pixelText(ctx, '* VICTORY STAMP READY *', cx, 240 + boxH + 30, { size: 16, align: 'center', color: '#ffe65c', alpha: 0.75 + 0.25 * pulse });
     }
     const next = game.level.number < LEVEL_COUNT ? getLevel(game.level.number + 1).name.toUpperCase() : '';
-    if (next) pixelText(ctx, `NEXT: ${next}   ENTER TO JUMP`, cx, VIEW.height - 40, { size: 12, align: 'center', color: '#9fb4c8' });
+    if (next) pixelText(ctx, `NEXT: ${next}   ENTER TO JUMP`, cx, VIEW.height - 40, { size: 13, align: 'center', color: '#c9d6e3' });
+}
+
+function isSectorFinale(game) {
+    const number = game.level && game.level.number;
+    return number === LEVEL_COUNT || number === TOTAL_LEVEL_COUNT;
 }
 
 function drawVictory(ctx, game, fx) {
@@ -5212,20 +5501,20 @@ function drawVictory(ctx, game, fx) {
         ctx.fillRect(0, 0, VIEW.width, VIEW.height);
     }
     const sky = ctx.createLinearGradient(0, 0, 0, VIEW.height);
-    sky.addColorStop(0, 'rgba(30, 0, 40, 0.65)');
-    sky.addColorStop(0.6, 'rgba(10, 0, 20, 0.35)');
-    sky.addColorStop(1, 'rgba(0, 0, 0, 0.8)');
+    sky.addColorStop(0, 'rgba(24, 0, 34, 0.72)');
+    sky.addColorStop(0.55, 'rgba(8, 0, 18, 0.62)');
+    sky.addColorStop(1, 'rgba(0, 0, 0, 0.88)');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, VIEW.width, VIEW.height);
 
     // Sunburst rays.
     ctx.save();
-    ctx.translate(cx, 120);
+    ctx.translate(cx, 110);
     ctx.rotate(time * 0.2);
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 16; i++) {
         ctx.rotate((Math.PI * 2) / 16);
-        ctx.fillStyle = i % 2 ? 'rgba(255, 230, 92, 0.06)' : 'rgba(63, 184, 255, 0.06)';
+        ctx.fillStyle = i % 2 ? 'rgba(255, 230, 92, 0.035)' : 'rgba(63, 184, 255, 0.035)';
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.lineTo(-40, -700);
@@ -5235,26 +5524,39 @@ function drawVictory(ctx, game, fx) {
     }
     ctx.restore();
 
+    const finalSector = game.level.number === TOTAL_LEVEL_COUNT;
     const pop = easeOutBack(Math.min(1, t / 0.6));
-    drawGlow(ctx, cx, 110, 320, '#ffe65c', 0.25);
-    if (pop > 0.01) waveText(ctx, 'VICTORY!', cx, 120, { size: Math.round(76 * Math.max(0.2, pop)), time, amp: 8 });
-    pixelText(ctx, 'THE CORE IS CLEARED', cx, 168, { size: 20, align: 'center', color: '#ffffff', alpha: Math.min(1, t) });
-    if (game.difficulty) pixelText(ctx, `${difficultyName(game).toUpperCase()} CAMPAIGN COMPLETE`, cx, 192, { size: 13, align: 'center', color: difficultyColor(game.difficulty) });
+    drawGlow(ctx, cx, 76, 280, '#ffe65c', 0.2);
+    if (pop > 0.01) waveText(ctx, 'VICTORY!', cx, 90, { size: Math.round(56 * Math.max(0.2, pop)), time, amp: 6 });
+    pixelText(ctx, finalSector ? 'THE FAR FUTURE IS CLEARED' : 'THE CORE IS CLEARED', cx, 126, { size: 18, align: 'center', color: '#ffffff', alpha: Math.min(1, t) });
+    if (game.difficulty) pixelText(ctx, `${difficultyName(game).toUpperCase()} CAMPAIGN COMPLETE`, cx, 147, { size: 13, align: 'center', color: difficultyColor(game.difficulty) });
 
+    const visionW = 264;
+    const visionTop = 160;
+    const visionAlpha = Math.min(1, Math.max(0, t - 0.3) * 2);
+    drawElephantVision(ctx, cx - visionW / 2, visionTop, visionW, time, { label: finalSector ? 'ELEPHANT HONOR GUARD' : 'ELEPHANT ESCORT', alpha: visionAlpha });
+    const flankY = visionTop + 104;
     const sprite = pixelSprite('victory-ship', SHIP_TOP, SHIP_PALETTE, 5);
     if (sprite) {
-        const sy = 250 + Math.sin(time * 3) * 6;
-        drawGlow(ctx, cx, sy, 70, '#7fd7ff', 0.4);
+        const sx = cx - visionW / 2 - 92;
+        const sy = flankY + Math.sin(time * 3) * 6;
+        drawGlow(ctx, sx, sy, 70, '#7fd7ff', 0.4);
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(sprite, cx - sprite.width / 2, sy - sprite.height / 2);
+        ctx.drawImage(sprite, Math.round(sx - sprite.width / 2), Math.round(sy - sprite.height / 2));
         ctx.fillStyle = '#ffb347';
-        ctx.fillRect(cx - 14, sy + sprite.height / 2, 8, 10 + 6 * Math.sin(time * 30));
-        ctx.fillRect(cx + 6, sy + sprite.height / 2, 8, 10 + 6 * Math.cos(time * 30));
+        ctx.fillRect(sx - 14, sy + sprite.height / 2, 8, 10 + 6 * Math.sin(time * 30));
+        ctx.fillRect(sx + 6, sy + sprite.height / 2, 8, 10 + 6 * Math.cos(time * 30));
     }
+    drawBreathe(ctx, cx + visionW / 2 + 92, flankY + Math.cos(time * 3) * 6, 34, time, visionAlpha);
+
+    // Dark plate keeps the score block readable over the bright backdrop.
+    const plateW = Math.min(VIEW.width - 32, 760);
+    ctx.fillStyle = 'rgba(3, 4, 14, 0.66)';
+    ctx.fillRect(Math.round(cx - plateW / 2), 362, Math.round(plateW), 168);
 
     const finalScore = Math.round(game.score * Math.min(1, Math.max(0, t - 0.4) / 2));
-    pixelText(ctx, 'FINAL SCORE', cx, 326, { size: 12, align: 'center', color: '#9fb4c8' });
-    pixelText(ctx, String(finalScore).padStart(7, '0'), cx, 362, { size: 34, align: 'center', color: '#ffe65c' });
+    pixelText(ctx, 'FINAL SCORE', cx, 382, { size: 13, align: 'center', color: '#c9d6e3' });
+    pixelText(ctx, String(finalScore).padStart(7, '0'), cx, 414, { size: 32, align: 'center', color: '#ffe65c' });
 
     const run = typeof game.getRunStats === 'function' ? safe(() => game.getRunStats()) : null;
     if (run) {
@@ -5265,16 +5567,16 @@ function drawVictory(ctx, game, fx) {
             ['LIVES LOST', `${run.livesLost || 0}`]
         ];
         stats.forEach(([label, value], i) => {
-            const x = 130 + i * 180;
-            panelBox(ctx, x - 75, 384, 150, 50, RAINBOW[i + 1]);
-            pixelText(ctx, label, x, 402, { size: 10, align: 'center', color: '#9fb4c8' });
-            pixelText(ctx, value, x, 426, { size: 18, align: 'center', color: '#ffffff' });
+            const x = cx + (i - 1.5) * 172;
+            panelBox(ctx, x - 78, 424, 156, 48, RAINBOW[i + 1], 0.9);
+            pixelText(ctx, label, x, 442, { size: 13, align: 'center', color: '#c9d6e3' });
+            pixelText(ctx, value, x, 464, { size: 18, align: 'center', color: '#ffffff' });
         });
     }
     const pulse = 0.6 + 0.4 * Math.sin(time * 5);
-    pixelText(ctx, `ALL ${game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT} LEVELS CLEARED`, cx, 470, { size: 16, align: 'center', color: '#7dff8c', alpha: pulse });
-    pixelText(ctx, game.level.number === TOTAL_LEVEL_COUNT ? 'CLAIM YOUR LEVEL 20 ACHIEVEMENT IN THE VAULT' : 'SECTOR I CLEARED - LEVEL 20 EARNS THE ACHIEVEMENT', cx, 492, { size: 11, align: 'center', color: '#c9d6e3' });
-    pixelText(ctx, 'ENTER  MENU', cx, VIEW.height - 30, { size: 12, align: 'center', color: '#9fb4c8' });
+    pixelText(ctx, `ALL ${finalSector ? TOTAL_LEVEL_COUNT : LEVEL_COUNT} LEVELS CLEARED`, cx, 497, { size: 16, align: 'center', color: '#7dff8c', alpha: 0.75 + 0.25 * pulse });
+    pixelText(ctx, finalSector ? 'CLAIM YOUR LEVEL 20 ACHIEVEMENT IN THE VAULT' : 'SECTOR I CLEARED - LEVEL 20 EARNS THE ACHIEVEMENT', cx, 519, { size: 13, align: 'center', color: '#e8eef5' });
+    pixelText(ctx, 'ENTER  MENU', cx, VIEW.height - 24, { size: 13, align: 'center', color: '#c9d6e3' });
 }
 
 function safe(fn) {
@@ -5343,9 +5645,9 @@ function drawOverlay(ctx, game, fx) {
 
 module.exports = { drawOverlay, drawTitle, drawCover, waveText, formatTime, easeOutBack, DIFFICULTY_OPTIONS };
 
-},{"../levels":12,"./assets":15,"./font":20,"./hud":22,"./projection":27,"./shapes":29}],29:[function(require,module,exports){
+},{"../levels":12,"./assets":15,"./elephant":19,"./font":21,"./hud":23,"./projection":28,"./shapes":30}],30:[function(require,module,exports){
 const { WEAPONS } = require('../weapons');
-const { getImage, getTinted, rockKeyFor, futureRockKeyFor, makeCanvas, BREATHE_FRAMES } = require('./assets');
+const { getImage, getTinted, rockKeyFor, futureRockKeyFor, makeCanvas, BREATHE_FRAMES, MINI_EMBLEM_FRAMES } = require('./assets');
 const { pixelText } = require('./font');
 
 const PICKUP_STYLE = {
@@ -5353,7 +5655,9 @@ const PICKUP_STYLE = {
     rapid: { color: WEAPONS.rapid.color, label: 'R' },
     plasma: { color: WEAPONS.plasma.color, label: 'P' },
     power: { color: '#7dff8c', label: '+' },
-    shield: { color: '#6fa8ff', label: 'O' }
+    shield: { color: '#6fa8ff', label: 'O' },
+    life: { color: '#ffffff', label: '+' },
+    mini: { color: '#ff7ae6', label: 'M' }
 };
 
 const COLOR_TO_WEAPON = Object.keys(WEAPONS).reduce((map, type) => {
@@ -5630,6 +5934,10 @@ function drawPickup(ctx, pickup, x, y, radius, time, alpha = 1) {
         drawBreathe(ctx, x, y, radius, time, alpha);
         return;
     }
+    if (pickup.type === 'mini') {
+        drawMiniEmblem(ctx, x, y, radius, time, alpha);
+        return;
+    }
     const style = PICKUP_STYLE[pickup.type] || PICKUP_STYLE.power;
     drawGlow(ctx, x, y, radius * 2.6, style.color, alpha * 0.55);
     ctx.save();
@@ -5657,6 +5965,68 @@ function drawPickup(ctx, pickup, x, y, radius, time, alpha = 1) {
         ctx.stroke();
     } else {
         pixelText(ctx, style.label, 0, radius * 0.4, { size: Math.max(8, Math.round(radius * 1.1)), color: style.color, align: 'center' });
+    }
+    ctx.restore();
+}
+
+// Spinning Compos token: shrinks the ship for five hits.
+function drawMiniEmblem(ctx, x, y, radius, time, alpha = 1, label = true) {
+    const color = PICKUP_STYLE.mini.color;
+    const sheet = getImage('mini-emblem-sheet');
+    const pulse = 1 + 0.08 * Math.sin(time * 6);
+    drawGlow(ctx, x, y, radius * 3 * pulse, color, alpha * 0.6);
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    const size = radius * 2.6 * pulse;
+    if (sheet) {
+        const frame = Math.floor(time * 12) % MINI_EMBLEM_FRAMES;
+        const fw = sheet.naturalWidth / MINI_EMBLEM_FRAMES;
+        ctx.drawImage(sheet, frame * fw, 0, fw, sheet.naturalHeight, x - size / 2, y - size / 2, size, size);
+    } else {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(x, y, radius * Math.abs(Math.cos(time * 3)) + 2, radius, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    // Inward chevrons hint at shrinking.
+    ctx.fillStyle = color;
+    const reach = radius * (1.7 - 0.25 * ((time * 2) % 1));
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        ctx.save();
+        ctx.translate(x + dx * reach, y + dy * reach);
+        ctx.rotate(Math.atan2(-dy, -dx));
+        ctx.beginPath();
+        ctx.moveTo(4, 0);
+        ctx.lineTo(-3, -4);
+        ctx.lineTo(-3, 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+    ctx.restore();
+    if (label) pixelText(ctx, 'MINI', x, y + radius * 2.3, { size: 13, color, align: 'center', alpha });
+}
+
+// Pink halo with one pip per hit left while the ship is shrunk (drawn in ship space).
+function drawMiniAura(ctx, ship, time, radius = 38) {
+    const hits = Math.max(0, Math.min(5, Number(ship.miniHits) || 0));
+    if (!hits) return;
+    const color = PICKUP_STYLE.mini.color;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.globalAlpha *= 0.55 + 0.25 * Math.sin(time * 5);
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    ctx.lineDashOffset = -time * 30;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    for (let i = 0; i < hits; i++) {
+        const a = -Math.PI / 2 + (i - (hits - 1) / 2) * 0.42;
+        ctx.fillRect(Math.cos(a) * (radius + 8) - 3, Math.sin(a) * (radius + 8) - 3, 6, 6);
     }
     ctx.restore();
 }
@@ -5955,6 +6325,8 @@ module.exports = {
     drawAsteroid,
     drawBreathe,
     drawPickup,
+    drawMiniEmblem,
+    drawMiniAura,
     drawShipTop,
     drawShipChase,
     drawShield,
@@ -5962,7 +6334,7 @@ module.exports = {
     drawEnemyBullet
 };
 
-},{"../weapons":37,"./assets":15,"./font":20}],30:[function(require,module,exports){
+},{"../weapons":38,"./assets":15,"./font":21}],31:[function(require,module,exports){
 const { drawGlow, drawAsteroid } = require('./shapes');
 const { getImage, supporterImageKey } = require('./assets');
 const { pixelText } = require('./font');
@@ -6093,7 +6465,7 @@ function drawSupporterToken(ctx, tokenId, x, y, size) {
 
 module.exports = { drawVault, drawVaultPov, drawVaultGlyph, drawSupporterToken, guardList, shielded };
 
-},{"./assets":15,"./font":20,"./projection":27,"./shapes":29}],31:[function(require,module,exports){
+},{"./assets":15,"./font":21,"./projection":28,"./shapes":30}],32:[function(require,module,exports){
 // Small seeded RNG so each level's map is the same every time it is played.
 function createRng(seed) {
     let state = seed >>> 0;
@@ -6116,10 +6488,10 @@ function pick(rng, items) {
 
 module.exports = { createRng, range, pick };
 
-},{}],32:[function(require,module,exports){
-module.exports = 'voyager-1.2-lotus-marathon';
-
 },{}],33:[function(require,module,exports){
+module.exports = 'voyager-1.3-mini-emblem';
+
+},{}],34:[function(require,module,exports){
 // Save format, validation, legacy migration and quota-tolerant persistence.
 const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('./levels');
 const { DIFFICULTY_IDS, isDifficulty, difficultyLabel } = require('./difficulty');
@@ -6321,8 +6693,8 @@ function validateLevelRecord(record, where = 'Level record') {
         return result;
     };
     const shotsByWeapon = extendNewCounters(stats.shotsByWeapon, ['nova', 'prism', 'singularity']);
-    const pickupsCollected = extendNewCounters(stats.pickupsCollected, ['nova', 'prism', 'singularity']);
-    const count = (key) => num(key === 'volleys' ? (stats[key] ?? 0) : stats[key], `${s}.${key}`, {
+    const pickupsCollected = extendNewCounters(stats.pickupsCollected, ['nova', 'prism', 'singularity', 'life', 'mini']);
+    const count = (key) => num(['volleys', 'miniHitsAbsorbed'].includes(key) ? (stats[key] ?? 0) : stats[key], `${s}.${key}`, {
         max: 1e9, integer: !['damageTaken', 'timeInPov', 'timeInOverview'].includes(key)
     });
     return {
@@ -6374,6 +6746,7 @@ function validateLevelRecord(record, where = 'Level record') {
             damageTaken: count('damageTaken'),
             pickupsCollected: counters(pickupsCollected, PICKUP_TYPES, `${s}.pickupsCollected`, true),
             pickupsMissed: count('pickupsMissed'),
+            miniHitsAbsorbed: count('miniHitsAbsorbed'),
             maxCombo: count('maxCombo'),
             timeInPov: count('timeInPov'),
             timeInOverview: count('timeInOverview'),
@@ -6617,7 +6990,7 @@ module.exports = {
     persistSave
 };
 
-},{"./difficulty":7,"./levels":12,"./prizes":14,"./stats":35}],34:[function(require,module,exports){
+},{"./difficulty":7,"./levels":12,"./prizes":14,"./stats":36}],35:[function(require,module,exports){
 const { createWeapon } = require('./weapons');
 
 const MIN_X = 20;
@@ -6631,6 +7004,7 @@ class Spaceship {
         this.baseSize = 12;
         this.size = this.baseSize;
         this.scale = 1;
+        this.miniHits = 0;
         this.charge = 0;
         this.wasFiring = false;
         this.specialWasDown = false;
@@ -6682,7 +7056,7 @@ class Spaceship {
 
 module.exports = Spaceship;
 
-},{"./weapons":37}],35:[function(require,module,exports){
+},{"./weapons":38}],36:[function(require,module,exports){
 // Per-level stats, combo tracking, battle log sampling and LevelRecord building.
 //
 // Definitions:
@@ -6696,12 +7070,13 @@ module.exports = Spaceship;
 // - hitsTaken: hits that cost power; collisions: rocks the ship flew into (shielded or not);
 //   shieldBlocks: bullets or rocks absorbed by the shield; damageTaken: power lost.
 // - pickupsMissed: pickups that passed behind the ship uncollected.
+// - miniHitsAbsorbed: hits the ship took while shrunk by the Mini emblem.
 // - combo: consecutive asteroid kills by the player's shots, each within COMBO_WINDOW seconds of
 //   the previous kill, without the ship losing power in between. maxCombo is the level best.
 // - closestCall: smallest gap in px between the ship's and a dodged enemy bullet's edges
 //   (-1 when no enemy bullet was dodged).
 const WEAPON_TYPES = ['blaster', 'spread', 'rapid', 'plasma', 'nova', 'prism', 'singularity'];
-const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield', 'nova', 'prism', 'singularity', 'life'];
+const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield', 'nova', 'prism', 'singularity', 'life', 'mini'];
 const COMBO_WINDOW = 2;
 const RECORD_SCHEMA = 'asteroid-level-record/1';
 const GAME_NAME = 'Decent Voyager: Galactic Gauntlet';
@@ -6713,7 +7088,7 @@ const PATH_INTERVAL = 0.25;
 const COUNTER_FIELDS = [
     'shotsFired', 'volleys', 'hits', 'asteroidsSpawned', 'asteroidsDestroyed', 'asteroidsMissed',
     'shootersDestroyed', 'fragmentsDestroyed', 'enemyShotsFired', 'enemyShotsDodged', 'hitsTaken',
-    'collisions', 'shieldBlocks', 'damageTaken', 'pickupsMissed', 'timeInPov', 'timeInOverview'
+    'collisions', 'shieldBlocks', 'damageTaken', 'pickupsMissed', 'miniHitsAbsorbed', 'timeInPov', 'timeInOverview'
 ];
 
 // Lifetime / run totals: counters are summed, maxCombo is a max, closestCall a min.
@@ -6880,6 +7255,10 @@ class LevelTracker {
         this.stats.pickupsMissed += 1;
     }
 
+    miniHit() {
+        this.stats.miniHitsAbsorbed += 1;
+    }
+
     lifeLost() {
         this.livesLost += 1;
     }
@@ -6905,6 +7284,7 @@ class LevelTracker {
             damageTaken: round(s.damageTaken),
             pickupsCollected: { ...s.pickupsCollected },
             pickupsMissed: s.pickupsMissed,
+            miniHitsAbsorbed: s.miniHitsAbsorbed,
             maxCombo: s.maxCombo,
             timeInPov: round(s.timeInPov),
             timeInOverview: round(s.timeInOverview),
@@ -6982,7 +7362,7 @@ module.exports = {
     buildLevelRecord
 };
 
-},{}],36:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 const { pick, range } = require('./rng');
 const { PRIZES } = require('./prizes');
 const Asteroid = require('./asteroid');
@@ -7014,7 +7394,7 @@ function markGuardDestroyed(vault, guard) {
 }
 module.exports = { chooseVaultLevel, createVault, markGuardDestroyed };
 
-},{"./asteroid":2,"./prizes":14,"./rng":31}],37:[function(require,module,exports){
+},{"./asteroid":2,"./prizes":14,"./rng":32}],38:[function(require,module,exports){
 const Bullet = require('./bullet');
 
 const MAX_TIER = 3;

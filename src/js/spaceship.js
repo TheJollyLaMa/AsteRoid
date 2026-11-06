@@ -11,6 +11,7 @@ class Spaceship {
         this.baseSize = 12;
         this.size = this.baseSize;
         this.scale = 1;
+        this.miniHits = 0;
         this.charge = 0;
         this.wasFiring = false;
         this.specialWasDown = false;

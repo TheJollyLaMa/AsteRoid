@@ -233,12 +233,19 @@ function createAudio({ onError = error => console.error('Voyager audio:', error)
                 // Ens Eth breathe: rising shimmering chime.
                 arpeggio([3, 7, 10, 15, 19, 22], { step: 0.055, type: 'triangle', volume: 0.07, length: 0.35 });
                 arpeggio([15, 19, 22, 27], { step: 0.055, type: 'sine', volume: 0.04, length: 0.5, delay: 0.03 });
+            } else if (e.pickupType === 'mini') {
+                // Shrink: a quick falling warble.
+                tone({ frequency: 1600, endFrequency: 220, duration: 0.35, type: 'square', volume: 0.05, vibrato: 30 });
+                arpeggio([24, 19, 15, 12, 7], { step: 0.045, type: 'triangle', volume: 0.05, length: 0.12 });
             } else if (e.pickupType === 'shield') {
                 tone({ frequency: 300, endFrequency: 1200, duration: 0.3, type: 'sine', volume: 0.08, vibrato: 18 });
                 arpeggio([7, 14], { step: 0.1, type: 'triangle', volume: 0.05, length: 0.25 });
             } else {
                 arpeggio([0, 4, 7, 12], { step: 0.05, type: 'square', volume: 0.05, length: 0.09 });
             }
+        },
+        miniEnded: () => {
+            tone({ frequency: 220, endFrequency: 1200, duration: 0.3, type: 'triangle', volume: 0.06 });
         },
         asteroidMissed: () => {
             if (!throttle('missed', 0.25)) return;

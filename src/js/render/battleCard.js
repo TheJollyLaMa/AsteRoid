@@ -119,7 +119,8 @@ function drawHeader(ctx, record, accent) {
     pixelText(ctx, TITLE, header.x, header.y + 30, { size: 24, color: '#7fd7ff' });
     const levelText = `LEVEL ${String(num(record.level, 1)).padStart(2, '0')}`;
     drawGlow(ctx, header.x + 150, header.y + 78, 260, accent, 0.35);
-    pixelText(ctx, levelText, header.x, header.y + 96, { size: 60, color: '#fff4c8', outline: accent });
+    pixelText(ctx, levelText, header.x + 6, header.y + 102, { size: 60, color: accent, outline: null });
+    pixelText(ctx, levelText, header.x, header.y + 96, { size: 60, color: '#fff4c8' });
     pixelText(ctx, String(record.levelName || '').toUpperCase(), header.x, header.y + 138, { size: 30, color: accent });
     const captures = Array.isArray(record.captures) ? record.captures.length : (record.supporterCaptured || record.capture ? 1 : 0);
     const sector = num(record.level) >= 11 || record.sector === 2 ? 'SECTOR II · FAR FUTURE' : 'SECTOR I · GALACTIC GAUNTLET';

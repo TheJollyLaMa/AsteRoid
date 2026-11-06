@@ -19,7 +19,7 @@ Only completing **level 20** on Pilot/Ace earns a new achievement NFT.
 Intermediate battle records remain available locally and in IPFS progress saves.
 Guarded Supporter pickups and marathon/Perfect awards are unchanged.
 Previously signed vouchers remain claimable; new referee issuance and admin
-requests enforce level 20. The ruleset is `voyager-1.2-lotus-marathon`; deploy the
+requests enforce level 20. The ruleset is `voyager-1.3-mini-emblem`; deploy the
 referee before the matching frontend and start a new flight after updating.
 Old unsent flight logs are rejected with the existing ruleset-mismatch message,
 not replayed against changed game rules.
@@ -46,6 +46,33 @@ These are synthetic local measurements, not guaranteed frame rates on phones.
 Cold audio initialization still produced a single long frame; the overload
 pause is deliberately retained rather than claiming all stalls are eliminated.
 
+### Mini emblem, elephant escort and readable 8-bit text
+
+A spinning **Mini emblem** (the Mandelblum Compos token) appears once in levels
+**5, 9, 14 and 18**. In range it drifts down toward the ship and weaves side to
+side. Collecting it halves the ship's drawn size and hitbox for the next **five
+hits**. Shield-blocked and invulnerable hits don't count, every counted hit still
+costs power, losing a life ends Mini mode, and it otherwise carries into the next
+level. A pink aura with one pip per remaining hit and the footer's MINI pips show
+the countdown. `pickupsCollected.mini` and `miniHitsAbsorbed` are recorded with the
+other battle stats and pinned to level-20 achievement metadata. Emblem movement
+is deterministic, so the ruleset was bumped to `voyager-1.3-mini-emblem`.
+
+Clearing level 10 or 20 opens a framed **elephant escort** transmission playing
+the Mandelblum flying-elephant animation on the Victory finale, on the level-10
+stage clear, and during the warp into Sector II.
+
+HUD, win-screen and battle-card text uses a built-in 5×7 bitmap font. Each font
+pixel snaps to whole device pixels, so the 8-bit lettering stays sharp at fractional
+display scales instead of being an upscaled, blurred system font. The CRT
+scanline layer now draws under the HUD and overlays. Footer, toast and win-screen
+text is size 13 or larger, set on darker plates.
+
+The live warning strip above the canvas shows only a problem active in the
+current page session: a frame error, performance pause or graphics restart. It
+clears once play resumes. Earlier visits remain in Flight reports, labelled
+"Previous visit".
+
 ### Flash protection and flight reports
 
 POV asteroid art is capped at a 180px logical radius so near-camera hit
@@ -55,8 +82,10 @@ unchanged. Sector II's additional synthesized sounds are throttled per event typ
 
 Recovery is idempotent: a second overload cannot toggle a paused battle back on.
 Frame exceptions keep the animation scheduler alive but stop the failed scene
-until explicit recovery. Canvas context loss pauses local play; restoration
-still requires the pilot to choose **Resume battle**. Online referee play continues.
+until explicit recovery. Canvas context loss pauses local play. When the browser
+restores the context, rendering restarts automatically at reduced quality while
+the battle stays paused until the pilot presses P or **Resume battle**. Online
+referee play continues.
 
 **Flight reports & recovery**, below the game, exports a JSON report and offers
 manual resume. The latest 40 entries survive reloads in browser storage when
@@ -75,16 +104,16 @@ in an unbounded glow-canvas cache. This retained new 64x64 surfaces throughout
 a flight, regardless of scene entity limits or framebuffer size. The HUD now
 uses seven colour steps; the shared glow cache is a 64-entry LRU that repaints
 the oldest surface in place when full (at most 1 MiB of RGBA glow pixels).
-Text sprites similarly reuse at most 128 canvases, and fractional text sizes
-share the same key when their raster dimensions match. Opaque main-canvas
+Text is drawn from a bitmap font as cached vector runs (a 256-entry layout
+LRU), so score and combo changes allocate no text canvases. Opaque main-canvas
 rendering avoids unnecessary alpha compositing; no CPU-readback hint is applied
 to the gameplay canvas. This does not force a GPU backend or assume that a more
 powerful machine can compensate for leaking surfaces.
 
 Context loss records the pre-release resource counts, releases glow/ship/shield,
 text/scratch, tinted-asteroid and CRT surfaces, then pauses locally. Restoration
-still requires explicit Resume battle and starts at no more than 65% render
-quality. No simulation entities, collision rules or replay/reward inputs change.
+redraws automatically at no more than 65% render quality; play resumes only
+when the pilot chooses to. No simulation entities, collision rules or replay/reward inputs change.
 
 Reports now include periodic 15-second samples, current cache counts and
 cumulative cache allocation totals, FX counts, peak step/draw/frame times for

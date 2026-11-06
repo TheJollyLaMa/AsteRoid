@@ -7,6 +7,9 @@ const FUTURE_ROCK_KEYS = ['future-rock-1', 'future-rock-2', 'future-rock-3', 'fu
 const BACKDROP_KEYS = ['bg-galaxy', 'bg-royal', 'bg-2a', 'bg-tec', 'bg-zz'];
 const SECTOR2_BACKDROP_KEYS = ['bg-sector2-lotus', 'bg-sector2-mars', 'bg-sector2-top'];
 const BREATHE_FRAMES = 8;
+const MINI_EMBLEM_FRAMES = 12;
+const ELEPHANT_FRAMES = 20;
+const ELEPHANT_COLUMNS = 5;
 
 const MANIFEST = {
     'rock-1': 'rock-1.png',
@@ -27,6 +30,8 @@ const MANIFEST = {
     'breathe-sheet': 'breathe-sheet.png',
     'breathe-still': 'breathe-still.png',
     'white-lotus': 'white-lotus-clear.png',
+    'mini-emblem-sheet': 'mini-emblem-sheet.png',
+    'elephant-sheet': 'elephant-sheet.jpg',
     'future-rock-1': 'future-rock-1.png',
     'future-rock-2': 'future-rock-2.png',
     'future-rock-3': 'future-rock-3.png',
@@ -168,6 +173,9 @@ module.exports = {
     BACKDROP_KEYS,
     SECTOR2_BACKDROP_KEYS,
     BREATHE_FRAMES,
+    MINI_EMBLEM_FRAMES,
+    ELEPHANT_FRAMES,
+    ELEPHANT_COLUMNS,
     isImageReady,
     getImage,
     loadAssets,

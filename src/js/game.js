@@ -30,8 +30,13 @@ const RESPAWN_TIME = 1.8;
 const FIXED_STEP = 1 / 60;
 const WARP_TIME = 2.2;
 const MAX_PARTICLES = 256;
+const MINI_EMBLEM_HITS = 5;
+const MINI_SCALE = 0.5;
+const MINI_EMBLEM_SPEED = 70;
+const MINI_EMBLEM_RANGE = 700;
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
+const shipSize = (ship) => ship.baseSize * (ship.scale || 1) * (ship.miniHits > 0 ? MINI_SCALE : 1);
 
 function defaultSeedSource() {
     if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
@@ -255,7 +260,7 @@ class Game {
             const current = this.ships[i];
             const savedLives = current.lives; const savedWeapon = current.weapon;
             current.reset(); current.lives = savedLives; current.weapon = savedWeapon;
-            current.scale = scaleForPlayers(this.playerCount); current.size = current.baseSize * current.scale;
+            current.scale = scaleForPlayers(this.playerCount); current.size = shipSize(current);
             current.x = 400 + (i - (this.playerCount - 1) / 2) * Math.min(42, 320 / this.playerCount);
             current.y = current.offset; current.invulnerable = LEVEL_INTRO_TIME;
         }
@@ -299,7 +304,7 @@ class Game {
         this.ships = Array.from({ length: count }, (_, index) => {
             const ship = index < previous.length ? previous[index] : this.createShip();
             ship.scale = scale;
-            ship.size = ship.baseSize * scale;
+            ship.size = shipSize(ship);
             ship.x = 400 + (index - (count - 1) / 2) * Math.min(42, 320 / count);
             ship.y = this.scrollY + ship.offset;
             return ship;
@@ -487,6 +492,7 @@ class Game {
         }
 
         this.updateAsteroids(dt);
+        this.updatePickups(dt);
         this.playerBullets.forEach((bullet) => bullet.update(dt));
         this.enemyBullets.forEach((bullet) => bullet.update(dt));
         this.resolvePlayerHits();
@@ -504,6 +510,16 @@ class Game {
                 });
                 if (canEndLevel(gatePlayers, this.mode)) this.completeLevel();
             }
+        }
+    }
+
+    // The Mini emblem flies down the battlefield toward the ship, weaving side to side.
+    updatePickups(dt) {
+        for (const pickup of this.pickups) {
+            if (pickup.type !== 'mini' || pickup.collected || pickup.y - this.scrollY > MINI_EMBLEM_RANGE) continue;
+            pickup.drift = (pickup.drift || 0) + dt;
+            pickup.y -= MINI_EMBLEM_SPEED * dt;
+            pickup.x = Math.max(60, Math.min(740, (pickup.homeX ?? pickup.x) + Math.sin(pickup.drift * 1.6) * 150));
         }
     }
 
@@ -745,11 +761,21 @@ class Game {
         ship.invulnerable = 0.6;
         this.tracker.damaged(before - ship.power, x, y);
         this.emit('shipHit', { x, y, power: ship.power });
+        if (ship.miniHits > 0) {
+            ship.miniHits -= 1;
+            this.tracker.miniHit();
+            if (ship.miniHits === 0) {
+                ship.size = shipSize(ship);
+                this.emit('miniEnded', { x: ship.x, y: ship.y, player: playerIndex });
+            }
+        }
         if (ship.power <= 0) this.destroyShip(ship, playerIndex);
     }
 
     destroyShip(ship = this.ship, playerIndex = 0) {
         const shipIndex = this.ships.indexOf(ship);
+        ship.miniHits = 0;
+        ship.size = shipSize(ship);
         if (this.playerCount > 1) {
             ship.lives -= 1; ship.power = 0; ship.respawnTimer = ship.lives > 0 ? RESPAWN_TIME : 0;
             if (this.playerStats[shipIndex]) { this.playerStats[shipIndex].livesLost += 1; this.playerStats[shipIndex].alive = ship.lives > 0; }
@@ -793,7 +819,10 @@ class Game {
 
     collectPickup(pickup, targetShip = this.ship, playerIndex = 0) {
         const ship = targetShip;
-        if (pickup.type === 'power') {
+        if (pickup.type === 'mini') {
+            ship.miniHits = MINI_EMBLEM_HITS;
+            ship.size = shipSize(ship);
+        } else if (pickup.type === 'power') {
             ship.power = Math.min(ship.maxPower, ship.power + (this.level.powerRestore ?? 40));
         } else if (pickup.type === 'life') {
             ship.lives += 1;

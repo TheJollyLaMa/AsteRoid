@@ -6,6 +6,7 @@ const { getImage, ROCK_KEYS } = require('./assets');
 const { pixelText } = require('./font');
 const { drawGlow, drawBreathe, pixelSprite, SHIP_TOP, SHIP_PALETTE } = require('./shapes');
 const { panelBox, difficultyColor, difficultyName } = require('./hud');
+const { drawElephantVision } = require('./elephant');
 
 const DIFFICULTY_OPTIONS = [
     { id: 'cadet', label: 'CADET', tagline: 'ORIGINAL TUNING' },
@@ -153,14 +154,14 @@ function drawIntro(ctx, game) {
     const cy = VIEW.height / 2;
     const slide = (1 - easeOutBack(t)) * VIEW.width;
     ctx.fillStyle = 'rgba(2, 3, 12, 0.55)';
-    ctx.fillRect(0, cy - 70, VIEW.width, 110);
+    ctx.fillRect(0, cy - 70, VIEW.width, 120);
     ctx.fillStyle = '#3fb8ff';
     ctx.fillRect(0, cy - 72, VIEW.width, 2);
-    ctx.fillRect(0, cy + 40, VIEW.width, 2);
+    ctx.fillRect(0, cy + 50, VIEW.width, 2);
     pixelText(ctx, `${game.level.number >= 11 ? 'SECTOR II · FAR FUTURE' : 'LEVEL ' + game.level.number}`, cx - slide, cy - 20, { size: 44, align: 'center', color: '#7fd7ff' });
     pixelText(ctx, game.level.number >= 11 ? `LEVEL ${game.level.number}: ${game.level.name}`.toUpperCase() : game.level.name.toUpperCase(), cx + slide, cy + 14, { size: 20, align: 'center', color: '#ffb347' });
     if (game.difficulty) {
-        pixelText(ctx, `${difficultyName(game).toUpperCase()} MODE  GET READY`, cx, cy + 34, { size: 11, align: 'center', color: difficultyColor(game.difficulty) });
+        pixelText(ctx, `${difficultyName(game).toUpperCase()} MODE  GET READY`, cx, cy + 38, { size: 13, align: 'center', color: difficultyColor(game.difficulty) });
     }
 }
 
@@ -209,22 +210,30 @@ function drawLevelClear(ctx, game, fx) {
     const record = latestRecord(game, fx);
     const rows = tallyRows(record, game);
     const boxH = 34 + rows.length * 24;
-    panelBox(ctx, cx - 210, 214, 420, boxH, '#7dff8c');
+    const finale = isSectorFinale(game);
+    const px = finale ? cx - 140 : cx;
+    panelBox(ctx, px - 210, 214, 420, boxH, '#7dff8c', 0.86);
     rows.forEach(([label, value], i) => {
         const appear = t - 0.6 - i * 0.18;
         if (appear < 0) return;
         const y = 244 + i * 24;
-        pixelText(ctx, label, cx - 190, y, { size: 13, color: '#9fb4c8' });
-        pixelText(ctx, value, cx + 190, y, { size: 13, color: '#e8f6ff', align: 'right', alpha: Math.min(1, appear * 4) });
+        pixelText(ctx, label, px - 190, y, { size: 13, color: '#b4c6d8' });
+        pixelText(ctx, value, px + 190, y, { size: 13, color: '#ffffff', align: 'right', alpha: Math.min(1, appear * 4) });
     });
+    if (finale) drawElephantVision(ctx, px + 232, 222, 240, time, { label: 'ELEPHANT ESCORT', alpha: Math.min(1, Math.max(0, t - 0.4) * 2) });
     const after = 0.6 + rows.length * 0.18 + 0.2;
     if (record && t > after) {
         const pulse = 0.6 + 0.4 * Math.sin(time * 6);
         drawGlow(ctx, cx, 234 + boxH + 26, 150, '#ffe65c', 0.25 * pulse);
-        pixelText(ctx, '* VICTORY STAMP READY *', cx, 240 + boxH + 30, { size: 16, align: 'center', color: '#ffe65c', alpha: pulse });
+        pixelText(ctx, '* VICTORY STAMP READY *', cx, 240 + boxH + 30, { size: 16, align: 'center', color: '#ffe65c', alpha: 0.75 + 0.25 * pulse });
     }
     const next = game.level.number < LEVEL_COUNT ? getLevel(game.level.number + 1).name.toUpperCase() : '';
-    if (next) pixelText(ctx, `NEXT: ${next}   ENTER TO JUMP`, cx, VIEW.height - 40, { size: 12, align: 'center', color: '#9fb4c8' });
+    if (next) pixelText(ctx, `NEXT: ${next}   ENTER TO JUMP`, cx, VIEW.height - 40, { size: 13, align: 'center', color: '#c9d6e3' });
+}
+
+function isSectorFinale(game) {
+    const number = game.level && game.level.number;
+    return number === LEVEL_COUNT || number === TOTAL_LEVEL_COUNT;
 }
 
 function drawVictory(ctx, game, fx) {
@@ -236,20 +245,20 @@ function drawVictory(ctx, game, fx) {
         ctx.fillRect(0, 0, VIEW.width, VIEW.height);
     }
     const sky = ctx.createLinearGradient(0, 0, 0, VIEW.height);
-    sky.addColorStop(0, 'rgba(30, 0, 40, 0.65)');
-    sky.addColorStop(0.6, 'rgba(10, 0, 20, 0.35)');
-    sky.addColorStop(1, 'rgba(0, 0, 0, 0.8)');
+    sky.addColorStop(0, 'rgba(24, 0, 34, 0.72)');
+    sky.addColorStop(0.55, 'rgba(8, 0, 18, 0.62)');
+    sky.addColorStop(1, 'rgba(0, 0, 0, 0.88)');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, VIEW.width, VIEW.height);
 
     // Sunburst rays.
     ctx.save();
-    ctx.translate(cx, 120);
+    ctx.translate(cx, 110);
     ctx.rotate(time * 0.2);
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 16; i++) {
         ctx.rotate((Math.PI * 2) / 16);
-        ctx.fillStyle = i % 2 ? 'rgba(255, 230, 92, 0.06)' : 'rgba(63, 184, 255, 0.06)';
+        ctx.fillStyle = i % 2 ? 'rgba(255, 230, 92, 0.035)' : 'rgba(63, 184, 255, 0.035)';
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.lineTo(-40, -700);
@@ -259,26 +268,39 @@ function drawVictory(ctx, game, fx) {
     }
     ctx.restore();
 
+    const finalSector = game.level.number === TOTAL_LEVEL_COUNT;
     const pop = easeOutBack(Math.min(1, t / 0.6));
-    drawGlow(ctx, cx, 110, 320, '#ffe65c', 0.25);
-    if (pop > 0.01) waveText(ctx, 'VICTORY!', cx, 120, { size: Math.round(76 * Math.max(0.2, pop)), time, amp: 8 });
-    pixelText(ctx, 'THE CORE IS CLEARED', cx, 168, { size: 20, align: 'center', color: '#ffffff', alpha: Math.min(1, t) });
-    if (game.difficulty) pixelText(ctx, `${difficultyName(game).toUpperCase()} CAMPAIGN COMPLETE`, cx, 192, { size: 13, align: 'center', color: difficultyColor(game.difficulty) });
+    drawGlow(ctx, cx, 76, 280, '#ffe65c', 0.2);
+    if (pop > 0.01) waveText(ctx, 'VICTORY!', cx, 90, { size: Math.round(56 * Math.max(0.2, pop)), time, amp: 6 });
+    pixelText(ctx, finalSector ? 'THE FAR FUTURE IS CLEARED' : 'THE CORE IS CLEARED', cx, 126, { size: 18, align: 'center', color: '#ffffff', alpha: Math.min(1, t) });
+    if (game.difficulty) pixelText(ctx, `${difficultyName(game).toUpperCase()} CAMPAIGN COMPLETE`, cx, 147, { size: 13, align: 'center', color: difficultyColor(game.difficulty) });
 
+    const visionW = 264;
+    const visionTop = 160;
+    const visionAlpha = Math.min(1, Math.max(0, t - 0.3) * 2);
+    drawElephantVision(ctx, cx - visionW / 2, visionTop, visionW, time, { label: finalSector ? 'ELEPHANT HONOR GUARD' : 'ELEPHANT ESCORT', alpha: visionAlpha });
+    const flankY = visionTop + 104;
     const sprite = pixelSprite('victory-ship', SHIP_TOP, SHIP_PALETTE, 5);
     if (sprite) {
-        const sy = 250 + Math.sin(time * 3) * 6;
-        drawGlow(ctx, cx, sy, 70, '#7fd7ff', 0.4);
+        const sx = cx - visionW / 2 - 92;
+        const sy = flankY + Math.sin(time * 3) * 6;
+        drawGlow(ctx, sx, sy, 70, '#7fd7ff', 0.4);
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(sprite, cx - sprite.width / 2, sy - sprite.height / 2);
+        ctx.drawImage(sprite, Math.round(sx - sprite.width / 2), Math.round(sy - sprite.height / 2));
         ctx.fillStyle = '#ffb347';
-        ctx.fillRect(cx - 14, sy + sprite.height / 2, 8, 10 + 6 * Math.sin(time * 30));
-        ctx.fillRect(cx + 6, sy + sprite.height / 2, 8, 10 + 6 * Math.cos(time * 30));
+        ctx.fillRect(sx - 14, sy + sprite.height / 2, 8, 10 + 6 * Math.sin(time * 30));
+        ctx.fillRect(sx + 6, sy + sprite.height / 2, 8, 10 + 6 * Math.cos(time * 30));
     }
+    drawBreathe(ctx, cx + visionW / 2 + 92, flankY + Math.cos(time * 3) * 6, 34, time, visionAlpha);
+
+    // Dark plate keeps the score block readable over the bright backdrop.
+    const plateW = Math.min(VIEW.width - 32, 760);
+    ctx.fillStyle = 'rgba(3, 4, 14, 0.66)';
+    ctx.fillRect(Math.round(cx - plateW / 2), 362, Math.round(plateW), 168);
 
     const finalScore = Math.round(game.score * Math.min(1, Math.max(0, t - 0.4) / 2));
-    pixelText(ctx, 'FINAL SCORE', cx, 326, { size: 12, align: 'center', color: '#9fb4c8' });
-    pixelText(ctx, String(finalScore).padStart(7, '0'), cx, 362, { size: 34, align: 'center', color: '#ffe65c' });
+    pixelText(ctx, 'FINAL SCORE', cx, 382, { size: 13, align: 'center', color: '#c9d6e3' });
+    pixelText(ctx, String(finalScore).padStart(7, '0'), cx, 414, { size: 32, align: 'center', color: '#ffe65c' });
 
     const run = typeof game.getRunStats === 'function' ? safe(() => game.getRunStats()) : null;
     if (run) {
@@ -289,16 +311,16 @@ function drawVictory(ctx, game, fx) {
             ['LIVES LOST', `${run.livesLost || 0}`]
         ];
         stats.forEach(([label, value], i) => {
-            const x = 130 + i * 180;
-            panelBox(ctx, x - 75, 384, 150, 50, RAINBOW[i + 1]);
-            pixelText(ctx, label, x, 402, { size: 10, align: 'center', color: '#9fb4c8' });
-            pixelText(ctx, value, x, 426, { size: 18, align: 'center', color: '#ffffff' });
+            const x = cx + (i - 1.5) * 172;
+            panelBox(ctx, x - 78, 424, 156, 48, RAINBOW[i + 1], 0.9);
+            pixelText(ctx, label, x, 442, { size: 13, align: 'center', color: '#c9d6e3' });
+            pixelText(ctx, value, x, 464, { size: 18, align: 'center', color: '#ffffff' });
         });
     }
     const pulse = 0.6 + 0.4 * Math.sin(time * 5);
-    pixelText(ctx, `ALL ${game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT} LEVELS CLEARED`, cx, 470, { size: 16, align: 'center', color: '#7dff8c', alpha: pulse });
-    pixelText(ctx, game.level.number === TOTAL_LEVEL_COUNT ? 'CLAIM YOUR LEVEL 20 ACHIEVEMENT IN THE VAULT' : 'SECTOR I CLEARED - LEVEL 20 EARNS THE ACHIEVEMENT', cx, 492, { size: 11, align: 'center', color: '#c9d6e3' });
-    pixelText(ctx, 'ENTER  MENU', cx, VIEW.height - 30, { size: 12, align: 'center', color: '#9fb4c8' });
+    pixelText(ctx, `ALL ${finalSector ? TOTAL_LEVEL_COUNT : LEVEL_COUNT} LEVELS CLEARED`, cx, 497, { size: 16, align: 'center', color: '#7dff8c', alpha: 0.75 + 0.25 * pulse });
+    pixelText(ctx, finalSector ? 'CLAIM YOUR LEVEL 20 ACHIEVEMENT IN THE VAULT' : 'SECTOR I CLEARED - LEVEL 20 EARNS THE ACHIEVEMENT', cx, 519, { size: 13, align: 'center', color: '#e8eef5' });
+    pixelText(ctx, 'ENTER  MENU', cx, VIEW.height - 24, { size: 13, align: 'center', color: '#c9d6e3' });
 }
 
 function safe(fn) {

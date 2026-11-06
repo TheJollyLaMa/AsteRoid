@@ -2,11 +2,19 @@ const { VIEW } = require('./projection');
 const { WEAPONS, MAX_TIER } = require('../weapons');
 const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('../levels');
 const { PICKUP_STYLE, SHIP_TOP, SHIP_PALETTE, pixelSprite, drawBreathe, drawGlow } = require('./shapes');
-const { pixelText } = require('./font');
+const { pixelText, measurePixelText, pixelTextMetrics } = require('./font');
 const { getPlayers, versusMode } = require('./players');
 
 const DIFFICULTY_COLORS = { cadet: '#7dff8c', pilot: '#ffd25c', ace: '#ff3c5a' };
 const POWER_SEGMENTS = 16;
+const FOOTER_STEPS = [
+    { size: 13, name: true, flags: true, scoreLabel: true, difficulty: true },
+    { size: 13, name: false, flags: true, scoreLabel: true, difficulty: true },
+    { size: 13, name: false, flags: false, scoreLabel: false, difficulty: true },
+    { size: 11, name: true, flags: true, scoreLabel: true, difficulty: true },
+    { size: 11, name: false, flags: false, scoreLabel: false, difficulty: false },
+    { size: 10, name: false, flags: false, scoreLabel: false, difficulty: false }
+];
 
 function difficultyColor(id) {
     return DIFFICULTY_COLORS[id] || '#9fb4c8';
@@ -84,90 +92,135 @@ function createHud() {
     function drawToast(ctx) {
         if (!view.toast || Date.now() >= view.toastUntil) return;
         const alpha = Math.min(1, (view.toastUntil - Date.now()) / 300);
-        panelBox(ctx, VIEW.width / 2 - 150, 14, 300, 26, '#7fd7ff', 0.45);
-        pixelText(ctx, view.toast, VIEW.width / 2, 32, { size: 12, align: 'center', color: '#ffffff', alpha });
+        const width = Math.min(VIEW.width - 40, Math.max(300, measurePixelText(view.toast, { size: 13 }, ctx) + 32));
+        panelBox(ctx, VIEW.width / 2 - width / 2, 14, width, 28, '#7fd7ff', 0.72);
+        pixelText(ctx, view.toast, VIEW.width / 2, 28 + pixelTextMetrics(ctx, { size: 13 }).ascent / 2, { size: 13, align: 'center', color: '#ffffff', alpha });
     }
 
     // One slim, see-through strip along the bottom edge keeps the play field clear.
     const STRIP_H = 24;
+    const GAP = 18;
+
+    function footerText(game, step, opts) {
+        const sector = game.level.number >= 11 ? 'II · ' : '';
+        const total = game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT;
+        const name = step.name ? ` ${String(game.level.name || '').toUpperCase()}` : '';
+        const flags = step.flags ? `${opts.muted ? 'M:OFF ' : ''}${opts.crt ? 'CRT ' : ''}[V] ${game.view === 'pov' ? 'POV' : 'MAP'}` : `${opts.muted ? 'M:OFF ' : ''}${game.view === 'pov' ? 'POV' : 'MAP'}`;
+        return { label: `${sector}LV ${game.level.number}/${total}${name}`, flags };
+    }
+
+    // Widest layout that fits: larger text first, then optional labels drop away.
+    function footerLayout(ctx, game, opts) {
+        const ship = game.ship || {};
+        const weapon = ship.weapon || { type: 'blaster', tier: 1 };
+        const spec = WEAPONS[weapon.type] || WEAPONS.blaster;
+        const lives = Math.max(0, Number(ship.lives) || 0);
+        const charging = weapon.type === 'nova' || weapon.type === 'singularity';
+        const key = [VIEW.width, pixelTextMetrics(ctx, { size: 13 }).unitX, game.level.number, game.level.name, spec.name, lives, charging,
+            opts.muted, opts.crt, game.view, game.difficulty, ship.miniHits > 0].join('|');
+        if (view.footerKey === key) return view.footer;
+        let chosen;
+        for (const step of FOOTER_STEPS) {
+            const m = (value) => measurePixelText(value, { size: step.size }, ctx);
+            const text = footerText(game, step, opts);
+            const left = 20 + POWER_SEGMENTS * 7 + 4 + m('100') + 10 + m('◇0.0') + 10 + m(spec.name.toUpperCase()) + 6 + MAX_TIER * 9 + 6
+                + (charging ? 70 + m('100%') + 6 : 0) + (ship.miniHits > 0 ? m('MINI') + 6 + 5 * 6 + 6 : 0);
+            const centre = m(text.label) + 8 + 96 + (step.difficulty && game.difficulty ? 10 + m(difficultyName(game).toUpperCase()) : 0);
+            const right = m(text.flags) + 10 + lives * 15 + 10 + m('x99') + 10 + m('0000000') + (step.scoreLabel ? 6 + m('SCORE') : 0);
+            chosen = { ...step, ...text, left, centre, right };
+            if (20 + left + centre + right + GAP * 2 <= VIEW.width) break;
+        }
+        view.footerKey = key;
+        view.footer = chosen;
+        return chosen;
+    }
 
     function drawStrip(ctx, game, dt, opts) {
         const ship = game.ship || {};
         const time = game.time || 0;
+        const layout = footerLayout(ctx, game, opts);
+        const size = layout.size;
         const y0 = VIEW.height - STRIP_H;
-        const base = y0 + 16;
+        const mid = y0 + STRIP_H / 2;
+        const base = mid + pixelTextMetrics(ctx, { size }).ascent / 2;
         ctx.save();
         const bg = ctx.createLinearGradient(0, y0 - 10, 0, VIEW.height);
         bg.addColorStop(0, 'rgba(4, 8, 22, 0)');
-        bg.addColorStop(0.35, 'rgba(4, 8, 22, 0.34)');
-        bg.addColorStop(1, 'rgba(4, 8, 22, 0.5)');
+        bg.addColorStop(0.35, 'rgba(4, 8, 22, 0.55)');
+        bg.addColorStop(1, 'rgba(4, 8, 22, 0.78)');
         ctx.fillStyle = bg;
         ctx.fillRect(0, y0 - 10, VIEW.width, STRIP_H + 10);
-        ctx.fillStyle = 'rgba(86, 237, 255, 0.18)';
+        ctx.fillStyle = 'rgba(86, 237, 255, 0.24)';
         ctx.fillRect(0, y0, VIEW.width, 1);
-        ctx.globalAlpha = 0.9;
 
         // Power (Breathe = re-up) with the drain ghost, then shield.
         let x = 10;
         const fraction = (Number(ship.power) || 0) / Math.max(1, Number(ship.maxPower) || 100);
         view.power += (fraction - view.power) * 0.15;
-        drawBreathe(ctx, x + 8, y0 + 12, 7, time, 0.9);
+        drawBreathe(ctx, x + 8, mid, 7, time, 0.95);
         x += 20;
         const lit = litSegments(fraction);
         const ghost = litSegments(view.power);
         const low = fraction <= 0.3 && Math.floor(time * 5) % 2 === 0;
         const color = low ? '#ffffff' : powerColor(fraction);
         for (let i = 0; i < POWER_SEGMENTS; i++) {
-            ctx.fillStyle = i < lit ? color : i < ghost ? 'rgba(255, 90, 60, 0.55)' : 'rgba(255,255,255,0.1)';
-            ctx.fillRect(x + i * 7, y0 + 8, 5, 9);
+            ctx.fillStyle = i < lit ? color : i < ghost ? 'rgba(255, 90, 60, 0.55)' : 'rgba(255,255,255,0.12)';
+            ctx.fillRect(x + i * 7, mid - 5, 5, 10);
         }
         x += POWER_SEGMENTS * 7 + 4;
-        x += pixelText(ctx, String(Math.round(Number(ship.power) || 0)), x, base, { size: 10, color: powerColor(fraction) }) + 10;
+        x += pixelText(ctx, String(Math.round(Number(ship.power) || 0)), x, base, { size, color: powerColor(fraction) }) + 10;
         if (ship.shield > 0) {
             ctx.fillStyle = PICKUP_STYLE.shield.color;
-            ctx.fillRect(30, y0 + 19, (POWER_SEGMENTS * 7 - 2) * Math.min(1, ship.shield / 7), 2);
-            x += pixelText(ctx, `◇${ship.shield.toFixed(1)}`, x, base, { size: 10, color: PICKUP_STYLE.shield.color }) + 10;
+            ctx.fillRect(30, mid + 7, (POWER_SEGMENTS * 7 - 2) * Math.min(1, ship.shield / 7), 2);
+            x += pixelText(ctx, `◇${ship.shield.toFixed(1)}`, x, base, { size, color: PICKUP_STYLE.shield.color }) + 10;
         }
 
         // Weapon, tier pips and the charge meter for Nova-class weapons.
         const weapon = ship.weapon || { type: 'blaster', tier: 1 };
         const spec = WEAPONS[weapon.type] || WEAPONS.blaster;
-        ctx.fillStyle = 'rgba(255,255,255,0.12)';
-        ctx.fillRect(x - 6, y0 + 6, 1, 12);
-        x += pixelText(ctx, spec.name.toUpperCase(), x, base, { size: 10, color: spec.color }) + 6;
+        ctx.fillStyle = 'rgba(255,255,255,0.14)';
+        ctx.fillRect(x - 6, mid - 6, 1, 12);
+        x += pixelText(ctx, spec.name.toUpperCase(), x, base, { size, color: spec.color === '#1c3f8a' ? '#8fb2ff' : spec.color }) + 6;
         for (let i = 0; i < MAX_TIER; i++) {
-            ctx.fillStyle = i < (weapon.tier || 1) ? spec.color : 'rgba(255,255,255,0.12)';
-            ctx.fillRect(x + i * 9, y0 + 9, 7, 7);
+            ctx.fillStyle = i < (weapon.tier || 1) ? spec.color : 'rgba(255,255,255,0.14)';
+            ctx.fillRect(x + i * 9, mid - 4, 7, 8);
         }
         x += MAX_TIER * 9 + 6;
         const charge = Math.max(0, Math.min(1, Number(game.charge ?? ship.charge ?? 0) || 0));
         if (charge > 0 || game.charging || ship.charging) {
-            ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(x, y0 + 10, 64, 5);
-            ctx.fillStyle = spec.color; ctx.fillRect(x, y0 + 10, 64 * charge, 5);
-            drawGlow(ctx, x + 64 * charge, y0 + 12, 10 + charge * 16, spec.color, 0.25 + charge * 0.5);
+            ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(x, mid - 2, 64, 5);
+            ctx.fillStyle = spec.color; ctx.fillRect(x, mid - 2, 64 * charge, 5);
+            drawGlow(ctx, x + 64 * charge, mid, 10 + charge * 16, spec.color, 0.25 + charge * 0.5);
             x += 70;
-            x += pixelText(ctx, `${Math.round(charge * 100)}%`, x, base, { size: 9, color: '#ffffff' }) + 6;
+            x += pixelText(ctx, `${Math.round(charge * 100)}%`, x, base, { size, color: '#ffffff' }) + 6;
+        }
+        if (ship.miniHits > 0) {
+            x += pixelText(ctx, 'MINI', x, base, { size, color: PICKUP_STYLE.mini.color }) + 6;
+            for (let i = 0; i < 5; i++) {
+                ctx.fillStyle = i < ship.miniHits ? PICKUP_STYLE.mini.color : 'rgba(255,255,255,0.14)';
+                ctx.fillRect(x + i * 6, mid - 3, 4, 6);
+            }
         }
 
-        // Centre: level, progress and difficulty.
-        const sector = game.level.number >= 11 ? 'II · ' : '';
-        const label = `${sector}LV ${game.level.number}/${game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT} ${game.level.name.toUpperCase()}`;
-        const cx = Math.max(x + 150, VIEW.width / 2);
-        pixelText(ctx, label, cx - 4, base, { size: 10, align: 'right', color: '#c9d6e3' });
-        const pw = 110;
-        ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(cx + 4, y0 + 10, pw, 4);
-        ctx.fillStyle = '#7dff8c'; ctx.fillRect(cx + 4, y0 + 10, pw * Math.max(0, Math.min(1, game.levelProgress || 0)), 4);
-        if (game.difficulty) pixelText(ctx, difficultyName(game).toUpperCase(), cx + pw + 10, base, { size: 9, color: difficultyColor(game.difficulty) });
+        // Centre: level, progress and difficulty, centred in the space between clusters.
+        const regionStart = 10 + layout.left + GAP;
+        const regionEnd = VIEW.width - 10 - layout.right - GAP;
+        const cx = Math.max(regionStart, Math.min(regionEnd - layout.centre, (VIEW.width - layout.centre) / 2));
+        const labelWidth = pixelText(ctx, layout.label, cx, base, { size, color: '#dce7f2' });
+        const pw = 96;
+        const px = cx + labelWidth + 8;
+        ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(px, mid - 2, pw, 4);
+        ctx.fillStyle = '#7dff8c'; ctx.fillRect(px, mid - 2, pw * Math.max(0, Math.min(1, game.levelProgress || 0)), 4);
+        if (layout.difficulty && game.difficulty) pixelText(ctx, difficultyName(game).toUpperCase(), px + pw + 10, base, { size, color: difficultyColor(game.difficulty) });
 
         // Right: view flags, lives, combo, score.
         let rx = VIEW.width - 10;
-        const flags = `${opts.muted ? 'M:OFF ' : ''}${opts.crt ? 'CRT ' : ''}[V] ${game.view === 'pov' ? 'POV' : 'MAP'}`;
-        rx -= pixelText(ctx, flags, rx, base, { size: 9, color: '#9fb4c8', align: 'right' }) + 10;
+        rx -= pixelText(ctx, layout.flags, rx, base, { size, color: '#a9bccf', align: 'right' }) + 10;
         const sprite = pixelSprite('lives', SHIP_TOP, SHIP_PALETTE, 1);
         const lives = Math.max(0, Number(ship.lives) || 0);
         for (let i = 0; i < lives; i++) {
             rx -= 15;
-            if (sprite) { ctx.imageSmoothingEnabled = false; ctx.drawImage(sprite, rx, y0 + 4, 13, sprite.height * 13 / sprite.width); }
+            if (sprite) { ctx.imageSmoothingEnabled = false; ctx.drawImage(sprite, rx, mid - 8, 13, sprite.height * 13 / sprite.width); }
         }
         rx -= 10;
         const combo = Number(game.combo) || 0;
@@ -176,14 +229,14 @@ function createHud() {
         view.comboPop = Math.max(0, view.comboPop - dt * 3);
         if (combo >= 2) {
             const hue = Math.round((150 + 45 * Math.sin(time * 4)) / 15) * 15;
-            const scale = 1 + view.comboPop * 0.4;
-            drawGlow(ctx, rx - 20, y0 + 12, 22 * scale, `hsl(${hue}, 100%, 60%)`, 0.2);
-            rx -= pixelText(ctx, `x${combo}`, rx, base, { size: Math.round(12 * scale), color: `hsl(${hue}, 100%, 70%)`, align: 'right' }) + 10;
+            const pop = 1 + view.comboPop * 0.4;
+            drawGlow(ctx, rx - 20, mid, 22 * pop, `hsl(${hue}, 100%, 60%)`, 0.2);
+            rx -= pixelText(ctx, `x${combo}`, rx, base, { size: Math.round(size * pop), color: `hsl(${hue}, 100%, 72%)`, align: 'right' }) + 10;
         }
         view.score = rollUp(view.score, game.score, dt);
         const rolling = Math.round(view.score) !== game.score;
-        rx -= pixelText(ctx, String(Math.round(view.score)).padStart(7, '0'), rx, base, { size: 12, color: rolling ? '#ffe65c' : '#e8f6ff', align: 'right' }) + 6;
-        pixelText(ctx, 'SCORE', rx, base, { size: 9, color: '#9fb4c8', align: 'right' });
+        rx -= pixelText(ctx, String(Math.round(view.score)).padStart(7, '0'), rx, base, { size, color: rolling ? '#ffe65c' : '#ffffff', align: 'right' }) + 6;
+        if (layout.scoreLabel) pixelText(ctx, 'SCORE', rx, base, { size, color: '#a9bccf', align: 'right' });
         ctx.restore();
     }
 

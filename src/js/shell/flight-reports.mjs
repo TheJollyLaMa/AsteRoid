@@ -3,17 +3,23 @@ const download = document.getElementById('diagnostic-download');
 const resume = document.getElementById('diagnostic-resume');
 const alert = document.getElementById('flight-fault');
 const api = () => window.voyagerDiagnostics;
+const FAULT_LABEL = { 'frame-error': 'Flight error', 'context-lost': 'Graphics restarting', 'performance-pause': 'Performance pause' };
+// The banner reflects only the live fault in this page; older reports stay in
+// the status line below the game.
 function refresh() {
   const report = api()?.report();
   download.disabled = !report;
+  const fault = api()?.activeFault?.();
+  alert.hidden = !fault;
+  if (fault) alert.textContent = `${FAULT_LABEL[fault.kind] || 'Flight notice'}: ${fault.message} Details: Flight reports & recovery below the game.`;
   const entry = report?.entries.filter(item => !['battle-event', 'graphics-sample'].includes(item.kind)).at(-1);
-  if (entry && ['frame-error', 'context-lost', 'context-restored', 'performance-pause'].includes(entry.kind)) {
-    alert.hidden = false;
-    alert.textContent = `${entry.kind}: ${entry.message} Scroll below the game to Flight reports & recovery.`;
-  } else if (entry?.kind === 'manual-resume') alert.hidden = true;
-  if (entry && !['battle-event', 'manual-resume'].includes(entry.kind)) {
-    status.textContent = `${entry.kind}: ${entry.message} Local report saved${report.storageError ? ' in memory only (browser storage unavailable)' : ' in this browser'}. Online rounds continue on the referee.`;
-  } else if (entry?.kind === 'manual-resume') status.textContent = 'Recovery requested. If the error returns, download the report before reloading.';
+  if (!entry) return;
+  if (entry.kind === 'manual-resume') {
+    status.textContent = 'Recovery requested. If the error returns, download the report before reloading.';
+    return;
+  }
+  const when = entry.session === report.session ? '' : 'Previous visit · ';
+  status.textContent = `${when}${entry.kind}: ${entry.message} Local report saved${report.storageError ? ' in memory only (browser storage unavailable)' : ' in this browser'}. Online rounds continue on the referee.`;
 }
 download.addEventListener('click', () => {
   const report = api()?.report();
