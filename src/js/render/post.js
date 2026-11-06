@@ -6,6 +6,7 @@ let overlay;
 let overlayWidth = 0;
 function crtOverlay() {
     if (overlay !== undefined && overlayWidth === VIEW.width) return overlay;
+    clearPostResources();
     overlayWidth = VIEW.width;
     overlay = makeCanvas(VIEW.width, VIEW.height);
     if (!overlay) return overlay;
@@ -20,6 +21,16 @@ function crtOverlay() {
     return overlay;
 }
 
+function clearPostResources() {
+    if (overlay) { overlay.width = 0; overlay.height = 0; }
+    overlay = undefined;
+    overlayWidth = 0;
+}
+
+function getPostResources() {
+    return { postPixels: overlay ? overlay.width * overlay.height : 0 };
+}
+
 function drawCrt(ctx, time = 0) {
     const img = crtOverlay();
     if (!img) return;
@@ -30,4 +41,4 @@ function drawCrt(ctx, time = 0) {
     ctx.fillRect(0, y, VIEW.width, 50);
 }
 
-module.exports = { drawCrt };
+module.exports = { drawCrt, getPostResources, clearPostResources };

@@ -23,15 +23,31 @@ function bulletWeaponType(bullet) {
 
 // ---------------------------------------------------------------- glow sprites
 const glowCache = new Map();
+const MAX_GLOW_SPRITES = 64;
+let glowAllocations = 0;
 let glowBudget = Infinity;
 function setGlowBudget(limit = Infinity) {
     glowBudget = limit;
 }
 function glowSprite(color) {
-    if (glowCache.has(color)) return glowCache.get(color);
-    const canvas = makeCanvas(64, 64);
+    if (glowCache.has(color)) {
+        const hit = glowCache.get(color);
+        glowCache.delete(color);
+        glowCache.set(color, hit);
+        return hit;
+    }
+    let canvas;
+    if (glowCache.size >= MAX_GLOW_SPRITES) {
+        const oldest = glowCache.keys().next().value;
+        canvas = glowCache.get(oldest);
+        glowCache.delete(oldest);
+    } else {
+        canvas = makeCanvas(64, 64);
+        if (canvas) glowAllocations++;
+    }
     if (canvas) {
         const c = canvas.getContext('2d');
+        c.clearRect(0, 0, 64, 64);
         const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
         g.addColorStop(0, color);
         g.addColorStop(0.25, color);
@@ -42,6 +58,23 @@ function glowSprite(color) {
     }
     glowCache.set(color, canvas);
     return canvas;
+}
+
+function getShapeResources() {
+    const sprites = [...glowCache.values(), ...spriteCache.values(), hexCanvas].filter(Boolean);
+    return {
+        glowSprites: glowCache.size, glowAllocations,
+        shapePixels: sprites.reduce((total, canvas) => total + canvas.width * canvas.height, 0)
+    };
+}
+
+function clearShapeResources() {
+    for (const canvas of [...glowCache.values(), ...spriteCache.values(), hexCanvas]) {
+        if (canvas) { canvas.width = 0; canvas.height = 0; }
+    }
+    glowCache.clear();
+    spriteCache.clear();
+    hexCanvas = undefined;
 }
 
 // Additive soft glow: much cheaper than shadowBlur.
@@ -560,6 +593,9 @@ function drawEnemyBullet(ctx, bullet, x, y, scale = 1, alpha = 1, time = 0) {
 }
 
 module.exports = {
+    MAX_GLOW_SPRITES,
+    getShapeResources,
+    clearShapeResources,
     PICKUP_STYLE,
     SHIP_TOP,
     SHIP_CHASE,

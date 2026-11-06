@@ -111,6 +111,8 @@ test('about content covers rewards, tutorials and the multiplayer walkthrough wi
   assert.match(source,/Coming soon/); assert.match(source,/purchaseWithToken/);
   assert.match(ABOUT.recovery, /Online rounds continue/);
   assert.match(ABOUT.diagnostics, /Nothing is sent automatically/);
+  assert.match(ABOUT.recovery, /bounded, reusable caches/);
+  assert.match(ABOUT.diagnostics, /not measurements of actual GPU memory/);
   const html=readFileSync(new URL('../src/index.html',import.meta.url),'utf8');
   assert.ok(html.indexOf('about-modal.mjs')<html.indexOf('js/shell/main.mjs'));
   assert.doesNotMatch(html,/flight-note|pilot-rewards|No wallet needed to fly/);

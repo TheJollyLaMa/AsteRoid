@@ -6,8 +6,9 @@ const { makeCanvas } = require('./assets');
 
 const FONT_STACK = 'Menlo, Monaco, Consolas, "DejaVu Sans Mono", "Courier New", monospace';
 const PIXEL = 2;
-const CACHE_LIMIT = 400;
+const CACHE_LIMIT = 128;
 const cache = new Map();
+let allocations = 0;
 
 function fontFor(size, weight = 'bold') {
     return `${weight} ${size}px ${FONT_STACK}`;
@@ -23,14 +24,14 @@ function scratchContext() {
 }
 
 function rasterize(value, size, color, outline, weight) {
-    const key = `${value}|${size}|${color}|${outline}|${weight}`;
+    const small = Math.max(5, Math.round(size / PIXEL));
+    const key = `${value}|${small}|${color}|${outline}|${weight}`;
     const hit = cache.get(key);
     if (hit) {
         cache.delete(key);
         cache.set(key, hit);
         return hit;
     }
-    const small = Math.max(5, Math.round(size / PIXEL));
     const sctx = scratchContext();
     if (!sctx) return null;
     sctx.font = fontFor(small, weight);
@@ -55,12 +56,36 @@ function rasterize(value, size, color, outline, weight) {
     const data = sctx.getImageData(0, 0, width, height);
     const px = data.data;
     for (let i = 3; i < px.length; i += 4) px[i] = px[i] > 110 ? 255 : 0;
-    const canvas = makeCanvas(width, height);
+    let canvas;
+    if (cache.size >= CACHE_LIMIT) {
+        const oldest = cache.keys().next().value;
+        canvas = cache.get(oldest).canvas;
+        cache.delete(oldest);
+        if (canvas.width !== width) canvas.width = width;
+        if (canvas.height !== height) canvas.height = height;
+    } else {
+        canvas = makeCanvas(width, height);
+        allocations++;
+    }
     canvas.getContext('2d').putImageData(data, 0, 0);
     const entry = { canvas, width, height, baseline };
     cache.set(key, entry);
-    if (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value);
     return entry;
+}
+
+function getFontResources() {
+    return {
+        textSprites: cache.size, textAllocations: allocations,
+        textPixels: [...cache.values()].reduce((total, entry) => total + entry.canvas.width * entry.canvas.height, 0)
+            + (scratch ? scratch.canvas.width * scratch.canvas.height : 0)
+    };
+}
+
+function clearFontResources() {
+    for (const entry of cache.values()) { entry.canvas.width = 0; entry.canvas.height = 0; }
+    cache.clear();
+    if (scratch) { scratch.canvas.width = 0; scratch.canvas.height = 0; }
+    scratch = null;
 }
 
 // Draws pixel text; returns the drawn width in canvas pixels.
@@ -102,4 +127,4 @@ function measurePixelText(value, { size = 14, weight = 'bold', scale = 1 } = {})
     return entry.width * PIXEL * scale;
 }
 
-module.exports = { FONT_STACK, fontFor, pixelText, measurePixelText };
+module.exports = { FONT_STACK, fontFor, pixelText, measurePixelText, CACHE_LIMIT, getFontResources, clearFontResources };

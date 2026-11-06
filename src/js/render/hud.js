@@ -175,7 +175,7 @@ function createHud() {
         view.combo = combo;
         view.comboPop = Math.max(0, view.comboPop - dt * 3);
         if (combo >= 2) {
-            const hue = 150 + 45 * Math.sin(time * 4);
+            const hue = Math.round((150 + 45 * Math.sin(time * 4)) / 15) * 15;
             const scale = 1 + view.comboPop * 0.4;
             drawGlow(ctx, rx - 20, y0 + 12, 22 * scale, `hsl(${hue}, 100%, 60%)`, 0.2);
             rx -= pixelText(ctx, `x${combo}`, rx, base, { size: Math.round(12 * scale), color: `hsl(${hue}, 100%, 70%)`, align: 'right' }) + 10;

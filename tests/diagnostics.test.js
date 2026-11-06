@@ -25,3 +25,18 @@ test('repeated faults deduplicate and blocked storage is explicit', () => {
     assert.equal(diagnostics.report().entries.length, 1);
     assert.equal(diagnostics.report().storageError, 'quota');
 });
+
+test('graphics resource evidence and build provenance survive reload', () => {
+    let saved;
+    const storage = { getItem: () => saved, setItem: (_key, value) => { saved = value; } };
+    const snapshot = () => ({ level: 9, glowSprites: 32, glowAllocations: 32, shapePixels: 131072, estimatedSurfaceBytes: 12000000, contextLost: true });
+    const before = createDiagnostics({ storage, snapshot });
+    before.record('context-lost', 'Graphics unavailable', { maxDrawMs: 8, quality: 0.65 });
+    const after = createDiagnostics({ storage, snapshot }).report();
+    assert.equal(after.entries[0].build, 'bounded-graphics-2');
+    assert.equal(after.entries[0].glowSprites, 32);
+    assert.equal(after.entries[0].estimatedSurfaceBytes, 12000000);
+    assert.equal(after.entries[0].contextLost, true);
+    assert.equal(after.entries[0].maxDrawMs, 8);
+    assert.equal(after.current.glowSprites, 32);
+});

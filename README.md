@@ -68,11 +68,54 @@ text cannot be guaranteed secret-free. Nothing uploads automatically. Download
 before reloading a broken scene, then attach the reviewed JSON to a GitHub flight
 report along with device/browser, view and actions leading to the failure.
 
+#### Long-flight graphics resources
+
+The animated combo originally used a continuously varying HSL colour as a key
+in an unbounded glow-canvas cache. This retained new 64x64 surfaces throughout
+a flight, regardless of scene entity limits or framebuffer size. The HUD now
+uses seven colour steps; the shared glow cache is a 64-entry LRU that repaints
+the oldest surface in place when full (at most 1 MiB of RGBA glow pixels).
+Text sprites similarly reuse at most 128 canvases, and fractional text sizes
+share the same key when their raster dimensions match. Opaque main-canvas
+rendering avoids unnecessary alpha compositing; no CPU-readback hint is applied
+to the gameplay canvas. This does not force a GPU backend or assume that a more
+powerful machine can compensate for leaking surfaces.
+
+Context loss records the pre-release resource counts, releases glow/ship/shield,
+text/scratch, tinted-asteroid and CRT surfaces, then pauses locally. Restoration
+still requires explicit Resume battle and starts at no more than 65% render
+quality. No simulation entities, collision rules or replay/reward inputs change.
+
+Reports now include periodic 15-second samples, current cache counts and
+cumulative cache allocation totals, FX counts, peak step/draw/frame times for
+the sampling window, opaque-context state and estimated RGBA surface bytes.
+The byte estimate covers known images/cached canvases/main backing; it excludes
+driver allocations, extra texture copies, other tabs and browser UI. It is not
+an actual GPU-memory reading or proof that a particular driver caused a reset.
+Samples are collected without reading gameplay pixels or allocating a second
+graphics context. Each new entry records its own build; older entries without
+build provenance remain historical, not evidence from the updated renderer.
+Automated browser allocation tests use Chromium's SwiftShader/software backend;
+they verify cache growth, rendered behavior and recovery, not M1/Metal driver
+stability or hardware utilization. A clean software soak cannot rule out a
+device-specific GPU reset. Reports do not infer CPU architecture from Chrome's
+Mac user-agent string (which may say Intel even on Apple Silicon).
+In a frame-paced comparison with a sustained combo, the prior build allocated
+870 glow canvases and 2,645 total canvas contexts in 900 frames (about 15 seconds
+at 60 Hz). The repaired build completed 25,200 presented frames (seven minutes
+at 60 Hz), cycling levels 7–9 and both views, with one firing pilot initially
+and five thereafter: 23 glow canvases and 128 text sprites, 175 total canvas
+contexts, no context loss or frame error. Allocation counts stabilized after
+warm-up. This establishes bounded application-owned surfaces under that workload;
+it does not establish a fixed total memory footprint for the browser/driver.
+
 Reuse: adapted this app's existing `createFx`, `drawAsteroid`, `createAudio`,
 frame-loop and About controls. Consulted the Canopy inventory and scoped local
 Voyager/BigNuten diagnostic filenames; no compatible report helper found in that
 scope, so the small bounded local recorder is new. No external runtime service
 or dependency, no reward/replay contract change, and no new public inventory claim.
+The long-flight fix adapts these same existing glow/font/asset/CRT caches and
+local reports rather than adding a renderer framework or external telemetry.
 
 ## Live v1
 

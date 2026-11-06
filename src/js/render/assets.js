@@ -120,6 +120,17 @@ function makeCanvas(width, height) {
 
 // Cached tinted copies: 'flash' = white silhouette, 'shooter' = menacing red/orange.
 const tintCache = new Map();
+function getAssetResources() {
+    return {
+        tintSprites: tintCache.size,
+        tintPixels: [...tintCache.values()].reduce((total, canvas) => total + (canvas ? canvas.width * canvas.height : 0), 0),
+        imagePixels: Object.values(images).reduce((total, image) => total + (isImageReady(image) ? image.naturalWidth * image.naturalHeight : 0), 0)
+    };
+}
+function clearTintResources() {
+    for (const canvas of tintCache.values()) if (canvas) { canvas.width = 0; canvas.height = 0; }
+    tintCache.clear();
+}
 function getTinted(key, mode) {
     const cacheKey = `${key}|${mode}`;
     if (tintCache.has(cacheKey)) return tintCache.get(cacheKey);
@@ -148,6 +159,8 @@ function getTinted(key, mode) {
 }
 
 module.exports = {
+    getAssetResources,
+    clearTintResources,
     BASE_URL,
     MANIFEST,
     ROCK_KEYS,

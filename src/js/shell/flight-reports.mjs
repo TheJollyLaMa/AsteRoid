@@ -6,7 +6,7 @@ const api = () => window.voyagerDiagnostics;
 function refresh() {
   const report = api()?.report();
   download.disabled = !report;
-  const entry = report?.entries.at(-1);
+  const entry = report?.entries.filter(item => !['battle-event', 'graphics-sample'].includes(item.kind)).at(-1);
   if (entry && ['frame-error', 'context-lost', 'context-restored', 'performance-pause'].includes(entry.kind)) {
     alert.hidden = false;
     alert.textContent = `${entry.kind}: ${entry.message} Scroll below the game to Flight reports & recovery.`;
