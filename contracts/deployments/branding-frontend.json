@@ -1,0 +1,25 @@
+{
+  "schema": "voyager-frontend-deployment/1",
+  "repository": "TheJollyLaMa/DecentVoyager",
+  "sourceCommit": "5b1304995a3eb64d9f25e7bac1315b3f63c84e60",
+  "ens": "voyager.decentagency.eth",
+  "chainId": 1,
+  "resolver": "0xF29100983E058B709F3D539b0c765937B804AC15",
+  "ipfsCID": "bafybeib2gcanocvsn672opkxewptwrv37gfxfhtdu2g7nbpkddlwqe6amu",
+  "files": 155,
+  "bundleSHA256": "befffd3f3f238174bd5ec17ea5595799a78da0d785b80402f32baea7a4075b68",
+  "contenthash": "0xe301017012203a3080d70ab26fbfa73d57259f3b46bbf98b729e63a68df685ea18d76813c065",
+  "transactionHash": "0x8a526c62bb3f4e196b726ceaf156db119475bdb3393e1865052606f4cf1b5160",
+  "gasTopupTransactionHash": "0xf165ead613391dd4991520f98381e02d0b655908c408e1cbbfcb6b1cf2d96830",
+  "verification": {
+    "gateway": "https://ipfs.filebase.io/ipfs/bafybeib2gcanocvsn672opkxewptwrv37gfxfhtdu2g7nbpkddlwqe6amu/index.html",
+    "indexBytes": "matched",
+    "bundleBytes": "matched",
+    "discBytes": "matched",
+    "mandelblumBytes": "matched",
+    "configBytes": "matched",
+    "browser": "Game ready; title and sample record use Decent Voyager; no page errors",
+    "ensReadback": "matched"
+  },
+  "notice": "Verified dated publication, not guaranteed permanent availability of any public gateway. Pinata's public HTML gateway403 and ipfs.io/dweb.link429 were not hidden; Filebase served the verified entrypoint and game."
+}
