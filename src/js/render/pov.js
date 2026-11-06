@@ -1,5 +1,5 @@
 const { VIEW, MAX_VIEW_WIDTH, POV, povCamera, projectPov, povFade } = require('./projection');
-const { drawAsteroid, drawPickup, drawShipChase, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
+const { drawAsteroid, drawPickup, drawShipChase, drawMiniAura, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { levelTint, createStarfield, drawNebula } = require('./background');
 const { getImage } = require('./assets');
 const { getPlayers, playerScale } = require('./players');
@@ -195,6 +195,7 @@ function createPovRenderer() {
                 if (index === 0) drawReticle(ctx, camera, ship, time);
                 ctx.save(); ctx.translate(shipPoint.x, shipPoint.y); ctx.scale(size, size);
                 drawShipChase(ctx, ship, 0, 0, time, fx ? fx.ripples : []);
+                drawMiniAura(ctx, ship, time, 72);
                 ctx.fillStyle = color; ctx.fillRect(-8, 3, 16, 5);
                 ctx.restore();
             });

@@ -6,6 +6,7 @@ const SAFE_START = 520;
 const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield'];
 const FUTURE_PICKUPS = ['nova', 'prism', 'singularity'];
 const EXTRA_LIFE_LEVELS = [3, 7, 12, 16];
+const MINI_EMBLEM_LEVELS = [5, 9, 14, 18];
 
 function scatterAsteroid(level, rng, y) {
     const size = range(rng, 14, 26 + level.number * 1.6);
@@ -125,9 +126,13 @@ function populateLevel(level, rng) {
     if (EXTRA_LIFE_LEVELS.includes(level.number)) {
         pickups.push({ x: WORLD_WIDTH / 2, y: level.length * 0.6, type: 'life', size: 20 });
     }
+    if (MINI_EMBLEM_LEVELS.includes(level.number)) {
+        const homeX = 240 + ((level.number * 149) % 320);
+        pickups.push({ x: homeX, homeX, y: level.length * 0.4, type: 'mini', size: 16 });
+    }
     asteroids.sort((a, b) => a.y - b.y);
     pickups.sort((a, b) => a.y - b.y);
     return { asteroids, pickups };
 }
 
-module.exports = { populateLevel, PICKUP_TYPES, FUTURE_PICKUPS, EXTRA_LIFE_LEVELS, SAFE_START };
+module.exports = { populateLevel, PICKUP_TYPES, FUTURE_PICKUPS, EXTRA_LIFE_LEVELS, MINI_EMBLEM_LEVELS, SAFE_START };

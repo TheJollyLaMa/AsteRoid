@@ -1,5 +1,5 @@
 const { VIEW, projectOverview } = require('./projection');
-const { drawAsteroid, drawPickup, drawShipTop, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
+const { drawAsteroid, drawPickup, drawShipTop, drawMiniAura, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { createOverviewBackground } = require('./background');
 const { getImage } = require('./assets');
 const { pixelText } = require('./font');
@@ -110,6 +110,7 @@ function createOverviewRenderer() {
                 if (charge > 0) drawGlow(ctx, 0, 0, 48 + charge * 48, ship.weapon && ship.weapon.type === 'singularity' ? '#b67aff' : '#d6a1ff', 0.45 + charge * 0.45);
                 drawGlow(ctx, 0, 0, 34, color, 0.42);
                 drawShipTop(ctx, ship, 0, 0, time, fx ? fx.ripples : []);
+                drawMiniAura(ctx, ship, time, 38);
                 ctx.fillStyle = color; ctx.fillRect(-6, 6, 12, 4); ctx.fillRect(-10, 11, 5, 3); ctx.fillRect(5, 11, 5, 3);
                 ctx.restore();
             });

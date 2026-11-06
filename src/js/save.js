@@ -199,8 +199,8 @@ function validateLevelRecord(record, where = 'Level record') {
         return result;
     };
     const shotsByWeapon = extendNewCounters(stats.shotsByWeapon, ['nova', 'prism', 'singularity']);
-    const pickupsCollected = extendNewCounters(stats.pickupsCollected, ['nova', 'prism', 'singularity']);
-    const count = (key) => num(key === 'volleys' ? (stats[key] ?? 0) : stats[key], `${s}.${key}`, {
+    const pickupsCollected = extendNewCounters(stats.pickupsCollected, ['nova', 'prism', 'singularity', 'life', 'mini']);
+    const count = (key) => num(['volleys', 'miniHitsAbsorbed'].includes(key) ? (stats[key] ?? 0) : stats[key], `${s}.${key}`, {
         max: 1e9, integer: !['damageTaken', 'timeInPov', 'timeInOverview'].includes(key)
     });
     return {
@@ -252,6 +252,7 @@ function validateLevelRecord(record, where = 'Level record') {
             damageTaken: count('damageTaken'),
             pickupsCollected: counters(pickupsCollected, PICKUP_TYPES, `${s}.pickupsCollected`, true),
             pickupsMissed: count('pickupsMissed'),
+            miniHitsAbsorbed: count('miniHitsAbsorbed'),
             maxCombo: count('maxCombo'),
             timeInPov: count('timeInPov'),
             timeInOverview: count('timeInOverview'),

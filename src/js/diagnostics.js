@@ -1,7 +1,7 @@
 const RULESET = require('./ruleset');
 const KEY = 'voyager.diagnostics.v1';
 const LIMIT = 40;
-const BUILD = 'bounded-graphics-2';
+const BUILD = 'readable-hud-3';
 const NUMERIC_FIELDS = [
     'level', 'particles', 'rocks', 'bullets', 'width', 'height', 'dpr', 'elapsedMs', 'quality',
     'glowSprites', 'glowAllocations', 'shapePixels', 'textSprites', 'textAllocations', 'textPixels',
@@ -16,7 +16,14 @@ function redact(value) {
         .slice(0, 1800);
 }
 
-function createDiagnostics({ storage, snapshot = () => ({}), notify = () => {}, now = () => Date.now() } = {}) {
+function sessionId(now) {
+    const random = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+    return `${now().toString(36)}-${random.slice(0, 8)}`;
+}
+
+// Entries persist across reloads for flight reports; `session` lets the page
+// tell faults from this visit apart from historical ones.
+function createDiagnostics({ storage, snapshot = () => ({}), notify = () => {}, now = () => Date.now(), session = sessionId(now) } = {}) {
     let entries = [];
     let storageError = storage ? null : 'Browser storage unavailable';
     try {
@@ -28,12 +35,12 @@ function createDiagnostics({ storage, snapshot = () => ({}), notify = () => {}, 
                 ...Object.fromEntries(NUMERIC_FIELDS
                     .filter(key => Number.isFinite(item[key])).map(key => [key, item[key]])),
                 ...Object.fromEntries(['contextLost', 'contextAlpha'].filter(key => typeof item[key] === 'boolean').map(key => [key, item[key]])),
-                ...Object.fromEntries(['state', 'difficulty', 'view', 'build'].filter(key => typeof item[key] === 'string').map(key => [key, redact(item[key])]))
+                ...Object.fromEntries(['state', 'difficulty', 'view', 'build', 'session'].filter(key => typeof item[key] === 'string').map(key => [key, redact(item[key])]))
             }));
         }
     } catch (error) { storageError = redact(error.message); }
     const report = () => ({
-        schema: 'voyager-diagnostics/1', build: BUILD, ruleset: RULESET,
+        schema: 'voyager-diagnostics/1', build: BUILD, ruleset: RULESET, session,
         browser: typeof navigator === 'undefined' ? 'unavailable' : redact(navigator.userAgent),
         storageError, current: snapshot(), entries: entries.map(entry => ({ ...entry }))
     });
@@ -42,7 +49,7 @@ function createDiagnostics({ storage, snapshot = () => ({}), notify = () => {}, 
         const previous = entries.at(-1);
         const at = now();
         if (previous?.kind === kind && previous.message === message && at - previous.at < 5000) return;
-        entries.push({ at, kind: redact(kind), message, stack: redact(error?.stack), build: BUILD, ...snapshot(), ...details });
+        entries.push({ at, kind: redact(kind), message, stack: redact(error?.stack), build: BUILD, session, ...snapshot(), ...details });
         entries = entries.slice(-LIMIT);
         try { storage?.setItem(KEY, JSON.stringify(entries)); }
         catch (failure) { storageError = redact(failure.message); }
@@ -51,4 +58,4 @@ function createDiagnostics({ storage, snapshot = () => ({}), notify = () => {}, 
     return { record, report };
 }
 
-module.exports = { createDiagnostics, redact, KEY, LIMIT };
+module.exports = { createDiagnostics, redact, KEY, LIMIT, BUILD };

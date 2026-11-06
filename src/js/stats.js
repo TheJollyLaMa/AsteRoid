@@ -11,12 +11,13 @@
 // - hitsTaken: hits that cost power; collisions: rocks the ship flew into (shielded or not);
 //   shieldBlocks: bullets or rocks absorbed by the shield; damageTaken: power lost.
 // - pickupsMissed: pickups that passed behind the ship uncollected.
+// - miniHitsAbsorbed: hits the ship took while shrunk by the Mini emblem.
 // - combo: consecutive asteroid kills by the player's shots, each within COMBO_WINDOW seconds of
 //   the previous kill, without the ship losing power in between. maxCombo is the level best.
 // - closestCall: smallest gap in px between the ship's and a dodged enemy bullet's edges
 //   (-1 when no enemy bullet was dodged).
 const WEAPON_TYPES = ['blaster', 'spread', 'rapid', 'plasma', 'nova', 'prism', 'singularity'];
-const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield', 'nova', 'prism', 'singularity', 'life'];
+const PICKUP_TYPES = ['spread', 'rapid', 'plasma', 'power', 'shield', 'nova', 'prism', 'singularity', 'life', 'mini'];
 const COMBO_WINDOW = 2;
 const RECORD_SCHEMA = 'asteroid-level-record/1';
 const GAME_NAME = 'Decent Voyager: Galactic Gauntlet';
@@ -28,7 +29,7 @@ const PATH_INTERVAL = 0.25;
 const COUNTER_FIELDS = [
     'shotsFired', 'volleys', 'hits', 'asteroidsSpawned', 'asteroidsDestroyed', 'asteroidsMissed',
     'shootersDestroyed', 'fragmentsDestroyed', 'enemyShotsFired', 'enemyShotsDodged', 'hitsTaken',
-    'collisions', 'shieldBlocks', 'damageTaken', 'pickupsMissed', 'timeInPov', 'timeInOverview'
+    'collisions', 'shieldBlocks', 'damageTaken', 'pickupsMissed', 'miniHitsAbsorbed', 'timeInPov', 'timeInOverview'
 ];
 
 // Lifetime / run totals: counters are summed, maxCombo is a max, closestCall a min.
@@ -195,6 +196,10 @@ class LevelTracker {
         this.stats.pickupsMissed += 1;
     }
 
+    miniHit() {
+        this.stats.miniHitsAbsorbed += 1;
+    }
+
     lifeLost() {
         this.livesLost += 1;
     }
@@ -220,6 +225,7 @@ class LevelTracker {
             damageTaken: round(s.damageTaken),
             pickupsCollected: { ...s.pickupsCollected },
             pickupsMissed: s.pickupsMissed,
+            miniHitsAbsorbed: s.miniHitsAbsorbed,
             maxCombo: s.maxCombo,
             timeInPov: round(s.timeInPov),
             timeInOverview: round(s.timeInOverview),

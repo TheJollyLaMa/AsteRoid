@@ -23,6 +23,8 @@ copies only; the multi-megabyte originals and animated GIFs are not shipped.
 | mars-domicile.jpg | BlenderBender/Mandelblum/Mandelblums_Mars_Domicile.png | 960px wide JPEG, q72 |
 | breathe-sheet.png | DecentJukebox/public/assets/Ens_Eth_Breathe.gif | 8 frames (every 13th) extracted with ffmpeg, 96px each, tiled 768x96 |
 | breathe-still.png | DecentHead/img/Ens_Eth_Breathe-still.png | resized to 96px |
+| mini-emblem-sheet.png | BlenderBender/Mandelblum/ComposToken_Clear.gif | 12 frames (every 7th) extracted with ffmpeg, 96px each, tiled 1152x96, 255-colour PNG with alpha |
+| elephant-sheet.jpg | BlenderBender/Mandelblum/mandelblum2_FlyingElephantVisions.gif | 20 frames (every 5th) at 360x236, tiled 5x4 (1800x944), light brightness/saturation lift, JPEG q74 |
 
 The pixel-art ship, bullets, shield, HUD and effects are drawn in code (src/js/render/).
 Sounds are synthesized at runtime with WebAudio (src/js/audio.js); there are no audio files.

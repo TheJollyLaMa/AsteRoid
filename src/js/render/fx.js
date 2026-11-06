@@ -7,13 +7,14 @@ const { VIEW } = require('./projection');
 const { normalizeEvent } = require('./events');
 const { getImage } = require('./assets');
 const { drawSupporterToken } = require('./vault');
+const { drawElephantVision } = require('./elephant');
 
 const MAX_WORLD_PARTICLES = 360;
 const MAX_SCREEN_PARTICLES = 450;
 const ROCK_COLORS = ['#7fffe0', '#ff8ae6', '#b9a8ff', '#ffffff', '#9ff3ff', '#ffe18a'];
 const SHOOTER_COLORS = ['#ff5a1c', '#ff8a5c', '#ffd25c', '#ffffff', '#ff3a1c'];
 const FIREWORK_COLORS = ['#3fb8ff', '#7fd7ff', '#7dff8c', '#ffe65c', '#d8e4ef', '#ffffff', '#ffb347'];
-const PICKUP_COLORS = { spread: '#5fffd0', rapid: '#ffe65c', plasma: '#d8e4ef', power: '#7dff8c', shield: '#6fa8ff' };
+const PICKUP_COLORS = { spread: '#5fffd0', rapid: '#ffe65c', plasma: '#d8e4ef', power: '#7dff8c', shield: '#6fa8ff', life: '#ffffff', mini: '#ff7ae6' };
 
 const rand = (min, max) => min + Math.random() * (max - min);
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
@@ -22,6 +23,7 @@ function pickupLabel(kind, weapon) {
     if (kind === 'life') return '+1 LIFE';
     if (kind === 'power') return '+POWER';
     if (kind === 'shield') return 'SHIELD UP';
+    if (kind === 'mini') return 'MINI SHIP · 5 HITS';
     const tier = weapon && weapon.type === kind && weapon.tier ? ` LV${weapon.tier}` : '';
     return `${String(kind || 'BONUS').toUpperCase()}${tier}`;
 }
@@ -170,6 +172,10 @@ function createFx() {
                     }
                     break;
                 }
+                case 'miniEnded':
+                    addWorld({ kind: 'ring', x: e.x ?? ship.x, y: e.y ?? ship.y, vx: 0, vy: drift, life: 0.6, maxLife: 0.6, radius: 6, grow: 70, color: PICKUP_COLORS.mini });
+                    floatText(e.x ?? ship.x, (e.y ?? ship.y) + 34, 'FULL SIZE', PICKUP_COLORS.mini, 1.1, 15);
+                    break;
                 case 'asteroidMissed':
                     if (e.x !== undefined) floatText(e.x, e.y + 20, 'MISS', '#8a93a6', 0.8, 11);
                     break;
@@ -422,6 +428,9 @@ function createFx() {
                 ctx.translate(cx, cy); ctx.rotate(t * 3); ctx.drawImage(image, -size / 2, -size / 2, size, size);
             }
             ctx.restore();
+            // Level 10 finale: the elephant escort rides the warp with you.
+            const escortAlpha = Math.min(1, state.warpTime * 3, (2.5 - state.warpTime) * 3);
+            if (escortAlpha > 0) drawElephantVision(ctx, cx - 110, 34, 220, state.warpTime, { label: 'ELEPHANT ESCORT', color: '#bafcff', alpha: escortAlpha });
             pixelText(ctx, t < 0.8 ? 'WARPING TO SECTOR II' : 'FAR FUTURE · ARRIVAL', cx, VIEW.height - 70, { size: 20, align: 'center', color: '#bafcff' });
         }
         if (state.captureTime >= 0) {

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createDiagnostics, LIMIT, KEY } = require('../src/js/diagnostics');
+const { createDiagnostics, LIMIT, KEY, BUILD } = require('../src/js/diagnostics');
 
 test('diagnostics bound and persist sanitized reports without flight payloads', () => {
     const data = new Map();
@@ -33,10 +33,23 @@ test('graphics resource evidence and build provenance survive reload', () => {
     const before = createDiagnostics({ storage, snapshot });
     before.record('context-lost', 'Graphics unavailable', { maxDrawMs: 8, quality: 0.65 });
     const after = createDiagnostics({ storage, snapshot }).report();
-    assert.equal(after.entries[0].build, 'bounded-graphics-2');
+    assert.equal(after.entries[0].build, BUILD);
     assert.equal(after.entries[0].glowSprites, 32);
     assert.equal(after.entries[0].estimatedSurfaceBytes, 12000000);
     assert.equal(after.entries[0].contextLost, true);
     assert.equal(after.entries[0].maxDrawMs, 8);
     assert.equal(after.current.glowSprites, 32);
+});
+
+test('reloaded reports separate earlier visits from the current page session', () => {
+    let saved;
+    const storage = { getItem: () => saved, setItem: (_key, value) => { saved = value; } };
+    createDiagnostics({ storage, session: 'visit-1' }).record('context-lost', 'Old graphics loss');
+    const current = createDiagnostics({ storage, session: 'visit-2' });
+    const report = current.report();
+    assert.equal(report.session, 'visit-2');
+    assert.equal(report.entries[0].session, 'visit-1');
+    assert.notEqual(createDiagnostics().report().session, createDiagnostics().report().session);
+    current.record('frame-error', 'New failure');
+    assert.deepEqual(current.report().entries.map(entry => entry.session), ['visit-1', 'visit-2']);
 });

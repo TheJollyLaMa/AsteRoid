@@ -15,15 +15,18 @@ function getPlayers(game) {
     return result.slice(0, 5).map((entry, index) => ({ ...entry, color: PLAYER_COLORS[entry.index % PLAYER_COLORS.length] || PLAYER_COLORS[index] }));
 }
 
+const MINI_DRAW_SCALE = 0.5;
+
 function playerScale(count, ship) {
-    if (Number.isFinite(Number(ship && ship.scale))) return Number(ship.scale);
-    if (count <= 2) return 1;
-    if (count === 3) return 0.8;
-    return 0.7;
+    const mini = Number(ship && ship.miniHits) > 0 ? MINI_DRAW_SCALE : 1;
+    if (Number.isFinite(Number(ship && ship.scale))) return Number(ship.scale) * mini;
+    if (count <= 2) return mini;
+    if (count === 3) return 0.8 * mini;
+    return 0.7 * mini;
 }
 
 function versusMode(game) {
     return Boolean(game && (game.mode === 'versus' || game.multiplayerMode === 'versus' || game.multiplayer && game.multiplayer.mode === 'versus'));
 }
 
-module.exports = { PLAYER_COLORS, getPlayers, playerScale, versusMode };
+module.exports = { PLAYER_COLORS, getPlayers, playerScale, versusMode, MINI_DRAW_SCALE };
