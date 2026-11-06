@@ -1,6 +1,6 @@
 # ✦ Decent Voyager: Galactic Gauntlet ✦
 
-*(formerly AsteRoid)* A scrolling space shooter for the browser (CommonJS bundled with browserify) that plays
+A scrolling space shooter for the browser (CommonJS bundled with browserify) that plays
 like Galaga: fly a corridor of Mandelblum rocks, blast through gauntlets, dodge return fire and reach the jump gate.
 **Sector I** (levels 1–10) is free for everyone with no wallet. **Decent Pilots** (the DecentAgency whitelist) can
 unlock **Sector II** (levels 11–20), win Supporter DNFTs, earn on-chain victory stamps and join paid arena rounds.
@@ -20,7 +20,15 @@ unlock **Sector II** (levels 11–20), win Supporter DNFTs, earn on-chain victor
   Pinata public-gateway HTML restrictions and earlier eth.limo TLS failures);
   Pages is the verified play route.
 
-The repository was renamed from `AsteRoid` to `DecentVoyager`. Frozen v1.0.0 Supporter metadata and source archives retain their original repository identity; GitHub redirects the old repository links. Historical payroll references, save keys and record schemas remain compatible. New issue links and payroll entries use `DecentVoyager`.
+The canonical project and repository are **Decent Voyager** / `TheJollyLaMa/DecentVoyager`.
+Supporter token #80's prepared branding correction will update its metadata,
+provenance art and active sale note without reminting editions or changing the
+v1 source commit. **The chain/IPFS correction is pending execution permission**;
+the existing token URI and historical escrow note are not yet changed.
+Historical transactions and content-addressed original archives cannot be rewritten.
+Legacy payroll references, save keys, API identifiers and record schemas remain
+readable for compatibility; they are not current project names. New records, saves
+and issue links display Decent Voyager.
 
 ## Play locally
 

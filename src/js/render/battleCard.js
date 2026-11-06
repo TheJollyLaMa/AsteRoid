@@ -456,7 +456,7 @@ async function previewBattleCard(record) {
         tab.document.body.style.cssText = 'margin:0;background:#05030c;display:grid;place-items:center;min-height:100vh';
         const img = tab.document.createElement('img');
         img.src = url;
-        img.alt = `AsteRoid battle card for level ${chosen.level}`;
+        img.alt = `Decent Voyager battle card for level ${chosen.level}`;
         img.style.cssText = 'max-width:100vw;max-height:100vh;image-rendering:pixelated';
         tab.document.body.appendChild(img);
     }

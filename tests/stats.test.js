@@ -184,7 +184,7 @@ test('clearing a level emits a JSON-safe LevelRecord and stores it', () => {
     assert.ok(types.indexOf('levelRecord') < types.indexOf('levelComplete'));
     const { record } = events.find((e) => e.type === 'levelRecord');
     assert.equal(record.schema, RECORD_SCHEMA);
-    assert.equal(record.game, 'AsteRoid: Galactic Gauntlet');
+    assert.equal(record.game, 'Decent Voyager: Galactic Gauntlet');
     assert.equal(record.gameVersion, '2.0.0');
     assert.equal(record.level, 1);
     assert.equal(record.levelName, 'Drydock Drift');

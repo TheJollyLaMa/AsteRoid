@@ -66,7 +66,9 @@ export function appendClaim(queue, claim, issue = {}) {
   if (existing) return { queue: result, added: false, existing };
   const entry = { ...valid };
   if (Number.isSafeInteger(issue.number) && issue.number > 0) entry.issueNumber = issue.number;
-  if (typeof issue.url === 'string' && /^https:\/\/github\.com\/TheJollyLaMa\/AsteRoid\/issues\/\d+$/.test(issue.url)) entry.issueUrl = issue.url;
+  if (typeof issue.url === 'string' && /^https:\/\/github\.com\/TheJollyLaMa\/(?:DecentVoyager|AsteRoid)\/issues\/\d+$/.test(issue.url)) {
+    entry.issueUrl = issue.url.replace('/AsteRoid/', '/DecentVoyager/');
+  }
   result.pending.push(entry);
   return { queue: result, added: true };
 }

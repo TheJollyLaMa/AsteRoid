@@ -31,9 +31,9 @@ device testing; desktop emulation cannot verify those browser policies.
 
 Receiving need: immediate multi-touch movement and tap/hold fire without weakening
 existing keyboard/gamepad input or wallet handling. Reviewed Canopy's curated
-`data/agency-map.json`, AsteRoid's active dirty worktree, recent commits/open work,
+`data/agency-map.json`, Voyager's active dirty worktree, recent commits/open work,
 and BigNuten_Vanilla JS/MJS motion/fullscreen candidates. No motion/fullscreen
-helper was found within that bounded donor search. Adapted AsteRoid's existing
+helper was found within that bounded donor search. Adapted Voyager's existing
 `src/js/input/index.js:createInput` and
 `src/js/shell/launch-pad.mjs:mountLaunchPad` action interface (base commit
 `c6ae584`; input extension is uncommitted in this delivery), rather than adding a

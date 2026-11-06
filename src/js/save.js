@@ -336,7 +336,7 @@ function validateSave(input) {
     if (!isPlainObject(obj)) fail('Save file is empty or not an object.');
     assertJsonData(obj);
     if (isLegacyShape(obj)) return migrateLegacy(obj);
-    if (obj.app !== SAVE_APP) fail('This file is not an AsteRoid: Galactic Gauntlet save.');
+    if (obj.app !== SAVE_APP) fail('This file is not a Decent Voyager: Galactic Gauntlet save.');
     if (!Number.isInteger(obj.version)) fail('Save file has no version number.');
     if (obj.version > SAVE_VERSION) fail(`Save version ${obj.version} is newer than this game supports (${SAVE_VERSION}). Update the game first.`);
     if (obj.version < 1) fail(`Save version ${obj.version} is not supported.`);

@@ -92,7 +92,7 @@ test('import rejects invalid saves with friendly errors and leaves the game unto
         [null, /empty or not an object/],
         ['{not json', /not valid JSON/],
         [[], /empty or not an object/],
-        [{ ...good(), app: 'other-game' }, /not an AsteRoid/],
+        [{ ...good(), app: 'other-game' }, /not a Decent Voyager/],
         [{ ...good(), version: 2 }, /newer than this game supports/],
         [{ ...good(), version: '1' }, /no version/],
         [(() => { const s = good(); s.progress.byDifficulty.cadet.unlocked = 21; return s; })(), /Cadet progress: unlocked level must be a whole number from 1 to 20/],
