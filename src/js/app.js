@@ -12,6 +12,7 @@ const { renderBattleCard, previewBattleCard } = require('./render/battleCard');
 const { sampleRecord } = require('./render/cardMath');
 const { setGlowBudget } = require('./render/shapes');
 const { createInput } = require('./input');
+const { createDiagnostics } = require('./diagnostics');
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -27,7 +28,17 @@ function safeStorage() {
 
 const storage = safeStorage();
 const game = new Game({ storage });
-const audio = createAudio();
+const diagnostics = createDiagnostics({
+    storage,
+    snapshot: () => ({
+        state: game.state, level: game.level?.number, difficulty: game.difficulty, view: game.view,
+        particles: game.particles?.length, rocks: game.asteroids?.length,
+        bullets: (game.playerBullets?.length || 0) + (game.enemyBullets?.length || 0),
+        width: canvas.width, height: canvas.height, dpr: window.devicePixelRatio || 1
+    }),
+    notify: () => window.dispatchEvent(new CustomEvent('voyager:diagnostic'))
+});
+const audio = createAudio({ onError: error => diagnostics.record('audio', error) });
 const fx = createFx();
 const hud = createHud();
 const renderers = { overview: createOverviewRenderer(), pov: createPovRenderer() };
@@ -201,6 +212,9 @@ function step(realDt, controls = null) {
         audio.play(events, game);
         fx.handle(events, game);
         events.forEach(dispatchGameEvent);
+        for (const event of events) if (['levelStart', 'shipDestroyed', 'gameOver', 'victory'].includes(event.type)) {
+            diagnostics.record('battle-event', event.type);
+        }
     }
     fx.update(realDt, game);
 }
@@ -239,6 +253,9 @@ function draw() {
         fitBacking();
     }
     setGlowBudget(game.state === 'title' ? Infinity : renderQuality < 1 ? 30 : 120);
+    try { drawScene(); } finally { setGlowBudget(); }
+}
+function drawScene() {
     audio.setSector2(Number(game.level && game.level.number) >= 11);
     const shake = fx.shakeOffset();
     ctx.setTransform(renderScaleX, 0, 0, renderScaleY, 0, 0);
@@ -246,21 +263,39 @@ function draw() {
     ctx.imageSmoothingEnabled = false;
     if (game.state !== 'title') {
         ctx.save();
-        ctx.translate(shake.x, shake.y);
-        renderers[game.view](ctx, game, fx);
-        ctx.restore();
+        try {
+            ctx.translate(shake.x, shake.y);
+            renderers[game.view](ctx, game, fx);
+        } finally { ctx.restore(); }
         fx.drawScreen(ctx, game);
     }
     hud.drawHud(ctx, game, fx, { muted: audio.muted, crt: display.crt });
     drawOverlay(ctx, game, fx);
     if (display.crt && game.state !== 'title') drawCrt(ctx, game.time || 0);
-    setGlowBudget();
 }
 
 let last = null;
 let slowFrames = 0;
 let healthyFrames = 0;
+let frameFault = false;
+let contextLost = false;
+function freezeBattle() {
+    input.clear();
+    if (!networkMode && game.state === 'playing') game.handleAction('pause');
+}
+function frameError(error) {
+    frameFault = true;
+    freezeBattle();
+    diagnostics.record('frame-error', error);
+    hud.setToast('Flight error: open Flight reports below to save diagnostics and recover.', 12000);
+}
 function frame(timestamp) {
+    try {
+        if (!frameFault && !contextLost) advanceFrame(timestamp);
+    } catch (error) { frameError(error); }
+    finally { requestAnimationFrame(frame); }
+}
+function advanceFrame(timestamp) {
     const elapsed = last === null ? 0 : (timestamp - last) / 1000;
     let dt = Math.min(0.05, elapsed);
     last = timestamp;
@@ -272,15 +307,17 @@ function frame(timestamp) {
         game.particles.length = 0;
         input.clear();
         if (!networkMode) {
-            game.handleAction('pause');
+            freezeBattle();
             dt = 0;
             hud.setToast('Performance pause: battle frozen. Press P / Resume when ready.', 12000);
         } else {
             hud.setToast('Reduced visual load. Online battle continues on the referee.', 12000);
         }
+        diagnostics.record('performance-pause', networkMode ? 'Online visuals reduced; referee continues.' : 'Local battle paused after a slow frame.', { elapsedMs: Math.round(elapsed * 1000), quality: renderQuality });
+        healthyFrames = 0;
         slowFrames = 0;
     }
-    healthyFrames = elapsed > 0 && elapsed < 0.025 ? healthyFrames + 1 : 0;
+    healthyFrames = game.state === 'playing' && elapsed > 0 && elapsed < 0.025 ? healthyFrames + 1 : 0;
     if (game.state === 'playing' && healthyFrames >= 600 && renderQuality < 1) {
         renderQuality = Math.min(1, renderQuality + 0.05);
         fitBacking();
@@ -288,8 +325,35 @@ function frame(timestamp) {
     }
     step(dt);
     draw();
-    requestAnimationFrame(frame);
 }
+canvas.addEventListener('contextlost', event => {
+    event.preventDefault();
+    contextLost = true;
+    freezeBattle();
+    diagnostics.record('context-lost', 'Canvas graphics context lost. Battle paused locally; online referee continues.');
+});
+canvas.addEventListener('contextrestored', () => {
+    contextLost = false;
+    frameFault = true;
+    diagnostics.record('context-restored', 'Graphics restored. Use Resume battle in Flight reports.');
+});
+window.addEventListener('error', event => diagnostics.record('window-error', event.error || event.message || 'Resource load failed'));
+window.addEventListener('unhandledrejection', event => diagnostics.record('unhandled-rejection', event.reason));
+window.voyagerDiagnostics = {
+    report: diagnostics.report,
+    resume() {
+        if (contextLost) throw new Error('Graphics context has not recovered. Download the report, then reload.');
+        frameFault = false;
+        last = null;
+        slowFrames = healthyFrames = 0;
+        fx.clear();
+        input.clear();
+        if (typeof ctx.reset === 'function') ctx.reset();
+        else canvas.width = canvas.width;
+        if (!networkMode && game.state === 'paused') game.handleAction('confirm');
+        diagnostics.record('manual-resume', 'Pilot requested recovery.');
+    }
+};
 document.addEventListener('visibilitychange', () => {
     if (!document.hidden) last = null;
     else {

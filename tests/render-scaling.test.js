@@ -13,6 +13,9 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
     let smoothingDuringRender;
     let crtDraws = 0;
     let nextFrame;
+    let renderFailure = null;
+    let updateFailure = null;
+    const records = [];
     const updates = [];
     const toasts = [];
     let cleared = 0;
@@ -30,7 +33,7 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
         set height(value) { backingHeight = value; allocations++; ctx.imageSmoothingEnabled = true; },
         getContext: () => ctx,
         getBoundingClientRect: () => rect,
-        addEventListener() {}
+        addEventListener(type, callback) { listeners[`canvas:${type}`] = callback; }
     };
     const listeners = {};
     const window = {
@@ -39,15 +42,16 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
         dispatchEvent() {}
     };
     const noop = () => {};
-    const renderer = () => { smoothingDuringRender = ctx.imageSmoothingEnabled; };
+    const renderer = () => { if (renderFailure) throw renderFailure; smoothingDuringRender = ctx.imageSmoothingEnabled; };
     const modules = {
         './game': class {
             constructor() { this.view = 'overview'; this.time = 0; this.particles = []; }
-            handleAction(action) { if (action === 'pause') this.state = 'paused'; }
-            update(dt) { updates.push(dt); }
+            handleAction(action) { if (action === 'pause') this.state = this.state === 'paused' ? 'playing' : 'paused'; if (action === 'confirm' && this.state === 'paused') this.state = 'playing'; }
+            update(dt) { if (updateFailure) throw updateFailure; updates.push(dt); }
             drainEvents() { return []; }
         },
         './audio': { createAudio: () => ({ setSector2: noop }) },
+        './diagnostics': { createDiagnostics: () => ({ record: (...args) => records.push(args), report: () => ({ entries: records }) }) },
         './render/overview': { createOverviewRenderer: () => renderer },
         './render/pov': { createPovRenderer: () => renderer },
         './render/hud': { createHud: () => ({ drawHud: noop, setToast: message => toasts.push(message) }) },
@@ -82,6 +86,9 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
         draw: () => window.asteroidDraw(),
         frame: timestamp => nextFrame(timestamp),
         updates, toasts,
+        records, listeners,
+        failDraw: error => { renderFailure = error; },
+        failUpdate: error => { updateFailure = error; },
         get cleared() { return cleared; },
         resize(width, height) {
             rect = { width, height };
@@ -189,6 +196,7 @@ test('repeated overload stays bounded and quality only recovers during healthy p
     view.window.asteroidGame.state = 'playing';
     view.frame(0);
     for (const time of [400, 800, 1200, 1600]) view.frame(time);
+    assert.equal(view.window.asteroidGame.state, 'paused', 'repeated overload must never toggle pause off');
     assert.equal(view.canvas.width, 560);
     for (let frame = 1; frame <= 610; frame++) view.frame(1600 + frame * 16);
     assert.equal(view.canvas.width, 560, 'paused scene does not prematurely restore heavy rendering');
@@ -196,6 +204,38 @@ test('repeated overload stays bounded and quality only recovers during healthy p
     for (let frame = 611; frame <= 1210; frame++) view.frame(1600 + frame * 16);
     assert.ok(view.canvas.width > 560);
     assert.ok(view.canvas.width <= 800, 'quality returns gradually, not as an immediate GPU spike');
+});
+
+for (const stage of ['Draw', 'Update']) test(`${stage} error keeps RAF alive but freezes the failed scene until explicit recovery`, () => {
+    const view = fixture(800, 600);
+    view.window.asteroidGame.state = 'playing';
+    view[`fail${stage}`](new Error('test frame failure'));
+    view.frame(0);
+    assert.equal(view.window.asteroidGame.state, 'paused');
+    assert.equal(view.records.at(-1)[0], 'frame-error');
+    const count = view.updates.length;
+    view.frame(16);
+    assert.equal(view.updates.length, count, 'failed scene is not repeatedly stepped');
+    view[`fail${stage}`](null);
+    view.window.voyagerDiagnostics.resume();
+    view.frame(4000);
+    assert.equal(view.window.asteroidGame.state, 'playing');
+    assert.equal(view.updates.at(-1), 0, 'resuming never catches up stalled time');
+});
+
+test('context loss pauses once and restored canvas waits for manual recovery', () => {
+    const view = fixture(800, 600);
+    view.window.asteroidGame.state = 'playing';
+    view.listeners['canvas:contextlost']({ preventDefault() {} });
+    view.frame(1000);
+    assert.equal(view.window.asteroidGame.state, 'paused');
+    assert.throws(() => view.window.voyagerDiagnostics.resume(), /not recovered/);
+    view.listeners['canvas:contextrestored']();
+    view.frame(5000);
+    assert.equal(view.window.asteroidGame.state, 'paused');
+    view.window.voyagerDiagnostics.resume();
+    view.frame(6000);
+    assert.equal(view.window.asteroidGame.state, 'playing');
 });
 
 test('window resize is a fallback when ResizeObserver is unavailable', () => {

@@ -17,13 +17,13 @@ window.DECENT_CONFIG = {
     { label: 'DecentAgency', url: 'https://github.com/TheJollyLaMa/DecentAgency' },
     { label: 'Ask to join · DecentAgency Discord', url: 'https://discord.gg/tkBfwT3YMN' },
     { label: 'DecentMarket · supporter listings', url: 'https://decentmarket.io' },
-    { label: 'Canopy / ecosystem', url: 'https://github.com/TheJollyLaMa/DecentCanopy' },
+    { label: 'Canopy / ecosystem', url: 'https://thejollylama.github.io/DecentCanopy/' },
     { label: 'DBusk radio', url: 'https://github.com/A-Decent-Agency/DBuskRadio' },
     { label: 'DecentHead source', url: 'https://github.com/TheJollyLaMa/DecentHead' }
   ],
   relatedDapps: [
     { label: 'DecentBusking', url: 'https://github.com/TheJollyLaMa/DecentBusking' },
-    { label: 'DecentCanopy', url: 'https://github.com/TheJollyLaMa/DecentCanopy' },
+    { label: 'DecentCanopy', url: 'https://thejollylama.github.io/DecentCanopy/' },
     { label: 'DecentHead', url: 'https://github.com/TheJollyLaMa/DecentHead' }
   ],
   // Decent Voyager Supporter DNFT. Leave null to show "coming soon" in the About.

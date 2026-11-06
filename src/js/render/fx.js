@@ -451,9 +451,12 @@ function createFx() {
             ctx.restore();
         }
         if (state.flash > 0) {
-            ctx.globalAlpha = Math.min(0.55, state.flash);
+            ctx.globalAlpha = Math.min(0.2, state.flash);
             ctx.fillStyle = state.flashColor;
-            ctx.fillRect(0, 0, VIEW.width, VIEW.height);
+            ctx.fillRect(0, 0, VIEW.width, 6);
+            ctx.fillRect(0, VIEW.height - 6, VIEW.width, 6);
+            ctx.fillRect(0, 6, 6, VIEW.height - 12);
+            ctx.fillRect(VIEW.width - 6, 6, 6, VIEW.height - 12);
             ctx.globalAlpha = 1;
         }
     }

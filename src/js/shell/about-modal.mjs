@@ -24,6 +24,7 @@ export const ABOUT = {
     { key: '←↑→↓ / WASD', text: 'Fly. On the start screen ↑/↓ picks a difficulty. Every new voyage starts at level 1; game over ends the run, not just the level.' },
     { key: 'Space', text: 'Fire. Hold for continuous fire.' },
     { key: 'B · hold', text: 'Charge the Nova cannon, then release for a big blast.' },
+    { key: 'E', text: 'Cycle collected weapons. On a phone use Next weapon; hold Fire to keep shooting. Tilt is optional and requires permission.' },
     { key: 'V', text: 'Switch between the overview map and the cockpit POV, where the field rushes toward you.' },
     { key: 'P · M · C', text: 'Pause, mute, and toggle the CRT glow.' },
     { key: '🎮', text: 'Gamepads sync automatically. Press A to join; stick to fly, A to fire, B to charge.' },
@@ -50,6 +51,8 @@ export const ABOUT = {
   ],
   pilots: 'Wallet features (level 20 achievement NFTs, Supporter Vaults, Sector II rewards and online rounds) are open to whitelisted DecentAgency collaborators, the Decent Pilots. Not on the list yet? Ask in the DecentAgency Discord. Levels 1–10 stay free for everyone.',
   saving: 'Your progress lives in this browser. Use the left IPFS orb to back it up or restore it with your own pinning provider. IPFS is public, so only game progress is exported.',
+  recovery: 'Busy battles reduce cosmetic load without removing hazards. A long stall pauses solo/local play; use P, the mobile Pause/resume control, or Resume battle below the game. Online rounds continue on the referee. Close-up hit glints are subdued and full-screen flashes are replaced with edge pulses. A graphics loss or frame error keeps local play paused until you explicitly recover.',
+  diagnostics: 'Flight reports & recovery below the game lets you download a bounded local report with the ruleset, recent errors, stack locations, battle state, entity counts and canvas size. Reports survive reloads when browser storage is available. Wallet addresses, signatures, pinning credentials, replay inputs and save data are not collected. Nothing is sent automatically; review the JSON before sharing it with a Flight reports issue. If graphics do not recover, download first, then reload.',
 };
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -179,6 +182,10 @@ export class VoyagerAbout extends Base {
         <div class="panel"><h3>Decent Pilots</h3><p>${esc(ABOUT.pilots)}</p></div>
         <div class="panel"><h3>Save to IPFS</h3><p>${esc(ABOUT.saving)}</p></div>
       </div></section>
+      <section aria-labelledby="recovery"><h2 id="recovery">Performance &amp; flight reports</h2>
+        <p>${esc(ABOUT.recovery)}</p><p>${esc(ABOUT.diagnostics)}</p>
+        <p class="quiet">White Lotus lives do not erase lives lost for Perfect awards. Game over starts a fresh level-1 voyage; saved best scores and historical battle records remain. Phone controls work without a wallet; actual MetaMask/iPhone testing is device-specific.</p>
+      </section>
       <section aria-labelledby="links"><h2 id="links">Project links</h2><div class="chips">${chips(config.links)}${chips(config.relatedDapps)}</div></section>
       <footer>Mandelblum art by TheJollyLaMa · header by DecentHead · radio by DBuskRadio · open source.<br>Your wallet. Your flight. Your choice.</footer>
     </dialog>`;
