@@ -15,6 +15,8 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
     let nextFrame;
     let renderFailure = null;
     let updateFailure = null;
+    let resourceReleases = 0;
+    let contextOptions;
     const records = [];
     const updates = [];
     const toasts = [];
@@ -31,7 +33,7 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
         set width(value) { backingWidth = value; allocations++; ctx.imageSmoothingEnabled = true; },
         get height() { return backingHeight; },
         set height(value) { backingHeight = value; allocations++; ctx.imageSmoothingEnabled = true; },
-        getContext: () => ctx,
+        getContext: (_kind, options) => { contextOptions = options; return ctx; },
         getBoundingClientRect: () => rect,
         addEventListener(type, callback) { listeners[`canvas:${type}`] = callback; }
     };
@@ -57,17 +59,18 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
         './render/hud': { createHud: () => ({ drawHud: noop, setToast: message => toasts.push(message) }) },
         './render/screens': { drawOverlay: noop },
         './render/fx': { createFx: () => ({ shakeOffset: () => ({ x: 0, y: 0 }), drawScreen: noop, timeScale: () => 1, update: noop, clear: () => { cleared++; } }) },
-        './render/post': { drawCrt: () => { crtDraws++; } },
+        './render/post': { drawCrt: () => { crtDraws++; }, getPostResources: () => ({ postPixels: 0 }), clearPostResources: () => { resourceReleases++; } },
         './render/projection': {
             setViewWidth(value) {
                 logicalWidth = Math.round(Math.max(800, Math.min(1600, value)));
                 return logicalWidth;
             }
         },
-        './render/assets': { loadAssets: noop },
+        './render/assets': { loadAssets: noop, getAssetResources: () => ({ tintPixels: 0, imagePixels: 0 }), clearTintResources: noop },
         './render/battleCard': { renderBattleCard: noop, previewBattleCard: noop },
         './render/cardMath': { sampleRecord: noop },
-        './render/shapes': { setGlowBudget: noop },
+        './render/shapes': { setGlowBudget: noop, getShapeResources: () => ({ shapePixels: 0 }), clearShapeResources: noop },
+        './render/font': { getFontResources: () => ({ textPixels: 0 }), clearFontResources: noop },
         './input': { createInput: () => ({ poll: () => [{}], clear: noop }) }
     };
     vm.runInNewContext(source, {
@@ -79,7 +82,8 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
             observe() {}
         } : undefined,
         requestAnimationFrame: callback => { nextFrame = callback; },
-        CustomEvent: class {}
+        CustomEvent: class {},
+        performance: { now: () => 0 }
     });
     return {
         canvas, ctx, window,
@@ -90,6 +94,8 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
         failDraw: error => { renderFailure = error; },
         failUpdate: error => { updateFailure = error; },
         get cleared() { return cleared; },
+        get resourceReleases() { return resourceReleases; },
+        get contextOptions() { return contextOptions; },
         resize(width, height) {
             rect = { width, height };
             (resize || listeners.resize)();
@@ -109,6 +115,12 @@ test('title text is not covered by CRT scanlines while gameplay keeps its filter
     view.window.asteroidGame.state = 'playing';
     view.draw();
     assert.equal(view.crtDraws, 1);
+});
+
+test('main graphics context is opaque without forcing CPU readback', () => {
+    const view = fixture(800, 600);
+    assert.equal(view.contextOptions.alpha, false);
+    assert.equal(view.contextOptions.willReadFrequently, undefined);
 });
 
 for (const ratio of [1, 1.25, 2, 3]) {
@@ -227,6 +239,7 @@ test('context loss pauses once and restored canvas waits for manual recovery', (
     const view = fixture(800, 600);
     view.window.asteroidGame.state = 'playing';
     view.listeners['canvas:contextlost']({ preventDefault() {} });
+    assert.equal(view.resourceReleases, 1, 'context loss releases stale offscreen surfaces');
     view.frame(1000);
     assert.equal(view.window.asteroidGame.state, 'paused');
     assert.throws(() => view.window.voyagerDiagnostics.resume(), /not recovered/);
@@ -236,6 +249,17 @@ test('context loss pauses once and restored canvas waits for manual recovery', (
     view.window.voyagerDiagnostics.resume();
     view.frame(6000);
     assert.equal(view.window.asteroidGame.state, 'playing');
+    assert.equal(view.canvas.width, 520, 'graphics recovery starts at reduced resolution');
+});
+
+test('active flights record periodic resource samples without frame-by-frame storage writes', () => {
+    const view = fixture(800, 600);
+    view.window.asteroidGame.state = 'playing';
+    for (let frame = 0; frame <= 1000; frame++) view.frame(frame * 16);
+    const samples = view.records.filter(entry => entry[0] === 'graphics-sample');
+    assert.equal(samples.length, 1);
+    assert.ok(samples[0][2].frameSamples > 900);
+    assert.equal(samples[0][2].maxFrameMs, 16);
 });
 
 test('window resize is a fallback when ResizeObserver is unavailable', () => {

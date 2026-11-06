@@ -6,17 +6,18 @@ const { createPovRenderer } = require('./render/pov');
 const { createHud } = require('./render/hud');
 const { drawOverlay } = require('./render/screens');
 const { createFx } = require('./render/fx');
-const { drawCrt } = require('./render/post');
+const { drawCrt, getPostResources, clearPostResources } = require('./render/post');
 const { setViewWidth } = require('./render/projection');
-const { loadAssets } = require('./render/assets');
+const { loadAssets, getAssetResources, clearTintResources } = require('./render/assets');
 const { renderBattleCard, previewBattleCard } = require('./render/battleCard');
 const { sampleRecord } = require('./render/cardMath');
-const { setGlowBudget } = require('./render/shapes');
+const { setGlowBudget, getShapeResources, clearShapeResources } = require('./render/shapes');
+const { getFontResources, clearFontResources } = require('./render/font');
 const { createInput } = require('./input');
 const { createDiagnostics } = require('./diagnostics');
 
 const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', { alpha: false });
 const CRT_KEY = 'asteroid.crt';
 
 function safeStorage() {
@@ -35,7 +36,8 @@ const diagnostics = createDiagnostics({
         state: game.state, level: game.level?.number, difficulty: game.difficulty, view: game.view,
         particles: game.particles?.length, rocks: game.asteroids?.length,
         bullets: (game.playerBullets?.length || 0) + (game.enemyBullets?.length || 0),
-        width: canvas.width, height: canvas.height, dpr: window.devicePixelRatio || 1
+        width: canvas.width, height: canvas.height, dpr: window.devicePixelRatio || 1,
+        ...graphicsResources()
     }),
     notify: () => window.dispatchEvent(new CustomEvent('voyager:diagnostic'))
 });
@@ -44,6 +46,26 @@ const fx = createFx();
 const hud = createHud();
 const renderers = { overview: createOverviewRenderer(), pov: createPovRenderer() };
 const display = { crt: true };
+function graphicsResources() {
+    const shape = getShapeResources();
+    const text = getFontResources();
+    const assets = getAssetResources();
+    const post = getPostResources();
+    const pixels = shape.shapePixels + text.textPixels + assets.tintPixels + assets.imagePixels + post.postPixels + canvas.width * canvas.height;
+    return {
+        ...shape, ...text, ...assets, ...post,
+        estimatedSurfaceBytes: pixels * 4,
+        contextLost: typeof ctx.isContextLost === 'function' && ctx.isContextLost(),
+        contextAlpha: ctx.getContextAttributes?.()?.alpha ?? null,
+        worldFx: fx.worldCount, screenFx: fx.screenCount
+    };
+}
+function releaseGraphicsResources() {
+    clearShapeResources();
+    clearFontResources();
+    clearTintResources();
+    clearPostResources();
+}
 try {
     if (storage && storage.getItem(CRT_KEY) === 'off') display.crt = false;
 } catch (error) {
@@ -280,6 +302,12 @@ let slowFrames = 0;
 let healthyFrames = 0;
 let frameFault = false;
 let contextLost = false;
+let graphicsRecoveryPending = false;
+let sampleTime = null;
+let frameSamples = 0;
+let maxFrameMs = 0;
+let maxDrawMs = 0;
+let maxStepMs = 0;
 function freezeBattle() {
     input.clear();
     if (!networkMode && game.state === 'playing') game.handleAction('pause');
@@ -324,14 +352,31 @@ function advanceFrame(timestamp) {
         fitBacking();
         healthyFrames = 0;
     }
+    const stepStart = performance.now();
     step(dt);
+    const drawStart = performance.now();
     draw();
+    maxStepMs = Math.max(maxStepMs, drawStart - stepStart);
+    maxDrawMs = Math.max(maxDrawMs, performance.now() - drawStart);
+    maxFrameMs = Math.max(maxFrameMs, elapsed * 1000);
+    frameSamples++;
+    if (sampleTime === null) sampleTime = timestamp;
+    if (timestamp - sampleTime >= 15000) {
+        if (game.state === 'playing') diagnostics.record('graphics-sample', 'Periodic graphics resource sample.', {
+            quality: renderQuality, frameSamples, maxFrameMs: Math.round(maxFrameMs),
+            maxDrawMs: Math.round(maxDrawMs), maxStepMs: Math.round(maxStepMs)
+        });
+        sampleTime = timestamp;
+        frameSamples = maxFrameMs = maxDrawMs = maxStepMs = 0;
+    }
 }
 canvas.addEventListener('contextlost', event => {
     event.preventDefault();
     contextLost = true;
+    graphicsRecoveryPending = true;
     freezeBattle();
     diagnostics.record('context-lost', 'Canvas graphics context lost. Battle paused locally; online referee continues.');
+    releaseGraphicsResources();
 });
 canvas.addEventListener('contextrestored', () => {
     contextLost = false;
@@ -346,11 +391,18 @@ window.voyagerDiagnostics = {
         if (contextLost) throw new Error('Graphics context has not recovered. Download the report, then reload.');
         frameFault = false;
         last = null;
+        sampleTime = null;
+        frameSamples = maxFrameMs = maxDrawMs = maxStepMs = 0;
         slowFrames = healthyFrames = 0;
         fx.clear();
         input.clear();
         if (typeof ctx.reset === 'function') ctx.reset();
         else canvas.width = canvas.width;
+        if (graphicsRecoveryPending) {
+            renderQuality = Math.min(renderQuality, 0.65);
+            fitBacking();
+            graphicsRecoveryPending = false;
+        }
         if (!networkMode && game.state === 'paused') game.handleAction('confirm');
         diagnostics.record('manual-resume', 'Pilot requested recovery.');
     }
@@ -396,7 +448,7 @@ window.asteroidReady = true;
 window.dispatchEvent(new CustomEvent('asteroid:ready', { detail: { game } }));
 requestAnimationFrame(frame);
 
-},{"./audio":3,"./diagnostics":6,"./game":8,"./input":9,"./render/assets":15,"./render/battleCard":17,"./render/cardMath":18,"./render/fx":21,"./render/hud":22,"./render/overview":23,"./render/post":25,"./render/pov":26,"./render/projection":27,"./render/screens":28,"./render/shapes":29}],2:[function(require,module,exports){
+},{"./audio":3,"./diagnostics":6,"./game":8,"./input":9,"./render/assets":15,"./render/battleCard":17,"./render/cardMath":18,"./render/font":20,"./render/fx":21,"./render/hud":22,"./render/overview":23,"./render/post":25,"./render/pov":26,"./render/projection":27,"./render/screens":28,"./render/shapes":29}],2:[function(require,module,exports){
 const { range } = require('./rng');
 
 const WORLD_WIDTH = 800;
@@ -841,6 +893,13 @@ module.exports = checkCollision;
 const RULESET = require('./ruleset');
 const KEY = 'voyager.diagnostics.v1';
 const LIMIT = 40;
+const BUILD = 'bounded-graphics-2';
+const NUMERIC_FIELDS = [
+    'level', 'particles', 'rocks', 'bullets', 'width', 'height', 'dpr', 'elapsedMs', 'quality',
+    'glowSprites', 'glowAllocations', 'shapePixels', 'textSprites', 'textAllocations', 'textPixels',
+    'tintSprites', 'tintPixels', 'imagePixels', 'postPixels', 'estimatedSurfaceBytes',
+    'worldFx', 'screenFx', 'frameSamples', 'maxFrameMs', 'maxDrawMs', 'maxStepMs'
+];
 
 function redact(value) {
     return String(value || '').replace(/https?:\/\/[^\s)]+/g, url => url.split(/[?#]/)[0])
@@ -858,23 +917,24 @@ function createDiagnostics({ storage, snapshot = () => ({}), notify = () => {}, 
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed)) entries = parsed.slice(-LIMIT).map(item => ({
                 at: Number(item.at) || 0, kind: redact(item.kind), message: redact(item.message), stack: redact(item.stack),
-                ...Object.fromEntries(['level', 'particles', 'rocks', 'bullets', 'width', 'height', 'dpr', 'elapsedMs', 'quality']
+                ...Object.fromEntries(NUMERIC_FIELDS
                     .filter(key => Number.isFinite(item[key])).map(key => [key, item[key]])),
-                ...Object.fromEntries(['state', 'difficulty', 'view'].filter(key => typeof item[key] === 'string').map(key => [key, redact(item[key])]))
+                ...Object.fromEntries(['contextLost', 'contextAlpha'].filter(key => typeof item[key] === 'boolean').map(key => [key, item[key]])),
+                ...Object.fromEntries(['state', 'difficulty', 'view', 'build'].filter(key => typeof item[key] === 'string').map(key => [key, redact(item[key])]))
             }));
         }
     } catch (error) { storageError = redact(error.message); }
     const report = () => ({
-        schema: 'voyager-diagnostics/1', build: 'flash-recovery-1', ruleset: RULESET,
+        schema: 'voyager-diagnostics/1', build: BUILD, ruleset: RULESET,
         browser: typeof navigator === 'undefined' ? 'unavailable' : redact(navigator.userAgent),
-        storageError, entries: entries.map(entry => ({ ...entry }))
+        storageError, current: snapshot(), entries: entries.map(entry => ({ ...entry }))
     });
     function record(kind, error, details = {}) {
         const message = redact(error?.message || error);
         const previous = entries.at(-1);
         const at = now();
         if (previous?.kind === kind && previous.message === message && at - previous.at < 5000) return;
-        entries.push({ at, kind: redact(kind), message, stack: redact(error?.stack), ...snapshot(), ...details });
+        entries.push({ at, kind: redact(kind), message, stack: redact(error?.stack), build: BUILD, ...snapshot(), ...details });
         entries = entries.slice(-LIMIT);
         try { storage?.setItem(KEY, JSON.stringify(entries)); }
         catch (failure) { storageError = redact(failure.message); }
@@ -2764,6 +2824,17 @@ function makeCanvas(width, height) {
 
 // Cached tinted copies: 'flash' = white silhouette, 'shooter' = menacing red/orange.
 const tintCache = new Map();
+function getAssetResources() {
+    return {
+        tintSprites: tintCache.size,
+        tintPixels: [...tintCache.values()].reduce((total, canvas) => total + (canvas ? canvas.width * canvas.height : 0), 0),
+        imagePixels: Object.values(images).reduce((total, image) => total + (isImageReady(image) ? image.naturalWidth * image.naturalHeight : 0), 0)
+    };
+}
+function clearTintResources() {
+    for (const canvas of tintCache.values()) if (canvas) { canvas.width = 0; canvas.height = 0; }
+    tintCache.clear();
+}
 function getTinted(key, mode) {
     const cacheKey = `${key}|${mode}`;
     if (tintCache.has(cacheKey)) return tintCache.get(cacheKey);
@@ -2792,6 +2863,8 @@ function getTinted(key, mode) {
 }
 
 module.exports = {
+    getAssetResources,
+    clearTintResources,
     BASE_URL,
     MANIFEST,
     ROCK_KEYS,
@@ -3542,8 +3615,9 @@ const { makeCanvas } = require('./assets');
 
 const FONT_STACK = 'Menlo, Monaco, Consolas, "DejaVu Sans Mono", "Courier New", monospace';
 const PIXEL = 2;
-const CACHE_LIMIT = 400;
+const CACHE_LIMIT = 128;
 const cache = new Map();
+let allocations = 0;
 
 function fontFor(size, weight = 'bold') {
     return `${weight} ${size}px ${FONT_STACK}`;
@@ -3559,14 +3633,14 @@ function scratchContext() {
 }
 
 function rasterize(value, size, color, outline, weight) {
-    const key = `${value}|${size}|${color}|${outline}|${weight}`;
+    const small = Math.max(5, Math.round(size / PIXEL));
+    const key = `${value}|${small}|${color}|${outline}|${weight}`;
     const hit = cache.get(key);
     if (hit) {
         cache.delete(key);
         cache.set(key, hit);
         return hit;
     }
-    const small = Math.max(5, Math.round(size / PIXEL));
     const sctx = scratchContext();
     if (!sctx) return null;
     sctx.font = fontFor(small, weight);
@@ -3591,12 +3665,36 @@ function rasterize(value, size, color, outline, weight) {
     const data = sctx.getImageData(0, 0, width, height);
     const px = data.data;
     for (let i = 3; i < px.length; i += 4) px[i] = px[i] > 110 ? 255 : 0;
-    const canvas = makeCanvas(width, height);
+    let canvas;
+    if (cache.size >= CACHE_LIMIT) {
+        const oldest = cache.keys().next().value;
+        canvas = cache.get(oldest).canvas;
+        cache.delete(oldest);
+        if (canvas.width !== width) canvas.width = width;
+        if (canvas.height !== height) canvas.height = height;
+    } else {
+        canvas = makeCanvas(width, height);
+        allocations++;
+    }
     canvas.getContext('2d').putImageData(data, 0, 0);
     const entry = { canvas, width, height, baseline };
     cache.set(key, entry);
-    if (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value);
     return entry;
+}
+
+function getFontResources() {
+    return {
+        textSprites: cache.size, textAllocations: allocations,
+        textPixels: [...cache.values()].reduce((total, entry) => total + entry.canvas.width * entry.canvas.height, 0)
+            + (scratch ? scratch.canvas.width * scratch.canvas.height : 0)
+    };
+}
+
+function clearFontResources() {
+    for (const entry of cache.values()) { entry.canvas.width = 0; entry.canvas.height = 0; }
+    cache.clear();
+    if (scratch) { scratch.canvas.width = 0; scratch.canvas.height = 0; }
+    scratch = null;
 }
 
 // Draws pixel text; returns the drawn width in canvas pixels.
@@ -3638,7 +3736,7 @@ function measurePixelText(value, { size = 14, weight = 'bold', scale = 1 } = {})
     return entry.width * PIXEL * scale;
 }
 
-module.exports = { FONT_STACK, fontFor, pixelText, measurePixelText };
+module.exports = { FONT_STACK, fontFor, pixelText, measurePixelText, CACHE_LIMIT, getFontResources, clearFontResources };
 
 },{"./assets":15}],21:[function(require,module,exports){
 // Client-side juice: explosions, debris, shockwaves, thruster trails, shield
@@ -4324,7 +4422,7 @@ function createHud() {
         view.combo = combo;
         view.comboPop = Math.max(0, view.comboPop - dt * 3);
         if (combo >= 2) {
-            const hue = 150 + 45 * Math.sin(time * 4);
+            const hue = Math.round((150 + 45 * Math.sin(time * 4)) / 15) * 15;
             const scale = 1 + view.comboPop * 0.4;
             drawGlow(ctx, rx - 20, y0 + 12, 22 * scale, `hsl(${hue}, 100%, 60%)`, 0.2);
             rx -= pixelText(ctx, `x${combo}`, rx, base, { size: Math.round(12 * scale), color: `hsl(${hue}, 100%, 70%)`, align: 'right' }) + 10;
@@ -4575,6 +4673,7 @@ let overlay;
 let overlayWidth = 0;
 function crtOverlay() {
     if (overlay !== undefined && overlayWidth === VIEW.width) return overlay;
+    clearPostResources();
     overlayWidth = VIEW.width;
     overlay = makeCanvas(VIEW.width, VIEW.height);
     if (!overlay) return overlay;
@@ -4589,6 +4688,16 @@ function crtOverlay() {
     return overlay;
 }
 
+function clearPostResources() {
+    if (overlay) { overlay.width = 0; overlay.height = 0; }
+    overlay = undefined;
+    overlayWidth = 0;
+}
+
+function getPostResources() {
+    return { postPixels: overlay ? overlay.width * overlay.height : 0 };
+}
+
 function drawCrt(ctx, time = 0) {
     const img = crtOverlay();
     if (!img) return;
@@ -4599,7 +4708,7 @@ function drawCrt(ctx, time = 0) {
     ctx.fillRect(0, y, VIEW.width, 50);
 }
 
-module.exports = { drawCrt };
+module.exports = { drawCrt, getPostResources, clearPostResources };
 
 },{"./assets":15,"./projection":27}],26:[function(require,module,exports){
 const { VIEW, MAX_VIEW_WIDTH, POV, povCamera, projectPov, povFade } = require('./projection');
@@ -5260,15 +5369,31 @@ function bulletWeaponType(bullet) {
 
 // ---------------------------------------------------------------- glow sprites
 const glowCache = new Map();
+const MAX_GLOW_SPRITES = 64;
+let glowAllocations = 0;
 let glowBudget = Infinity;
 function setGlowBudget(limit = Infinity) {
     glowBudget = limit;
 }
 function glowSprite(color) {
-    if (glowCache.has(color)) return glowCache.get(color);
-    const canvas = makeCanvas(64, 64);
+    if (glowCache.has(color)) {
+        const hit = glowCache.get(color);
+        glowCache.delete(color);
+        glowCache.set(color, hit);
+        return hit;
+    }
+    let canvas;
+    if (glowCache.size >= MAX_GLOW_SPRITES) {
+        const oldest = glowCache.keys().next().value;
+        canvas = glowCache.get(oldest);
+        glowCache.delete(oldest);
+    } else {
+        canvas = makeCanvas(64, 64);
+        if (canvas) glowAllocations++;
+    }
     if (canvas) {
         const c = canvas.getContext('2d');
+        c.clearRect(0, 0, 64, 64);
         const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
         g.addColorStop(0, color);
         g.addColorStop(0.25, color);
@@ -5279,6 +5404,23 @@ function glowSprite(color) {
     }
     glowCache.set(color, canvas);
     return canvas;
+}
+
+function getShapeResources() {
+    const sprites = [...glowCache.values(), ...spriteCache.values(), hexCanvas].filter(Boolean);
+    return {
+        glowSprites: glowCache.size, glowAllocations,
+        shapePixels: sprites.reduce((total, canvas) => total + canvas.width * canvas.height, 0)
+    };
+}
+
+function clearShapeResources() {
+    for (const canvas of [...glowCache.values(), ...spriteCache.values(), hexCanvas]) {
+        if (canvas) { canvas.width = 0; canvas.height = 0; }
+    }
+    glowCache.clear();
+    spriteCache.clear();
+    hexCanvas = undefined;
 }
 
 // Additive soft glow: much cheaper than shadowBlur.
@@ -5797,6 +5939,9 @@ function drawEnemyBullet(ctx, bullet, x, y, scale = 1, alpha = 1, time = 0) {
 }
 
 module.exports = {
+    MAX_GLOW_SPRITES,
+    getShapeResources,
+    clearShapeResources,
     PICKUP_STYLE,
     SHIP_TOP,
     SHIP_CHASE,

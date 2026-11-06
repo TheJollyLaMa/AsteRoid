@@ -5,17 +5,18 @@ const { createPovRenderer } = require('./render/pov');
 const { createHud } = require('./render/hud');
 const { drawOverlay } = require('./render/screens');
 const { createFx } = require('./render/fx');
-const { drawCrt } = require('./render/post');
+const { drawCrt, getPostResources, clearPostResources } = require('./render/post');
 const { setViewWidth } = require('./render/projection');
-const { loadAssets } = require('./render/assets');
+const { loadAssets, getAssetResources, clearTintResources } = require('./render/assets');
 const { renderBattleCard, previewBattleCard } = require('./render/battleCard');
 const { sampleRecord } = require('./render/cardMath');
-const { setGlowBudget } = require('./render/shapes');
+const { setGlowBudget, getShapeResources, clearShapeResources } = require('./render/shapes');
+const { getFontResources, clearFontResources } = require('./render/font');
 const { createInput } = require('./input');
 const { createDiagnostics } = require('./diagnostics');
 
 const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', { alpha: false });
 const CRT_KEY = 'asteroid.crt';
 
 function safeStorage() {
@@ -34,7 +35,8 @@ const diagnostics = createDiagnostics({
         state: game.state, level: game.level?.number, difficulty: game.difficulty, view: game.view,
         particles: game.particles?.length, rocks: game.asteroids?.length,
         bullets: (game.playerBullets?.length || 0) + (game.enemyBullets?.length || 0),
-        width: canvas.width, height: canvas.height, dpr: window.devicePixelRatio || 1
+        width: canvas.width, height: canvas.height, dpr: window.devicePixelRatio || 1,
+        ...graphicsResources()
     }),
     notify: () => window.dispatchEvent(new CustomEvent('voyager:diagnostic'))
 });
@@ -43,6 +45,26 @@ const fx = createFx();
 const hud = createHud();
 const renderers = { overview: createOverviewRenderer(), pov: createPovRenderer() };
 const display = { crt: true };
+function graphicsResources() {
+    const shape = getShapeResources();
+    const text = getFontResources();
+    const assets = getAssetResources();
+    const post = getPostResources();
+    const pixels = shape.shapePixels + text.textPixels + assets.tintPixels + assets.imagePixels + post.postPixels + canvas.width * canvas.height;
+    return {
+        ...shape, ...text, ...assets, ...post,
+        estimatedSurfaceBytes: pixels * 4,
+        contextLost: typeof ctx.isContextLost === 'function' && ctx.isContextLost(),
+        contextAlpha: ctx.getContextAttributes?.()?.alpha ?? null,
+        worldFx: fx.worldCount, screenFx: fx.screenCount
+    };
+}
+function releaseGraphicsResources() {
+    clearShapeResources();
+    clearFontResources();
+    clearTintResources();
+    clearPostResources();
+}
 try {
     if (storage && storage.getItem(CRT_KEY) === 'off') display.crt = false;
 } catch (error) {
@@ -279,6 +301,12 @@ let slowFrames = 0;
 let healthyFrames = 0;
 let frameFault = false;
 let contextLost = false;
+let graphicsRecoveryPending = false;
+let sampleTime = null;
+let frameSamples = 0;
+let maxFrameMs = 0;
+let maxDrawMs = 0;
+let maxStepMs = 0;
 function freezeBattle() {
     input.clear();
     if (!networkMode && game.state === 'playing') game.handleAction('pause');
@@ -323,14 +351,31 @@ function advanceFrame(timestamp) {
         fitBacking();
         healthyFrames = 0;
     }
+    const stepStart = performance.now();
     step(dt);
+    const drawStart = performance.now();
     draw();
+    maxStepMs = Math.max(maxStepMs, drawStart - stepStart);
+    maxDrawMs = Math.max(maxDrawMs, performance.now() - drawStart);
+    maxFrameMs = Math.max(maxFrameMs, elapsed * 1000);
+    frameSamples++;
+    if (sampleTime === null) sampleTime = timestamp;
+    if (timestamp - sampleTime >= 15000) {
+        if (game.state === 'playing') diagnostics.record('graphics-sample', 'Periodic graphics resource sample.', {
+            quality: renderQuality, frameSamples, maxFrameMs: Math.round(maxFrameMs),
+            maxDrawMs: Math.round(maxDrawMs), maxStepMs: Math.round(maxStepMs)
+        });
+        sampleTime = timestamp;
+        frameSamples = maxFrameMs = maxDrawMs = maxStepMs = 0;
+    }
 }
 canvas.addEventListener('contextlost', event => {
     event.preventDefault();
     contextLost = true;
+    graphicsRecoveryPending = true;
     freezeBattle();
     diagnostics.record('context-lost', 'Canvas graphics context lost. Battle paused locally; online referee continues.');
+    releaseGraphicsResources();
 });
 canvas.addEventListener('contextrestored', () => {
     contextLost = false;
@@ -345,11 +390,18 @@ window.voyagerDiagnostics = {
         if (contextLost) throw new Error('Graphics context has not recovered. Download the report, then reload.');
         frameFault = false;
         last = null;
+        sampleTime = null;
+        frameSamples = maxFrameMs = maxDrawMs = maxStepMs = 0;
         slowFrames = healthyFrames = 0;
         fx.clear();
         input.clear();
         if (typeof ctx.reset === 'function') ctx.reset();
         else canvas.width = canvas.width;
+        if (graphicsRecoveryPending) {
+            renderQuality = Math.min(renderQuality, 0.65);
+            fitBacking();
+            graphicsRecoveryPending = false;
+        }
         if (!networkMode && game.state === 'paused') game.handleAction('confirm');
         diagnostics.record('manual-resume', 'Pilot requested recovery.');
     }
