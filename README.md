@@ -46,6 +46,34 @@ These are synthetic local measurements, not guaranteed frame rates on phones.
 Cold audio initialization still produced a single long frame; the overload
 pause is deliberately retained rather than claiming all stalls are eliminated.
 
+### Flash protection and flight reports
+
+POV asteroid art is capped at a 180px logical radius so near-camera hit
+silhouettes cannot cover the screen. Hit whitening is subdued to 18%; full-screen
+flash overlays are now dim edge cues. Gameplay collision and replay rules are
+unchanged. Sector II's additional synthesized sounds are throttled per event type.
+
+Recovery is idempotent: a second overload cannot toggle a paused battle back on.
+Frame exceptions keep the animation scheduler alive but stop the failed scene
+until explicit recovery. Canvas context loss pauses local play; restoration
+still requires the pilot to choose **Resume battle**. Online referee play continues.
+
+**Flight reports & recovery**, below the game, exports a JSON report and offers
+manual resume. The latest 40 entries survive reloads in browser storage when
+available (otherwise memory only). Reports include ruleset, recent errors/stacks,
+level/view/state, entity counts and canvas size; not wallets, signatures, replay
+inputs, saves or pinning-provider configuration. Known wallet/token patterns and
+URL queries are redacted; review reports before sharing, since arbitrary error
+text cannot be guaranteed secret-free. Nothing uploads automatically. Download
+before reloading a broken scene, then attach the reviewed JSON to a GitHub flight
+report along with device/browser, view and actions leading to the failure.
+
+Reuse: adapted this app's existing `createFx`, `drawAsteroid`, `createAudio`,
+frame-loop and About controls. Consulted the Canopy inventory and scoped local
+Voyager/BigNuten diagnostic filenames; no compatible report helper found in that
+scope, so the small bounded local recorder is new. No external runtime service
+or dependency, no reward/replay contract change, and no new public inventory claim.
+
 ## Live v1
 
 - Play: https://thejollylama.github.io/DecentVoyager/ (GitHub Pages, from `src/` via `.github/workflows/pages.yml`) · ENS: `voyager.decentagency.eth`.

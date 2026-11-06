@@ -134,6 +134,22 @@ test('fx caps particles and applies hit-stop on level clear', () => {
     assert.equal(fresh.timeScale(), 1);
 });
 
+test('battle flashes are dim edge cues, never full-screen white rectangles', () => {
+    const fx = createFx();
+    const rects = [];
+    const ctx = {
+        globalAlpha: 1,
+        fillRect(x, y, width, height) { rects.push({ x, y, width, height, alpha: this.globalAlpha }); }
+    };
+    for (const type of ['shipDestroyed', 'shipHit', 'levelComplete', 'victory']) {
+        fx.handle([{ type, x: 400, y: 200 }], { ship: { x: 400, y: 200 } });
+        fx.drawScreen(ctx);
+    }
+    assert.ok(rects.length > 0);
+    assert.ok(rects.every(rect => rect.width <= 6 || rect.height <= 6));
+    assert.ok(rects.every(rect => rect.alpha <= 0.2));
+});
+
 test('battle card RNG and formatting are deterministic', () => {
     assert.equal(card.hashString('abc'), card.hashString('abc'));
     assert.notEqual(card.hashString('abc'), card.hashString('abd'));

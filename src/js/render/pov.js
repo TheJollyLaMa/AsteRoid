@@ -130,8 +130,8 @@ function createPovRenderer() {
         const alpha = povFade(p.depth);
         const time = game.time || 0;
         if (kind === 'asteroid') {
-            const radius = obj.size * p.scale;
-            if (radius > 1400 || p.x + radius < 0 || p.x - radius > VIEW.width) return;
+            const radius = Math.min(180, obj.size * p.scale);
+            if (p.x + radius < 0 || p.x - radius > VIEW.width) return;
             drawAsteroid(ctx, obj, p.x, p.y, radius, alpha, time, game.level.number >= 11);
         } else if (kind === 'pickup') {
             drawPickup(ctx, obj, p.x, p.y, Math.min(120, obj.size * p.scale), time, alpha);

@@ -172,13 +172,13 @@ function drawAsteroid(ctx, asteroid, x, y, radius, alpha = 1, time = 0, sector2 
         if (flash) {
             const white = getTinted(key, 'flash');
             if (white) {
-                ctx.globalAlpha = alpha * flash;
+                ctx.globalAlpha = alpha * flash * 0.18;
                 ctx.drawImage(white, -s / 2, -s / 2, s, s);
             }
         }
     } else {
         asteroidPath(ctx, asteroid, radius);
-        ctx.fillStyle = flash ? '#ffffff' : asteroid.shooter ? '#2b1712' : '#1c1c22';
+        ctx.fillStyle = flash ? '#6d667d' : asteroid.shooter ? '#2b1712' : '#1c1c22';
         ctx.fill();
         ctx.lineWidth = Math.max(1, radius / 18);
         ctx.strokeStyle = asteroid.shooter ? '#ff8a5c' : '#d8d2c4';

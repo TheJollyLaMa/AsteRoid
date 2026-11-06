@@ -26,6 +26,7 @@
     </div>
     <main id="flight-deck" tabindex="-1">
       <div class="stage">
+        <p id="flight-fault" role="alert" hidden></p>
         <canvas id="gameCanvas" width="800" height="600" tabindex="0" aria-label="Decent Voyager game canvas. Enter launches; arrows or WASD move, Space fires, P pauses."></canvas>
         <nav id="launch-pad" class="launch-pad" aria-label="Choose your voyage" hidden>
           <button type="button" data-launch-solo><span>▶</span> Solo voyage</button>
@@ -74,10 +75,18 @@
   </div>
   <footer>
     <p class="controls-legend">Arrows / WASD move · Space fire · B charge Nova · Enter launch · V overview / POV · P pause · M mute · C CRT · gamepad ready</p>
-    <nav aria-label="Project links"><a href="https://github.com/TheJollyLaMa/DecentVoyager">Source</a><a href="https://github.com/TheJollyLaMa/DecentVoyager/issues">Flight reports</a><a href="https://decentmarket.io">DecentMarket</a><a href="https://discord.gg/tkBfwT3YMN">DecentAgency Discord</a><a href="https://github.com/TheJollyLaMa/DecentCanopy">Decent ecosystem</a></nav>
+    <nav aria-label="Project links"><a href="https://github.com/TheJollyLaMa/DecentVoyager">Source</a><a href="https://github.com/TheJollyLaMa/DecentVoyager/issues">Flight reports</a><a href="https://decentmarket.io">DecentMarket</a><a href="https://discord.gg/tkBfwT3YMN">DecentAgency Discord</a><a href="https://thejollylama.github.io/DecentCanopy/">Decent ecosystem</a></nav>
+    <section aria-label="Flight diagnostics" id="flight-diagnostics">
+      <h2>Flight reports &amp; recovery</h2>
+      <p>Reports stay on this device. Download and review one before attaching it to a Flight reports issue. No wallet, signatures or saved flight logs are included.</p>
+      <button type="button" id="diagnostic-download">Download flight report</button>
+      <button type="button" id="diagnostic-resume">Resume battle</button>
+      <p id="diagnostic-status" role="status" aria-live="polite"></p>
+    </section>
     <p class="credit">Mandelblum art · TheJollyLaMa <span aria-hidden="true">✦</span> Your wallet. Your flight. Your choice.</p>
   </footer>
   <script src="bundle.js"></script>
+  <script type="module" src="./js/shell/flight-reports.mjs"></script>
   <script type="module" src="./js/shell/main.mjs"></script>
   <script type="module" src="./js/pilots/whitelist.mjs"></script>
   <script type="module" src="./js/pilots/flight-log.mjs"></script>

@@ -4,7 +4,7 @@ const { normalizeEvent } = require('./render/events');
 
 const NOTE = (semitonesFromA4) => 440 * Math.pow(2, semitonesFromA4 / 12);
 
-function createAudio() {
+function createAudio({ onError = error => console.error('Voyager audio:', error) } = {}) {
     let context = null;
     let master = null;
     let noiseBuffer = null;
@@ -174,7 +174,9 @@ function createAudio() {
     };
 
     const sounds = {
-        shot: (e) => (LASERS[e.weapon] || LASERS.blaster)(),
+        shot: (e) => {
+            if (throttle('shot', 0.035)) (LASERS[e.weapon] || LASERS.blaster)();
+        },
         chargeStart: () => {
             tone({ frequency: 140, endFrequency: 980, duration: 1.15, type: 'sawtooth', volume: 0.12, filter: { from: 500, to: 4200, q: 3 }, vibrato: 9 });
             tone({ frequency: 70, endFrequency: 490, duration: 1.15, type: 'sine', volume: 0.08, delay: 0.04, vibrato: 5 });
@@ -272,7 +274,7 @@ function createAudio() {
     return {
         unlock() {
             const ctx = ensureContext();
-            if (ctx && ctx.state === 'suspended') ctx.resume();
+            if (ctx && ctx.state === 'suspended') void ctx.resume().catch(onError);
         },
         toggleMute() {
             muted = !muted;
@@ -292,12 +294,12 @@ function createAudio() {
                 if (!sound) continue;
                 try {
                     sound(event);
-                    if (future && ['enemyShot', 'explode', 'shot', 'hit'].includes(event.type)) {
+                    if (future && ['enemyShot', 'explode', 'shot', 'hit'].includes(event.type) && throttle(`future:${event.type}`, 0.06)) {
                         const base = event.type === 'enemyShot' ? 110 : event.type === 'explode' ? 38 : event.type === 'hit' ? 660 : 1320;
                         tone({ frequency: base, endFrequency: event.type === 'explode' ? 30 : base * 2.4, duration: 0.16, type: 'sawtooth', volume: 0.035, filter: { from: 5000, to: 160, q: 4 }, vibrato: 12 });
                     }
                 } catch (error) {
-                    // A failed sound must never break the game loop.
+                    onError(error);
                 }
             }
         }

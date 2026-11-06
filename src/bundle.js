@@ -13,6 +13,7 @@ const { renderBattleCard, previewBattleCard } = require('./render/battleCard');
 const { sampleRecord } = require('./render/cardMath');
 const { setGlowBudget } = require('./render/shapes');
 const { createInput } = require('./input');
+const { createDiagnostics } = require('./diagnostics');
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -28,7 +29,17 @@ function safeStorage() {
 
 const storage = safeStorage();
 const game = new Game({ storage });
-const audio = createAudio();
+const diagnostics = createDiagnostics({
+    storage,
+    snapshot: () => ({
+        state: game.state, level: game.level?.number, difficulty: game.difficulty, view: game.view,
+        particles: game.particles?.length, rocks: game.asteroids?.length,
+        bullets: (game.playerBullets?.length || 0) + (game.enemyBullets?.length || 0),
+        width: canvas.width, height: canvas.height, dpr: window.devicePixelRatio || 1
+    }),
+    notify: () => window.dispatchEvent(new CustomEvent('voyager:diagnostic'))
+});
+const audio = createAudio({ onError: error => diagnostics.record('audio', error) });
 const fx = createFx();
 const hud = createHud();
 const renderers = { overview: createOverviewRenderer(), pov: createPovRenderer() };
@@ -202,6 +213,9 @@ function step(realDt, controls = null) {
         audio.play(events, game);
         fx.handle(events, game);
         events.forEach(dispatchGameEvent);
+        for (const event of events) if (['levelStart', 'shipDestroyed', 'gameOver', 'victory'].includes(event.type)) {
+            diagnostics.record('battle-event', event.type);
+        }
     }
     fx.update(realDt, game);
 }
@@ -240,6 +254,9 @@ function draw() {
         fitBacking();
     }
     setGlowBudget(game.state === 'title' ? Infinity : renderQuality < 1 ? 30 : 120);
+    try { drawScene(); } finally { setGlowBudget(); }
+}
+function drawScene() {
     audio.setSector2(Number(game.level && game.level.number) >= 11);
     const shake = fx.shakeOffset();
     ctx.setTransform(renderScaleX, 0, 0, renderScaleY, 0, 0);
@@ -247,21 +264,39 @@ function draw() {
     ctx.imageSmoothingEnabled = false;
     if (game.state !== 'title') {
         ctx.save();
-        ctx.translate(shake.x, shake.y);
-        renderers[game.view](ctx, game, fx);
-        ctx.restore();
+        try {
+            ctx.translate(shake.x, shake.y);
+            renderers[game.view](ctx, game, fx);
+        } finally { ctx.restore(); }
         fx.drawScreen(ctx, game);
     }
     hud.drawHud(ctx, game, fx, { muted: audio.muted, crt: display.crt });
     drawOverlay(ctx, game, fx);
     if (display.crt && game.state !== 'title') drawCrt(ctx, game.time || 0);
-    setGlowBudget();
 }
 
 let last = null;
 let slowFrames = 0;
 let healthyFrames = 0;
+let frameFault = false;
+let contextLost = false;
+function freezeBattle() {
+    input.clear();
+    if (!networkMode && game.state === 'playing') game.handleAction('pause');
+}
+function frameError(error) {
+    frameFault = true;
+    freezeBattle();
+    diagnostics.record('frame-error', error);
+    hud.setToast('Flight error: open Flight reports below to save diagnostics and recover.', 12000);
+}
 function frame(timestamp) {
+    try {
+        if (!frameFault && !contextLost) advanceFrame(timestamp);
+    } catch (error) { frameError(error); }
+    finally { requestAnimationFrame(frame); }
+}
+function advanceFrame(timestamp) {
     const elapsed = last === null ? 0 : (timestamp - last) / 1000;
     let dt = Math.min(0.05, elapsed);
     last = timestamp;
@@ -273,15 +308,17 @@ function frame(timestamp) {
         game.particles.length = 0;
         input.clear();
         if (!networkMode) {
-            game.handleAction('pause');
+            freezeBattle();
             dt = 0;
             hud.setToast('Performance pause: battle frozen. Press P / Resume when ready.', 12000);
         } else {
             hud.setToast('Reduced visual load. Online battle continues on the referee.', 12000);
         }
+        diagnostics.record('performance-pause', networkMode ? 'Online visuals reduced; referee continues.' : 'Local battle paused after a slow frame.', { elapsedMs: Math.round(elapsed * 1000), quality: renderQuality });
+        healthyFrames = 0;
         slowFrames = 0;
     }
-    healthyFrames = elapsed > 0 && elapsed < 0.025 ? healthyFrames + 1 : 0;
+    healthyFrames = game.state === 'playing' && elapsed > 0 && elapsed < 0.025 ? healthyFrames + 1 : 0;
     if (game.state === 'playing' && healthyFrames >= 600 && renderQuality < 1) {
         renderQuality = Math.min(1, renderQuality + 0.05);
         fitBacking();
@@ -289,8 +326,35 @@ function frame(timestamp) {
     }
     step(dt);
     draw();
-    requestAnimationFrame(frame);
 }
+canvas.addEventListener('contextlost', event => {
+    event.preventDefault();
+    contextLost = true;
+    freezeBattle();
+    diagnostics.record('context-lost', 'Canvas graphics context lost. Battle paused locally; online referee continues.');
+});
+canvas.addEventListener('contextrestored', () => {
+    contextLost = false;
+    frameFault = true;
+    diagnostics.record('context-restored', 'Graphics restored. Use Resume battle in Flight reports.');
+});
+window.addEventListener('error', event => diagnostics.record('window-error', event.error || event.message || 'Resource load failed'));
+window.addEventListener('unhandledrejection', event => diagnostics.record('unhandled-rejection', event.reason));
+window.voyagerDiagnostics = {
+    report: diagnostics.report,
+    resume() {
+        if (contextLost) throw new Error('Graphics context has not recovered. Download the report, then reload.');
+        frameFault = false;
+        last = null;
+        slowFrames = healthyFrames = 0;
+        fx.clear();
+        input.clear();
+        if (typeof ctx.reset === 'function') ctx.reset();
+        else canvas.width = canvas.width;
+        if (!networkMode && game.state === 'paused') game.handleAction('confirm');
+        diagnostics.record('manual-resume', 'Pilot requested recovery.');
+    }
+};
 document.addEventListener('visibilitychange', () => {
     if (!document.hidden) last = null;
     else {
@@ -332,7 +396,7 @@ window.asteroidReady = true;
 window.dispatchEvent(new CustomEvent('asteroid:ready', { detail: { game } }));
 requestAnimationFrame(frame);
 
-},{"./audio":3,"./game":7,"./input":8,"./render/assets":14,"./render/battleCard":16,"./render/cardMath":17,"./render/fx":20,"./render/hud":21,"./render/overview":22,"./render/post":24,"./render/pov":25,"./render/projection":26,"./render/screens":27,"./render/shapes":28}],2:[function(require,module,exports){
+},{"./audio":3,"./diagnostics":6,"./game":8,"./input":9,"./render/assets":15,"./render/battleCard":17,"./render/cardMath":18,"./render/fx":21,"./render/hud":22,"./render/overview":23,"./render/post":25,"./render/pov":26,"./render/projection":27,"./render/screens":28,"./render/shapes":29}],2:[function(require,module,exports){
 const { range } = require('./rng');
 
 const WORLD_WIDTH = 800;
@@ -414,14 +478,14 @@ Asteroid.WORLD_WIDTH = WORLD_WIDTH;
 
 module.exports = Asteroid;
 
-},{"./rng":30}],3:[function(require,module,exports){
+},{"./rng":31}],3:[function(require,module,exports){
 // Synthesized 8-bit-meets-arcade sound effects (WebAudio only, no files).
 // The AudioContext is created lazily on the first key press (autoplay rules).
 const { normalizeEvent } = require('./render/events');
 
 const NOTE = (semitonesFromA4) => 440 * Math.pow(2, semitonesFromA4 / 12);
 
-function createAudio() {
+function createAudio({ onError = error => console.error('Voyager audio:', error) } = {}) {
     let context = null;
     let master = null;
     let noiseBuffer = null;
@@ -591,7 +655,9 @@ function createAudio() {
     };
 
     const sounds = {
-        shot: (e) => (LASERS[e.weapon] || LASERS.blaster)(),
+        shot: (e) => {
+            if (throttle('shot', 0.035)) (LASERS[e.weapon] || LASERS.blaster)();
+        },
         chargeStart: () => {
             tone({ frequency: 140, endFrequency: 980, duration: 1.15, type: 'sawtooth', volume: 0.12, filter: { from: 500, to: 4200, q: 3 }, vibrato: 9 });
             tone({ frequency: 70, endFrequency: 490, duration: 1.15, type: 'sine', volume: 0.08, delay: 0.04, vibrato: 5 });
@@ -689,7 +755,7 @@ function createAudio() {
     return {
         unlock() {
             const ctx = ensureContext();
-            if (ctx && ctx.state === 'suspended') ctx.resume();
+            if (ctx && ctx.state === 'suspended') void ctx.resume().catch(onError);
         },
         toggleMute() {
             muted = !muted;
@@ -709,12 +775,12 @@ function createAudio() {
                 if (!sound) continue;
                 try {
                     sound(event);
-                    if (future && ['enemyShot', 'explode', 'shot', 'hit'].includes(event.type)) {
+                    if (future && ['enemyShot', 'explode', 'shot', 'hit'].includes(event.type) && throttle(`future:${event.type}`, 0.06)) {
                         const base = event.type === 'enemyShot' ? 110 : event.type === 'explode' ? 38 : event.type === 'hit' ? 660 : 1320;
                         tone({ frequency: base, endFrequency: event.type === 'explode' ? 30 : base * 2.4, duration: 0.16, type: 'sawtooth', volume: 0.035, filter: { from: 5000, to: 160, q: 4 }, vibrato: 12 });
                     }
                 } catch (error) {
-                    // A failed sound must never break the game loop.
+                    onError(error);
                 }
             }
         }
@@ -723,7 +789,7 @@ function createAudio() {
 
 module.exports = { createAudio };
 
-},{"./render/events":18}],4:[function(require,module,exports){
+},{"./render/events":19}],4:[function(require,module,exports){
 // World-space projectile. `y` is forward distance along the level.
 class Bullet {
     constructor({ x, y, vx = 0, vy = 0, size = 3, damage = 1, pierce = false, life = 1.4, owner = 'player', color = '#fff', radius = 0, maxRadius = 0, age = 0, playerIndex = 0, ownerWeapon = null }) {
@@ -772,6 +838,54 @@ function checkCollision(obj1, obj2) {
 
 module.exports = checkCollision;
 },{}],6:[function(require,module,exports){
+const RULESET = require('./ruleset');
+const KEY = 'voyager.diagnostics.v1';
+const LIMIT = 40;
+
+function redact(value) {
+    return String(value || '').replace(/https?:\/\/[^\s)]+/g, url => url.split(/[?#]/)[0])
+        .replace(/0x[\da-f]{40,}/gi, '[redacted]')
+        .replace(/(bearer\s+|(?:token|secret|jwt|apiKey|mac)\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]')
+        .slice(0, 1800);
+}
+
+function createDiagnostics({ storage, snapshot = () => ({}), notify = () => {}, now = () => Date.now() } = {}) {
+    let entries = [];
+    let storageError = storage ? null : 'Browser storage unavailable';
+    try {
+        const saved = storage?.getItem(KEY);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) entries = parsed.slice(-LIMIT).map(item => ({
+                at: Number(item.at) || 0, kind: redact(item.kind), message: redact(item.message), stack: redact(item.stack),
+                ...Object.fromEntries(['level', 'particles', 'rocks', 'bullets', 'width', 'height', 'dpr', 'elapsedMs', 'quality']
+                    .filter(key => Number.isFinite(item[key])).map(key => [key, item[key]])),
+                ...Object.fromEntries(['state', 'difficulty', 'view'].filter(key => typeof item[key] === 'string').map(key => [key, redact(item[key])]))
+            }));
+        }
+    } catch (error) { storageError = redact(error.message); }
+    const report = () => ({
+        schema: 'voyager-diagnostics/1', build: 'flash-recovery-1', ruleset: RULESET,
+        browser: typeof navigator === 'undefined' ? 'unavailable' : redact(navigator.userAgent),
+        storageError, entries: entries.map(entry => ({ ...entry }))
+    });
+    function record(kind, error, details = {}) {
+        const message = redact(error?.message || error);
+        const previous = entries.at(-1);
+        const at = now();
+        if (previous?.kind === kind && previous.message === message && at - previous.at < 5000) return;
+        entries.push({ at, kind: redact(kind), message, stack: redact(error?.stack), ...snapshot(), ...details });
+        entries = entries.slice(-LIMIT);
+        try { storage?.setItem(KEY, JSON.stringify(entries)); }
+        catch (failure) { storageError = redact(failure.message); }
+        notify(report());
+    }
+    return { record, report };
+}
+
+module.exports = { createDiagnostics, redact, KEY, LIMIT };
+
+},{"./ruleset":32}],7:[function(require,module,exports){
 // Difficulty presets. Cadet is the original tuning and must stay unchanged;
 // pilot and ace scale the per-level knobs produced by levels.js.
 const DIFFICULTY_IDS = ['cadet', 'pilot', 'ace'];
@@ -936,7 +1050,7 @@ function applyDifficulty(base, id) {
 
 module.exports = { DIFFICULTY_IDS, DIFFICULTIES, isDifficulty, getDifficulty, difficultyLabel, stepDifficulty, applyDifficulty };
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 const checkCollision = require('./collision');
 const Spaceship = require('./spaceship');
 const Bullet = require('./bullet');
@@ -1963,7 +2077,7 @@ Game.groupPlayers = require('./multiplayer').groupPlayers;
 
 module.exports = Game;
 
-},{"./bullet":4,"./collision":5,"./difficulty":6,"./inputlog":9,"./levelLayout":10,"./levels":11,"./multiplayer":12,"./prizes":13,"./rng":30,"./ruleset":31,"./save":32,"./spaceship":33,"./stats":34,"./vault":35,"./weapons":36}],8:[function(require,module,exports){
+},{"./bullet":4,"./collision":5,"./difficulty":7,"./inputlog":10,"./levelLayout":11,"./levels":12,"./multiplayer":13,"./prizes":14,"./rng":31,"./ruleset":32,"./save":33,"./spaceship":34,"./stats":35,"./vault":36,"./weapons":37}],9:[function(require,module,exports){
 const ACTIONS = Object.freeze({
     start: 9,
     view: 3,
@@ -2225,7 +2339,7 @@ function createInput({
 
 module.exports = { createInput, axis, MAX_PLAYERS, DEADZONE, ACTIONS };
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 const ACTIONS = ['left', 'right', 'up', 'down', 'fire', 'special', 'weaponNext', 'view'];
 const MAX_RUN = 65535;
 
@@ -2272,7 +2386,7 @@ function decode(log) {
 
 module.exports = { ACTIONS, encode, decode, encodeInput, decodeInput };
 
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 const Asteroid = require('./asteroid');
 const { range, pick } = require('./rng');
 
@@ -2407,7 +2521,7 @@ function populateLevel(level, rng) {
 
 module.exports = { populateLevel, PICKUP_TYPES, FUTURE_PICKUPS, EXTRA_LIFE_LEVELS, SAFE_START };
 
-},{"./asteroid":2,"./rng":30}],11:[function(require,module,exports){
+},{"./asteroid":2,"./rng":31}],12:[function(require,module,exports){
 const { applyDifficulty } = require('./difficulty');
 
 const LEVEL_COUNT = 10;
@@ -2474,7 +2588,7 @@ function getLevel(number, difficulty = 'cadet') {
 
 module.exports = { LEVEL_COUNT, TOTAL_LEVEL_COUNT, LEVEL_NAMES, getLevel, getBaseLevel };
 
-},{"./difficulty":6}],12:[function(require,module,exports){
+},{"./difficulty":7}],13:[function(require,module,exports){
 const MAX_PLAYERS = 5;
 function scaleForPlayers(count) {
     if (!Number.isInteger(count) || count < 1 || count > MAX_PLAYERS) throw new RangeError('Player count must be between 1 and 5.');
@@ -2501,7 +2615,7 @@ function canEndLevel(players, mode) {
 }
 module.exports = { MAX_PLAYERS, scaleForPlayers, groupPlayers, createPlayerStats, awardScore, canEndLevel };
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 const COLLECTION = '0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B';
 const ESCROW = '0x31b07b83e99A9bdF379bf40225b8A80d3804C89d';
 const PRIZES = {
@@ -2527,7 +2641,7 @@ const PERFECT_PRIZES = {
 const PILOT_BONUS = { chainId: 8453, token: '0x25ACb773159Af5a5c672DEfe31C7Fff6a9A93736', symbol: 'BNUT', decimals: 18, amount: '100000000000000000000' };
 module.exports = { COLLECTION, ESCROW, PRIZES, MARATHON_PRIZE, PERFECT_PRIZES, PILOT_BONUS };
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 // Image preloader. Renderers ask for images by key and fall back to vector
 // drawing while an image is missing, still loading or failed to load.
 const BASE_URL = 'assets/game/';
@@ -2697,7 +2811,7 @@ module.exports = {
     getTinted
 };
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 // Per-level space backdrops: tinted gradient, a big Mandelblum "nebula"
 // (screen-blended so its black matte vanishes) and pixel starfield parallax.
 const { VIEW, MAX_VIEW_WIDTH } = require('./projection');
@@ -2793,7 +2907,7 @@ function createOverviewBackground() {
 
 module.exports = { LEVEL_TINTS, SECTOR2_TINTS, levelTint, createStarfield, drawNebula, createOverviewBackground };
 
-},{"./assets":14,"./projection":26}],16:[function(require,module,exports){
+},{"./assets":15,"./projection":27}],17:[function(require,module,exports){
 // Collectible "battle card" renderer: a deterministic image of one cleared level.
 const { getImage, loadAssets, makeCanvas, ROCK_KEYS, FUTURE_ROCK_KEYS, backdropKeyFor, rockKeyFor } = require('./assets');
 const { pixelText } = require('./font');
@@ -3261,7 +3375,7 @@ async function previewBattleCard(record) {
 
 module.exports = { renderBattleCard, previewBattleCard, latestRecord };
 
-},{"./assets":14,"./cardMath":17,"./font":19,"./hud":21,"./shapes":28}],17:[function(require,module,exports){
+},{"./assets":15,"./cardMath":18,"./font":20,"./hud":22,"./shapes":29}],18:[function(require,module,exports){
 // Pure helpers for the battle card (testable in Node).
 const WORLD_WIDTH = 800;
 
@@ -3401,7 +3515,7 @@ module.exports = {
     sampleRecord
 };
 
-},{}],18:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 // Normalises game events for presentation. Older game builds emitted pickups
 // as `{ type: 'power' }` (the pickup kind overwrote the event name); newer
 // builds emit `{ type: 'pickup', pickupType: 'power' }`.
@@ -3419,7 +3533,7 @@ function normalizeEvent(event) {
 
 module.exports = { PICKUP_TYPES, normalizeEvent };
 
-},{}],19:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 // Crisp "8-bit" text: glyphs are rasterised at a low resolution into a cached
 // offscreen canvas and scaled up with smoothing disabled, giving chunky
 // pixels without shipping a font file. Falls back to plain fillText in
@@ -3526,7 +3640,7 @@ function measurePixelText(value, { size = 14, weight = 'bold', scale = 1 } = {})
 
 module.exports = { FONT_STACK, fontFor, pixelText, measurePixelText };
 
-},{"./assets":14}],20:[function(require,module,exports){
+},{"./assets":15}],21:[function(require,module,exports){
 // Client-side juice: explosions, debris, shockwaves, thruster trails, shield
 // ripples, floating text, fireworks, screen shake, hit-stop and slow-mo.
 // Driven purely by drained game events so game.js stays deterministic.
@@ -3980,9 +4094,12 @@ function createFx() {
             ctx.restore();
         }
         if (state.flash > 0) {
-            ctx.globalAlpha = Math.min(0.55, state.flash);
+            ctx.globalAlpha = Math.min(0.2, state.flash);
             ctx.fillStyle = state.flashColor;
-            ctx.fillRect(0, 0, VIEW.width, VIEW.height);
+            ctx.fillRect(0, 0, VIEW.width, 6);
+            ctx.fillRect(0, VIEW.height - 6, VIEW.width, 6);
+            ctx.fillRect(0, 6, 6, VIEW.height - 12);
+            ctx.fillRect(VIEW.width - 6, 6, 6, VIEW.height - 12);
             ctx.globalAlpha = 1;
         }
     }
@@ -4029,7 +4146,7 @@ function createFx() {
 
 module.exports = { createFx, MAX_WORLD_PARTICLES, MAX_SCREEN_PARTICLES };
 
-},{"./assets":14,"./events":18,"./font":19,"./projection":26,"./shapes":28,"./vault":29}],21:[function(require,module,exports){
+},{"./assets":15,"./events":19,"./font":20,"./projection":27,"./shapes":29,"./vault":30}],22:[function(require,module,exports){
 const { VIEW } = require('./projection');
 const { WEAPONS, MAX_TIER } = require('../weapons');
 const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('../levels');
@@ -4296,7 +4413,7 @@ function createHud() {
 
 module.exports = { createHud, rollUp, litSegments, difficultyColor, difficultyName, panelBox, POWER_SEGMENTS, DIFFICULTY_COLORS };
 
-},{"../levels":11,"../weapons":36,"./font":19,"./players":23,"./projection":26,"./shapes":28}],22:[function(require,module,exports){
+},{"../levels":12,"../weapons":37,"./font":20,"./players":24,"./projection":27,"./shapes":29}],23:[function(require,module,exports){
 const { VIEW, projectOverview } = require('./projection');
 const { drawAsteroid, drawPickup, drawShipTop, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { createOverviewBackground } = require('./background');
@@ -4418,7 +4535,7 @@ function createOverviewRenderer() {
 
 module.exports = { createOverviewRenderer };
 
-},{"./assets":14,"./background":15,"./font":19,"./players":23,"./projection":26,"./shapes":28,"./vault":29}],23:[function(require,module,exports){
+},{"./assets":15,"./background":16,"./font":20,"./players":24,"./projection":27,"./shapes":29,"./vault":30}],24:[function(require,module,exports){
 const PLAYER_COLORS = ['#7fd7ff', '#d8e4ef', '#7dff8c', '#ffe65c', '#ff8a5c'];
 
 function getPlayers(game) {
@@ -4449,7 +4566,7 @@ function versusMode(game) {
 
 module.exports = { PLAYER_COLORS, getPlayers, playerScale, versusMode };
 
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 // Optional CRT post layer: scanlines + vignette, pre-rendered once.
 const { VIEW } = require('./projection');
 const { makeCanvas } = require('./assets');
@@ -4484,7 +4601,7 @@ function drawCrt(ctx, time = 0) {
 
 module.exports = { drawCrt };
 
-},{"./assets":14,"./projection":26}],25:[function(require,module,exports){
+},{"./assets":15,"./projection":27}],26:[function(require,module,exports){
 const { VIEW, MAX_VIEW_WIDTH, POV, povCamera, projectPov, povFade } = require('./projection');
 const { drawAsteroid, drawPickup, drawShipChase, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { levelTint, createStarfield, drawNebula } = require('./background');
@@ -4617,8 +4734,8 @@ function createPovRenderer() {
         const alpha = povFade(p.depth);
         const time = game.time || 0;
         if (kind === 'asteroid') {
-            const radius = obj.size * p.scale;
-            if (radius > 1400 || p.x + radius < 0 || p.x - radius > VIEW.width) return;
+            const radius = Math.min(180, obj.size * p.scale);
+            if (p.x + radius < 0 || p.x - radius > VIEW.width) return;
             drawAsteroid(ctx, obj, p.x, p.y, radius, alpha, time, game.level.number >= 11);
         } else if (kind === 'pickup') {
             drawPickup(ctx, obj, p.x, p.y, Math.min(120, obj.size * p.scale), time, alpha);
@@ -4691,7 +4808,7 @@ function createPovRenderer() {
 
 module.exports = { createPovRenderer };
 
-},{"./assets":14,"./background":15,"./players":23,"./projection":26,"./shapes":28,"./vault":29}],26:[function(require,module,exports){
+},{"./assets":15,"./background":16,"./players":24,"./projection":27,"./shapes":29,"./vault":30}],27:[function(require,module,exports){
 // The world is always 800 wide; the view can be wider and centres the world with offsetX.
 const WORLD_VIEW_WIDTH = 800;
 const MAX_VIEW_WIDTH = 1600;
@@ -4747,7 +4864,7 @@ function povFade(depth) {
 
 module.exports = { VIEW, setViewWidth, WORLD_VIEW_WIDTH, MAX_VIEW_WIDTH, OVERVIEW_SHIP_LINE, POV, projectOverview, povCamera, projectPov, povFade };
 
-},{}],27:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 // Full-screen overlays: title, intro, pause, level clear celebration,
 // victory finale and game over.
 const { VIEW } = require('./projection');
@@ -5117,7 +5234,7 @@ function drawOverlay(ctx, game, fx) {
 
 module.exports = { drawOverlay, drawTitle, drawCover, waveText, formatTime, easeOutBack, DIFFICULTY_OPTIONS };
 
-},{"../levels":11,"./assets":14,"./font":19,"./hud":21,"./projection":26,"./shapes":28}],28:[function(require,module,exports){
+},{"../levels":12,"./assets":15,"./font":20,"./hud":22,"./projection":27,"./shapes":29}],29:[function(require,module,exports){
 const { WEAPONS } = require('../weapons');
 const { getImage, getTinted, rockKeyFor, futureRockKeyFor, makeCanvas, BREATHE_FRAMES } = require('./assets');
 const { pixelText } = require('./font');
@@ -5292,13 +5409,13 @@ function drawAsteroid(ctx, asteroid, x, y, radius, alpha = 1, time = 0, sector2 
         if (flash) {
             const white = getTinted(key, 'flash');
             if (white) {
-                ctx.globalAlpha = alpha * flash;
+                ctx.globalAlpha = alpha * flash * 0.18;
                 ctx.drawImage(white, -s / 2, -s / 2, s, s);
             }
         }
     } else {
         asteroidPath(ctx, asteroid, radius);
-        ctx.fillStyle = flash ? '#ffffff' : asteroid.shooter ? '#2b1712' : '#1c1c22';
+        ctx.fillStyle = flash ? '#6d667d' : asteroid.shooter ? '#2b1712' : '#1c1c22';
         ctx.fill();
         ctx.lineWidth = Math.max(1, radius / 18);
         ctx.strokeStyle = asteroid.shooter ? '#ff8a5c' : '#d8d2c4';
@@ -5700,7 +5817,7 @@ module.exports = {
     drawEnemyBullet
 };
 
-},{"../weapons":36,"./assets":14,"./font":19}],29:[function(require,module,exports){
+},{"../weapons":37,"./assets":15,"./font":20}],30:[function(require,module,exports){
 const { drawGlow, drawAsteroid } = require('./shapes');
 const { getImage, supporterImageKey } = require('./assets');
 const { pixelText } = require('./font');
@@ -5831,7 +5948,7 @@ function drawSupporterToken(ctx, tokenId, x, y, size) {
 
 module.exports = { drawVault, drawVaultPov, drawVaultGlyph, drawSupporterToken, guardList, shielded };
 
-},{"./assets":14,"./font":19,"./projection":26,"./shapes":28}],30:[function(require,module,exports){
+},{"./assets":15,"./font":20,"./projection":27,"./shapes":29}],31:[function(require,module,exports){
 // Small seeded RNG so each level's map is the same every time it is played.
 function createRng(seed) {
     let state = seed >>> 0;
@@ -5854,10 +5971,10 @@ function pick(rng, items) {
 
 module.exports = { createRng, range, pick };
 
-},{}],31:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 module.exports = 'voyager-1.2-lotus-marathon';
 
-},{}],32:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 // Save format, validation, legacy migration and quota-tolerant persistence.
 const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('./levels');
 const { DIFFICULTY_IDS, isDifficulty, difficultyLabel } = require('./difficulty');
@@ -6355,7 +6472,7 @@ module.exports = {
     persistSave
 };
 
-},{"./difficulty":6,"./levels":11,"./prizes":13,"./stats":34}],33:[function(require,module,exports){
+},{"./difficulty":7,"./levels":12,"./prizes":14,"./stats":35}],34:[function(require,module,exports){
 const { createWeapon } = require('./weapons');
 
 const MIN_X = 20;
@@ -6420,7 +6537,7 @@ class Spaceship {
 
 module.exports = Spaceship;
 
-},{"./weapons":36}],34:[function(require,module,exports){
+},{"./weapons":37}],35:[function(require,module,exports){
 // Per-level stats, combo tracking, battle log sampling and LevelRecord building.
 //
 // Definitions:
@@ -6720,7 +6837,7 @@ module.exports = {
     buildLevelRecord
 };
 
-},{}],35:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 const { pick, range } = require('./rng');
 const { PRIZES } = require('./prizes');
 const Asteroid = require('./asteroid');
@@ -6752,7 +6869,7 @@ function markGuardDestroyed(vault, guard) {
 }
 module.exports = { chooseVaultLevel, createVault, markGuardDestroyed };
 
-},{"./asteroid":2,"./prizes":13,"./rng":30}],36:[function(require,module,exports){
+},{"./asteroid":2,"./prizes":14,"./rng":31}],37:[function(require,module,exports){
 const Bullet = require('./bullet');
 
 const MAX_TIER = 3;

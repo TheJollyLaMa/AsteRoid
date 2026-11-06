@@ -85,6 +85,7 @@ test('header config is public Base-only with HTTPS project links and small local
   assert.match(supporter.marketUrl,/^https:\/\//);
   assert.ok(statSync(new URL(`../src/assets/${supporter.image}`,import.meta.url)).size<=250000);
   for (const link of [...config.links,...config.relatedDapps]) assert.match(link.url,/^https:\/\//);
+  assert.ok([...config.links,...config.relatedDapps].filter(link => /canopy|ecosystem/i.test(link.label)).every(link => link.url === 'https://thejollylama.github.io/DecentCanopy/'));
   assert.equal(config.about.sections,undefined);
   assert.equal(config.art.titleIcon,'./assets/brand/voyager-disc.png');
   assert.doesNotMatch(source,/\b(jwt|apiKey|apiSecret|privateKey)\s*:/);
@@ -96,6 +97,8 @@ test('static shell preserves bundle/canvas and host-module ordering for relative
   assert.ok(html.indexOf('decent-head.config.js')<html.indexOf('js/shell/main.mjs'));
   for (const path of ['js/dnft/claims.mjs','js/admin/admin-panel.mjs']) assert.ok(html.indexOf('bundle.js')<html.indexOf(path));
   assert.match(html, /Decent Voyager/);
+  assert.match(html, /href="https:\/\/thejollylama.github.io\/DecentCanopy\/">Decent ecosystem/);
+  assert.match(html, /id="diagnostic-download"/);
   for (const path of ['js/pilots/whitelist.mjs','js/pilots/flight-log.mjs','js/arena/lobby.mjs']) assert.ok(html.includes(path));
   assert.doesNotMatch(html,/(?:src|href)="\/(?!\/)/);
 });
@@ -106,6 +109,8 @@ test('about content covers rewards, tutorials and the multiplayer walkthrough wi
   for (const title of ['Level 20 achievement NFT','Guarded Supporter pickups','Marathon and Perfect awards','Sector II · Far Future','Arena pot']) assert.ok(ABOUT.rewards.some(item => item.title===title));
   assert.ok(ABOUT.couch.length>=3); assert.ok(ABOUT.online.length>=5);
   assert.match(source,/Coming soon/); assert.match(source,/purchaseWithToken/);
+  assert.match(ABOUT.recovery, /Online rounds continue/);
+  assert.match(ABOUT.diagnostics, /Nothing is sent automatically/);
   const html=readFileSync(new URL('../src/index.html',import.meta.url),'utf8');
   assert.ok(html.indexOf('about-modal.mjs')<html.indexOf('js/shell/main.mjs'));
   assert.doesNotMatch(html,/flight-note|pilot-rewards|No wallet needed to fly/);
