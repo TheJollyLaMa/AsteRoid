@@ -314,6 +314,8 @@ let maxStepMs = 0;
 let activeFault = null;
 function setFault(kind, message) {
     activeFault = kind ? { kind, message, at: Date.now() } : null;
+    // Diagnostics de-duplicates repeated entries, so refresh the banner directly.
+    window.dispatchEvent(new CustomEvent('voyager:diagnostic'));
 }
 function clearFault() {
     if (!activeFault) return;
