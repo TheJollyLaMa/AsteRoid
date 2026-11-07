@@ -4,6 +4,7 @@ const ENTRIES = [
   { id: 'vault', label: count => `🏆 Victory Vault${count ? ` · ${count}` : ''}`, event: 'voyager:open-vault' },
   { id: 'rewards', label: count => `✦ Rewards waiting${count ? ` · ${count}` : ''}`, event: 'voyager:open-rewards' },
   { id: 'manual', label: () => 'ⓘ Flight manual', about: true },
+  { id: 'reports', label: () => 'Flight reports', event: 'voyager:open-reports' },
 ];
 
 function menuRoot() { return document.querySelector('decent-header')?.shadowRoot?.querySelector('ankh-menu[side="right"]')?.shadowRoot || null; }
