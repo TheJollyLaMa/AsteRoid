@@ -97,8 +97,12 @@ test('static shell preserves bundle/canvas and host-module ordering for relative
   assert.ok(html.indexOf('decent-head.config.js')<html.indexOf('js/shell/main.mjs'));
   for (const path of ['js/dnft/claims.mjs','js/admin/admin-panel.mjs']) assert.ok(html.indexOf('bundle.js')<html.indexOf(path));
   assert.match(html, /Decent Voyager/);
-  assert.match(html, /href="https:\/\/thejollylama.github.io\/DecentCanopy\/">Decent ecosystem/);
-  assert.match(html, /id="diagnostic-download"/);
+  assert.match(html, /href="https:\/\/thejollylama.github.io\/DecentCanopy\/" target="_blank" rel="noopener noreferrer">Decent ecosystem/);
+  assert.doesNotMatch(html, /id="flight-diagnostics"|class="credit"|Your wallet\. Your flight/);
+  const reports=readFileSync(new URL('../src/js/shell/flight-reports.mjs',import.meta.url),'utf8');
+  assert.match(reports, /createDialog\('Flight reports', 'flight-diagnostics'\)/);
+  assert.match(reports, /id: 'diagnostic-download'/);
+  assert.match(reports, /voyager:open-reports/);
   for (const path of ['js/pilots/whitelist.mjs','js/pilots/flight-log.mjs','js/arena/lobby.mjs']) assert.ok(html.includes(path));
   assert.doesNotMatch(html,/(?:src|href)="\/(?!\/)/);
 });

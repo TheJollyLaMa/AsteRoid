@@ -345,7 +345,7 @@ function frameError(error) {
     freezeBattle();
     setFault('frame-error', 'The battle hit an error and is paused.');
     diagnostics.record('frame-error', error);
-    hud.setToast('Flight error: open Flight reports below to save diagnostics and recover.', 12000);
+    hud.setToast('Flight error: open Flight reports in the profile menu.', 12000);
 }
 function frame(timestamp) {
     try {

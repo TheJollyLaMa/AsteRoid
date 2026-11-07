@@ -80,6 +80,11 @@ catalog. No new reward storage or service, no changed eligibility or transfers,
 and no vendor/Canopy edits. The existing local outbox is pending evidence;
 persisted referee vouchers are the cross-visit redemption source.
 
+The footer keeps project links and the rewards shortcut, without a diagnostics
+block or tagline. **Flight reports** in the right profile menu opens the local
+report/download/recovery dialog; active fault banners also link to it.
+The **Decent ecosystem** Pages link opens in a separate tab to preserve the game.
+
 Crowded-level safeguards include ordered spatial collision queries, capped
 cosmetic debris/fireworks and a maximum 3-million-pixel / 2x-DPR canvas. A long
 stall (over 250ms) or eight consecutive frames over 50ms freezes solo/local play,
