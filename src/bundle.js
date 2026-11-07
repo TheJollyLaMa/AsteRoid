@@ -15,6 +15,7 @@ const { setGlowBudget, getShapeResources, clearShapeResources } = require('./ren
 const { getFontResources, clearFontResources } = require('./render/font');
 const { createInput } = require('./input');
 const { createDiagnostics } = require('./diagnostics');
+const { supporterDetails } = require('./supporter-catalog');
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -32,6 +33,7 @@ const storage = safeStorage();
 const game = new Game({ storage });
 const handleGameAction = game.handleAction.bind(game);
 game.handleAction = action => {
+    if (document.getElementById('supporter-briefing')?.open) return;
     if (action === 'confirm' && ['title', 'gameOver'].includes(game.state)) {
         const state = game.state;
         const request = new CustomEvent('voyager:launch-request', {
@@ -456,7 +458,7 @@ document.addEventListener('visibilitychange', () => {
 window.asteroidGame = game;
 window.asteroidDraw = draw;
 window.asteroidStep = step;
-window.AsteroidRender = { renderBattleCard, previewBattleCard, sampleRecord, loadAssets };
+window.AsteroidRender = { renderBattleCard, previewBattleCard, sampleRecord, loadAssets, supporterDetails };
 function setNetworkMode(options = null) {
     if (!options) {
         networkMode = null;
@@ -472,6 +474,7 @@ window.voyager = {
     render: window.AsteroidRender,
     input,
     setNetworkMode,
+    isNetworkMode: () => Boolean(networkMode),
     onInput(fn) {
         if (!networkMode) networkMode = {};
         networkMode.onInput = typeof fn === 'function' ? fn : null;
@@ -485,7 +488,7 @@ window.asteroidReady = true;
 window.dispatchEvent(new CustomEvent('asteroid:ready', { detail: { game } }));
 requestAnimationFrame(frame);
 
-},{"./audio":3,"./diagnostics":6,"./game":8,"./input":9,"./render/assets":15,"./render/battleCard":17,"./render/cardMath":18,"./render/font":21,"./render/fx":22,"./render/hud":23,"./render/overview":24,"./render/post":26,"./render/pov":27,"./render/projection":28,"./render/screens":29,"./render/shapes":30}],2:[function(require,module,exports){
+},{"./audio":3,"./diagnostics":6,"./game":8,"./input":9,"./render/assets":15,"./render/battleCard":17,"./render/cardMath":18,"./render/font":21,"./render/fx":22,"./render/hud":23,"./render/overview":24,"./render/post":26,"./render/pov":27,"./render/projection":28,"./render/screens":29,"./render/shapes":30,"./supporter-catalog":37}],2:[function(require,module,exports){
 const { range } = require('./rng');
 
 const WORLD_WIDTH = 800;
@@ -763,7 +766,14 @@ function createAudio({ onError = error => console.error('Voyager audio:', error)
             noise({ duration: 0.3, volume: 0.08, from: 1100, to: 350, type: 'bandpass', q: 4, delay: 0.1 });
         },
         guardDestroyed: () => { explosion(22, true); arpeggio([12, 19], { step: 0.04, type: 'triangle', volume: 0.045 }); },
+        vaultUnlocked: () => {
+            tone({ frequency: 180, endFrequency: 1800, duration: 0.45, type: 'sawtooth', volume: 0.09, filter: { from: 600, to: 5000, q: 2 } });
+            arpeggio([0, 7, 14, 19, 26], { step: 0.085, type: 'triangle', volume: 0.1, length: 0.28 });
+            noise({ duration: 0.4, volume: 0.07, from: 5000, to: 1400, type: 'bandpass', delay: 0.25 });
+        },
         supporterCaptured: () => {
+            tone({ frequency: 90, endFrequency: 720, duration: 0.6, type: 'triangle', volume: 0.1 });
+            [0, 0.18, 0.36].forEach(delay => tone({ frequency: 2100, endFrequency: 360, duration: 0.2, type: 'sawtooth', volume: 0.065, delay }));
             arpeggio([3, 7, 10, 15, 19, 22, 27, 31], { step: 0.075, type: 'sine', volume: 0.11, length: 0.3 });
             arpeggio([-9, -2, 3, 10, 15], { step: 0.15, type: 'triangle', volume: 0.1, length: 0.42 });
             noise({ duration: 1.15, volume: 0.12, from: 8000, to: 1800, type: 'highpass', delay: 0.35 });
@@ -803,6 +813,11 @@ function createAudio({ onError = error => console.error('Voyager audio:', error)
                 // Ens Eth breathe: rising shimmering chime.
                 arpeggio([3, 7, 10, 15, 19, 22], { step: 0.055, type: 'triangle', volume: 0.07, length: 0.35 });
                 arpeggio([15, 19, 22, 27], { step: 0.055, type: 'sine', volume: 0.04, length: 0.5, delay: 0.03 });
+            } else if (e.pickupType === 'life') {
+                // Original two-phrase fanfare, not sampled from an existing game.
+                arpeggio([-5, 2, 9, 6, 14, 21], { step: 0.095, type: 'triangle', volume: 0.11, length: 0.22 });
+                arpeggio([2, 9, 14], { step: 0.14, type: 'sine', volume: 0.07, length: 0.4, delay: 0.55 });
+                tone({ frequency: 220, endFrequency: 1100, duration: 0.35, type: 'square', volume: 0.035 });
             } else if (e.pickupType === 'mini') {
                 // Shrink: a quick falling warble.
                 tone({ frequency: 1600, endFrequency: 220, duration: 0.35, type: 'square', volume: 0.05, vibrato: 30 });
@@ -1842,7 +1857,13 @@ class Game {
 
     destroyAsteroid(asteroid, awardPoints = true, byPlayerShot = false) {
         asteroid.hp = 0;
-        if (asteroid.vaultGuard && markGuardDestroyed(this.vault, asteroid)) this.emit('guardDestroyed', { tier: asteroid.vaultTier, kind: asteroid.kind, x: asteroid.x, y: asteroid.y });
+        if (asteroid.vaultGuard) {
+            const wasShielded = this.vault?.shielded;
+            if (markGuardDestroyed(this.vault, asteroid)) this.emit('guardDestroyed', { tier: asteroid.vaultTier, kind: asteroid.kind, x: asteroid.x, y: asteroid.y });
+            if (wasShielded && !this.vault.shielded) {
+                this.emit('vaultUnlocked', { tier: this.vault.tier, prize: { ...this.vault.prize }, x: this.vault.x, y: this.vault.y });
+            }
+        }
         if (awardPoints) {
             const base = asteroid.shooter ? 150 : 50 + asteroid.maxHp * 25;
             const points = Math.round(base * (1 + (this.level.number - 1) * 0.1) * this.scoreMultiplier);
@@ -2217,7 +2238,7 @@ Game.groupPlayers = require('./multiplayer').groupPlayers;
 
 module.exports = Game;
 
-},{"./bullet":4,"./collision":5,"./difficulty":7,"./inputlog":10,"./levelLayout":11,"./levels":12,"./multiplayer":13,"./prizes":14,"./rng":32,"./ruleset":33,"./save":34,"./spaceship":35,"./stats":36,"./vault":37,"./weapons":38}],9:[function(require,module,exports){
+},{"./bullet":4,"./collision":5,"./difficulty":7,"./inputlog":10,"./levelLayout":11,"./levels":12,"./multiplayer":13,"./prizes":14,"./rng":32,"./ruleset":33,"./save":34,"./spaceship":35,"./stats":36,"./vault":38,"./weapons":39}],9:[function(require,module,exports){
 const ACTIONS = Object.freeze({
     start: 9,
     view: 3,
@@ -2833,8 +2854,10 @@ const MANIFEST = {
     'supporter-71': 'supporter-71.jpg',
     'supporter-75': 'supporter-75.jpg',
     'supporter-76': 'supporter-76.jpg',
+    'supporter-77': 'supporter-77.jpg',
     'supporter-78': 'supporter-78.jpg',
-    'supporter-79': 'supporter-79.jpg'
+    'supporter-79': 'supporter-79.jpg',
+    'supporter-80': 'supporter-80.jpg'
 };
 
 const images = {};
@@ -4015,6 +4038,8 @@ function createFx() {
         kills: 0,
         captureTime: -1,
         captureTokenId: null,
+        lifeTime: -1,
+        lifePlayer: 0,
         warpTime: -1,
         warpFrom: null,
         vaultAlarm: 0,
@@ -4130,6 +4155,14 @@ function createFx() {
                     addWorld({ kind: 'ring', x: px, y: py, vx: 0, vy: drift, life: 0.5, maxLife: 0.5, radius: 10, grow: 90, color });
                     addWorld({ kind: 'flash', x: px, y: py, vx: 0, vy: drift, life: 0.3, maxLife: 0.3, radius: 60, color });
                     floatText(ship.x, ship.y + 34, pickupLabel(kind, e.weapon), color, 1.2, 16);
+                    if (kind === 'life') {
+                        state.lifeTime = 0;
+                        state.lifePlayer = (e.player || 0) + 1;
+                        for (let i = 0; i < 3; i++) {
+                            addWorld({ kind: 'ring', x: px, y: py, vx: 0, vy: drift, life: 1.1, maxLife: 1.1, radius: 10 + i * 14, grow: 100 + i * 30, color: i % 2 ? '#ffe65c' : '#7dff8c' });
+                            firework(VIEW.width / 2 + (i - 1) * 80, VIEW.height / 2, i % 2 ? '#ffe65c' : '#7dff8c', 20);
+                        }
+                    }
                     if (kind === 'power') {
                         state.flash = 0.25;
                         state.flashColor = '#7dff8c';
@@ -4155,6 +4188,11 @@ function createFx() {
                     break;
                 case 'guardDestroyed':
                     explosion(e.x || ship.x, e.y || ship.y, Number(e.size) || 24, true, drift);
+                    break;
+                case 'vaultUnlocked':
+                    state.vaultAlarm = 1.1;
+                    floatText(e.x, e.y + 70, 'DNFT UNLOCKED - FLY THROUGH!', '#ffe65c', 2.4, 17);
+                    for (let i = 0; i < 3; i++) addWorld({ kind: 'ring', x: e.x, y: e.y, vx: 0, vy: drift, life: 1.2, maxLife: 1.2, radius: 20 + i * 18, grow: 120 + i * 30, color: i % 2 ? '#67faff' : '#ffe65c' });
                     break;
                 case 'chargeStart':
                     state.charging = true;
@@ -4245,6 +4283,7 @@ function createFx() {
         state.shake = Math.max(0, state.shake - dt * 30);
         state.vaultAlarm = Math.max(0, state.vaultAlarm - dt);
         if (state.captureTime >= 0) { state.captureTime += dt; if (state.captureTime > 4.2) state.captureTime = -1; }
+        if (state.lifeTime >= 0) { state.lifeTime += dt; if (state.lifeTime > 2.2) state.lifeTime = -1; }
         if (state.warpTime >= 0) { state.warpTime += dt; if (state.warpTime > 2.5) state.warpTime = -1; }
         if (game && game.ship) {
             const charge = game.charge ?? game.ship.charge ?? game.ship.chargeAmount ?? 0;
@@ -4420,7 +4459,27 @@ function createFx() {
             drawSupporterToken(ctx, state.captureTokenId, cx, cy - 20, size);
             ctx.fillStyle = 'rgba(2, 3, 12, 0.72)'; ctx.fillRect(cx - 220, cy + 56, 440, 42);
             pixelText(ctx, `SUPPORTER TOKEN CAPTURED${state.captureTokenId ? ` · #${state.captureTokenId}` : ''}`, cx, cy + 82, { size: 15, align: 'center', color: '#fff4c8' });
-            if (game && game.level && game.level.number >= 10) pixelText(ctx, 'SECTOR II UNLOCKED', cx, cy + 124, { size: 12, align: 'center', color: '#67faff' });
+            pixelText(ctx, 'CAPTURE RECORDED - REFEREE VERIFICATION NEXT', cx, cy + 124, { size: 13, align: 'center', color: '#67faff' });
+        }
+        if (state.lifeTime >= 0) {
+            const t = state.lifeTime, cx = VIEW.width / 2, cy = VIEW.height * 0.3;
+            const fade = Math.min(1, (2.2 - t) * 2);
+            ctx.save();
+            ctx.globalAlpha *= fade;
+            ctx.fillStyle = 'rgba(3, 10, 20, 0.88)';
+            ctx.fillRect(cx - 180, cy - 30, 360, 92);
+            ctx.strokeStyle = '#7dff8c';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 8; i++) {
+                const angle = i * Math.PI / 4 + t * 0.6;
+                ctx.beginPath();
+                ctx.moveTo(cx + Math.cos(angle) * 105, cy + Math.sin(angle) * 28);
+                ctx.lineTo(cx + Math.cos(angle) * (130 + t * 20), cy + Math.sin(angle) * (38 + t * 10));
+                ctx.stroke();
+            }
+            pixelText(ctx, '+1 EXTRA LIFE!', cx, cy + 4, { size: 25, align: 'center', color: '#ffffff' });
+            pixelText(ctx, `P${state.lifePlayer} - ANOTHER CHANCE TO FLY`, cx, cy + 36, { size: 13, align: 'center', color: '#7dff8c' });
+            ctx.restore();
         }
         if (state.vaultAlarm > 0) {
             ctx.save(); ctx.globalAlpha = (0.25 + 0.18 * Math.sin(state.time * 18)) * Math.min(1, state.vaultAlarm);
@@ -4800,7 +4859,7 @@ function createHud() {
 
 module.exports = { createHud, rollUp, litSegments, difficultyColor, difficultyName, panelBox, POWER_SEGMENTS, DIFFICULTY_COLORS };
 
-},{"../levels":12,"../weapons":38,"./font":21,"./players":25,"./projection":28,"./shapes":30}],24:[function(require,module,exports){
+},{"../levels":12,"../weapons":39,"./font":21,"./players":25,"./projection":28,"./shapes":30}],24:[function(require,module,exports){
 const { VIEW, projectOverview } = require('./projection');
 const { drawAsteroid, drawPickup, drawShipTop, drawMiniAura, drawPlayerBullet, drawEnemyBullet, drawGlow } = require('./shapes');
 const { createOverviewBackground } = require('./background');
@@ -5932,13 +5991,25 @@ function drawBreathe(ctx, x, y, radius, time, alpha = 1) {
 function drawPickup(ctx, pickup, x, y, radius, time, alpha = 1) {
     if (pickup.type === 'life') {
         const lotus = getImage('white-lotus');
-        drawGlow(ctx, x, y, radius * 2.3, '#e8f6ff', alpha * 0.5);
+        const pulse = 1 + Math.sin(time * 4) * 0.12;
+        drawGlow(ctx, x, y, radius * 3.2 * pulse, '#7dff8c', alpha * 0.65);
+        ctx.save();
+        ctx.globalAlpha *= alpha;
+        ctx.strokeStyle = '#fff4c8';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 5]);
+        ctx.lineDashOffset = -time * 20;
+        ctx.beginPath(); ctx.arc(x, y, radius * 1.7, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
         if (lotus) {
-            const size = radius * 2.8;
+            const size = radius * 2.8 * pulse;
             ctx.save();
             ctx.globalAlpha *= alpha;
+            ctx.translate(x, y + Math.sin(time * 2) * radius * 0.15);
+            ctx.rotate(Math.sin(time * 1.5) * 0.2);
+            ctx.scale(0.8 + Math.cos(time * 2) * 0.2, 1);
             const height = size * lotus.naturalHeight / lotus.naturalWidth;
-            ctx.drawImage(lotus, x - size / 2, y - height / 2, size, height);
+            ctx.drawImage(lotus, -size / 2, -height / 2, size, height);
             ctx.restore();
         }
         pixelText(ctx, '+1 LIFE', x, y + radius * 1.8, { size: 14, color: '#ffffff', align: 'center', alpha, crisp: true });
@@ -6348,11 +6419,12 @@ module.exports = {
     drawEnemyBullet
 };
 
-},{"../weapons":38,"./assets":15,"./font":21}],31:[function(require,module,exports){
+},{"../weapons":39,"./assets":15,"./font":21}],31:[function(require,module,exports){
 const { drawGlow, drawAsteroid } = require('./shapes');
 const { getImage, supporterImageKey } = require('./assets');
 const { pixelText } = require('./font');
 const { VIEW } = require('./projection');
+const { supporterDetails } = require('../supporter-catalog');
 
 const alive = (guard) => guard && guard.alive !== false && guard.hp !== 0 && !guard.destroyed;
 const guardList = (game, vault) => (Array.isArray(vault && vault.guards) ? vault.guards : (Array.isArray(game && game.guards) ? game.guards : [])).filter(alive);
@@ -6391,10 +6463,20 @@ function drawVaultGlyph(ctx, x, y, radius, time, vault, guards = []) {
     ctx.fillStyle = color;
     ctx.fillRect(-radius * 0.2, -radius * 0.22, radius * 0.4, radius * 0.44);
     ctx.restore();
+    const tokenId = vault.prize?.tokenId;
+    if (tokenId !== undefined) {
+        ctx.save();
+        ctx.translate(x, y + Math.sin(time * 2) * radius * 0.12);
+        ctx.scale(0.78 + 0.22 * Math.cos(time * 1.6), 1);
+        drawSupporterToken(ctx, tokenId, 0, 0, radius * 2.2);
+        ctx.restore();
+    }
+    const details = supporterDetails(tokenId);
+    if (details) pixelText(ctx, details.label, x, y - radius * 2.8, { size: 13, align: 'center', color: '#ffffff' });
     if (active) {
-        pixelText(ctx, 'SHIELDED', x, y - radius * 2.15, { size: 10, align: 'center', color: '#ff8ac4' });
+        pixelText(ctx, 'DESTROY ALL GUARDS', x, y - radius * 2.15, { size: 13, align: 'center', color: '#ff8ac4' });
     } else {
-        pixelText(ctx, 'SUPPORTER VAULT', x, y - radius * 2.15, { size: 10, align: 'center', color: '#ffe65c' });
+        pixelText(ctx, 'UNLOCKED - FLY THROUGH!', x, y - radius * 2.15, { size: 13, align: 'center', color: '#ffe65c' });
     }
 }
 
@@ -6461,10 +6543,10 @@ function drawSupporterToken(ctx, tokenId, x, y, size) {
     const image = key && getImage(key);
     if (image) {
         ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.shadowColor = '#fff4c8';
-        ctx.shadowBlur = 20;
-        ctx.drawImage(image, x - size / 2, y - size / 2, size, size);
+        const ratio = Math.min(size / image.naturalWidth, size / image.naturalHeight);
+        const width = image.naturalWidth * ratio, height = image.naturalHeight * ratio;
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(image, x - width / 2, y - height / 2, width, height);
         ctx.restore();
         return true;
     }
@@ -6479,7 +6561,7 @@ function drawSupporterToken(ctx, tokenId, x, y, size) {
 
 module.exports = { drawVault, drawVaultPov, drawVaultGlyph, drawSupporterToken, guardList, shielded };
 
-},{"./assets":15,"./font":21,"./projection":28,"./shapes":30}],32:[function(require,module,exports){
+},{"../supporter-catalog":37,"./assets":15,"./font":21,"./projection":28,"./shapes":30}],32:[function(require,module,exports){
 // Small seeded RNG so each level's map is the same every time it is played.
 function createRng(seed) {
     let state = seed >>> 0;
@@ -7070,7 +7152,7 @@ class Spaceship {
 
 module.exports = Spaceship;
 
-},{"./weapons":38}],36:[function(require,module,exports){
+},{"./weapons":39}],36:[function(require,module,exports){
 // Per-level stats, combo tracking, battle log sampling and LevelRecord building.
 //
 // Definitions:
@@ -7377,6 +7459,51 @@ module.exports = {
 };
 
 },{}],37:[function(require,module,exports){
+const { PRIZES, MARATHON_PRIZE, PERFECT_PRIZES, COLLECTION } = require('./prizes');
+
+const IMAGE_CIDS = {
+    70: 'QmcuhKLo46hwSdUQJm93VoHeB1YrpjhzeySg6Q7D9srabS',
+    71: 'QmU7GmcRdWvJTvzkUKzEB6hsVrqX2jkFKyNq5sBusUR1wx',
+    75: 'QmbMAoxqif263UUQmZPwNaaxaXycRKGCBf7rGe3kTAuzDe',
+    76: 'QmUxzh27UCCjWS4no76P2rHm6mTA4wK2YrhQz3avR3eBWb',
+    77: 'QmTaSEext8djzyBK2Wip22UQusL3aRpgNWbFiKrvjmSuWX',
+    78: 'QmYtVkkDitdTnEabaZxPG8oquuenpWdVSzQ6b9VqbNrrVf',
+    79: 'QmSrWH6EcmXsPfjfTa99G3D2xCqgXWSyLK6o5B1m7Smu3A',
+    80: 'QmRBdBUg73Cd3y1aAzTT6jVgcRaVbw3roPpb4KaCrVqxce'
+};
+const PURPOSES = {
+    DecentHead: 'A reusable Decent header with wallet connection, IPFS tools and project information.',
+    DecentMarket: 'The Decent ecosystem marketplace for project Supporter DNFTs.',
+    DecentCalendar: 'Calendar and scheduling tools in the Decent ecosystem.',
+    DecentPilgrimages: 'A Decent project for pilgrimage and journey participation.',
+    DecentCanopy: 'Explore projects, creators, funding relationships and useful next steps across the ecosystem.',
+    DecentBusking: 'Music participation, scheduled radio and accountable creator earnings.',
+    BigNuten_Vanilla: 'Body-care and wellness participation with user-owned data and rewards.',
+    DecentVoyager: 'The Mandelblum arcade gauntlet, Supporter captures and twenty-level voyages.'
+};
+const prizes = [...PRIZES[1], ...PRIZES[2], MARATHON_PRIZE, ...Object.values(PERFECT_PRIZES)];
+const catalog = new Map(prizes.map(prize => {
+    const repository = `https://github.com/TheJollyLaMa/${prize.project}`;
+    const metadataURI = prize.tokenId === 80 ? 'ipfs://QmYyFwg2BXcz63uVRSFF6L2crxe1Avhb234fzXdkwYCQaU' : prize.metadataURI;
+    return [String(prize.tokenId), Object.freeze({
+        ...prize, metadataURI,
+        name: `${prize.project === 'DecentVoyager' ? 'Decent Voyager' : prize.project} v${prize.version} Supporter DNFT`,
+        description: PURPOSES[prize.project],
+        imageURI: `ipfs://${IMAGE_CIDS[prize.tokenId]}`,
+        image: `assets/game/supporter-${prize.tokenId}.jpg`,
+        repository,
+        projectUrl: `${repository}/releases/tag/v${prize.version}`,
+        canopyUrl: `https://thejollylama.github.io/DecentCanopy/?canopy=agency&view=1&q=${encodeURIComponent(prize.project)}`,
+        tokenUrl: `https://basescan.org/token/${COLLECTION}?a=${prize.tokenId}`,
+        metadataUrl: `https://gateway.pinata.cloud/ipfs/${metadataURI.slice(7)}`
+    })];
+}));
+
+function supporterDetails(tokenId) { return catalog.get(String(tokenId)) || null; }
+
+module.exports = { supporterDetails };
+
+},{"./prizes":14}],38:[function(require,module,exports){
 const { pick, range } = require('./rng');
 const { PRIZES } = require('./prizes');
 const Asteroid = require('./asteroid');
@@ -7408,7 +7535,7 @@ function markGuardDestroyed(vault, guard) {
 }
 module.exports = { chooseVaultLevel, createVault, markGuardDestroyed };
 
-},{"./asteroid":2,"./prizes":14,"./rng":32}],38:[function(require,module,exports){
+},{"./asteroid":2,"./prizes":14,"./rng":32}],39:[function(require,module,exports){
 const Bullet = require('./bullet');
 
 const MAX_TIER = 3;

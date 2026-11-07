@@ -47,6 +47,8 @@ function createFx() {
         kills: 0,
         captureTime: -1,
         captureTokenId: null,
+        lifeTime: -1,
+        lifePlayer: 0,
         warpTime: -1,
         warpFrom: null,
         vaultAlarm: 0,
@@ -162,6 +164,14 @@ function createFx() {
                     addWorld({ kind: 'ring', x: px, y: py, vx: 0, vy: drift, life: 0.5, maxLife: 0.5, radius: 10, grow: 90, color });
                     addWorld({ kind: 'flash', x: px, y: py, vx: 0, vy: drift, life: 0.3, maxLife: 0.3, radius: 60, color });
                     floatText(ship.x, ship.y + 34, pickupLabel(kind, e.weapon), color, 1.2, 16);
+                    if (kind === 'life') {
+                        state.lifeTime = 0;
+                        state.lifePlayer = (e.player || 0) + 1;
+                        for (let i = 0; i < 3; i++) {
+                            addWorld({ kind: 'ring', x: px, y: py, vx: 0, vy: drift, life: 1.1, maxLife: 1.1, radius: 10 + i * 14, grow: 100 + i * 30, color: i % 2 ? '#ffe65c' : '#7dff8c' });
+                            firework(VIEW.width / 2 + (i - 1) * 80, VIEW.height / 2, i % 2 ? '#ffe65c' : '#7dff8c', 20);
+                        }
+                    }
                     if (kind === 'power') {
                         state.flash = 0.25;
                         state.flashColor = '#7dff8c';
@@ -187,6 +197,11 @@ function createFx() {
                     break;
                 case 'guardDestroyed':
                     explosion(e.x || ship.x, e.y || ship.y, Number(e.size) || 24, true, drift);
+                    break;
+                case 'vaultUnlocked':
+                    state.vaultAlarm = 1.1;
+                    floatText(e.x, e.y + 70, 'DNFT UNLOCKED - FLY THROUGH!', '#ffe65c', 2.4, 17);
+                    for (let i = 0; i < 3; i++) addWorld({ kind: 'ring', x: e.x, y: e.y, vx: 0, vy: drift, life: 1.2, maxLife: 1.2, radius: 20 + i * 18, grow: 120 + i * 30, color: i % 2 ? '#67faff' : '#ffe65c' });
                     break;
                 case 'chargeStart':
                     state.charging = true;
@@ -277,6 +292,7 @@ function createFx() {
         state.shake = Math.max(0, state.shake - dt * 30);
         state.vaultAlarm = Math.max(0, state.vaultAlarm - dt);
         if (state.captureTime >= 0) { state.captureTime += dt; if (state.captureTime > 4.2) state.captureTime = -1; }
+        if (state.lifeTime >= 0) { state.lifeTime += dt; if (state.lifeTime > 2.2) state.lifeTime = -1; }
         if (state.warpTime >= 0) { state.warpTime += dt; if (state.warpTime > 2.5) state.warpTime = -1; }
         if (game && game.ship) {
             const charge = game.charge ?? game.ship.charge ?? game.ship.chargeAmount ?? 0;
@@ -452,7 +468,27 @@ function createFx() {
             drawSupporterToken(ctx, state.captureTokenId, cx, cy - 20, size);
             ctx.fillStyle = 'rgba(2, 3, 12, 0.72)'; ctx.fillRect(cx - 220, cy + 56, 440, 42);
             pixelText(ctx, `SUPPORTER TOKEN CAPTURED${state.captureTokenId ? ` · #${state.captureTokenId}` : ''}`, cx, cy + 82, { size: 15, align: 'center', color: '#fff4c8' });
-            if (game && game.level && game.level.number >= 10) pixelText(ctx, 'SECTOR II UNLOCKED', cx, cy + 124, { size: 12, align: 'center', color: '#67faff' });
+            pixelText(ctx, 'CAPTURE RECORDED - REFEREE VERIFICATION NEXT', cx, cy + 124, { size: 13, align: 'center', color: '#67faff' });
+        }
+        if (state.lifeTime >= 0) {
+            const t = state.lifeTime, cx = VIEW.width / 2, cy = VIEW.height * 0.3;
+            const fade = Math.min(1, (2.2 - t) * 2);
+            ctx.save();
+            ctx.globalAlpha *= fade;
+            ctx.fillStyle = 'rgba(3, 10, 20, 0.88)';
+            ctx.fillRect(cx - 180, cy - 30, 360, 92);
+            ctx.strokeStyle = '#7dff8c';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 8; i++) {
+                const angle = i * Math.PI / 4 + t * 0.6;
+                ctx.beginPath();
+                ctx.moveTo(cx + Math.cos(angle) * 105, cy + Math.sin(angle) * 28);
+                ctx.lineTo(cx + Math.cos(angle) * (130 + t * 20), cy + Math.sin(angle) * (38 + t * 10));
+                ctx.stroke();
+            }
+            pixelText(ctx, '+1 EXTRA LIFE!', cx, cy + 4, { size: 25, align: 'center', color: '#ffffff' });
+            pixelText(ctx, `P${state.lifePlayer} - ANOTHER CHANCE TO FLY`, cx, cy + 36, { size: 13, align: 'center', color: '#7dff8c' });
+            ctx.restore();
         }
         if (state.vaultAlarm > 0) {
             ctx.save(); ctx.globalAlpha = (0.25 + 0.18 * Math.sin(state.time * 18)) * Math.min(1, state.vaultAlarm);

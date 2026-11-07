@@ -193,7 +193,14 @@ function createAudio({ onError = error => console.error('Voyager audio:', error)
             noise({ duration: 0.3, volume: 0.08, from: 1100, to: 350, type: 'bandpass', q: 4, delay: 0.1 });
         },
         guardDestroyed: () => { explosion(22, true); arpeggio([12, 19], { step: 0.04, type: 'triangle', volume: 0.045 }); },
+        vaultUnlocked: () => {
+            tone({ frequency: 180, endFrequency: 1800, duration: 0.45, type: 'sawtooth', volume: 0.09, filter: { from: 600, to: 5000, q: 2 } });
+            arpeggio([0, 7, 14, 19, 26], { step: 0.085, type: 'triangle', volume: 0.1, length: 0.28 });
+            noise({ duration: 0.4, volume: 0.07, from: 5000, to: 1400, type: 'bandpass', delay: 0.25 });
+        },
         supporterCaptured: () => {
+            tone({ frequency: 90, endFrequency: 720, duration: 0.6, type: 'triangle', volume: 0.1 });
+            [0, 0.18, 0.36].forEach(delay => tone({ frequency: 2100, endFrequency: 360, duration: 0.2, type: 'sawtooth', volume: 0.065, delay }));
             arpeggio([3, 7, 10, 15, 19, 22, 27, 31], { step: 0.075, type: 'sine', volume: 0.11, length: 0.3 });
             arpeggio([-9, -2, 3, 10, 15], { step: 0.15, type: 'triangle', volume: 0.1, length: 0.42 });
             noise({ duration: 1.15, volume: 0.12, from: 8000, to: 1800, type: 'highpass', delay: 0.35 });
@@ -233,6 +240,11 @@ function createAudio({ onError = error => console.error('Voyager audio:', error)
                 // Ens Eth breathe: rising shimmering chime.
                 arpeggio([3, 7, 10, 15, 19, 22], { step: 0.055, type: 'triangle', volume: 0.07, length: 0.35 });
                 arpeggio([15, 19, 22, 27], { step: 0.055, type: 'sine', volume: 0.04, length: 0.5, delay: 0.03 });
+            } else if (e.pickupType === 'life') {
+                // Original two-phrase fanfare, not sampled from an existing game.
+                arpeggio([-5, 2, 9, 6, 14, 21], { step: 0.095, type: 'triangle', volume: 0.11, length: 0.22 });
+                arpeggio([2, 9, 14], { step: 0.14, type: 'sine', volume: 0.07, length: 0.4, delay: 0.55 });
+                tone({ frequency: 220, endFrequency: 1100, duration: 0.35, type: 'square', volume: 0.035 });
             } else if (e.pickupType === 'mini') {
                 // Shrink: a quick falling warble.
                 tone({ frequency: 1600, endFrequency: 220, duration: 0.35, type: 'square', volume: 0.05, vibrato: 30 });

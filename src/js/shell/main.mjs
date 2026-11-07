@@ -67,7 +67,7 @@ window.addEventListener('pagehide', () => radio?.destroy());
 window.addEventListener('pageshow', event => { if (event.persisted) mountRadio(); });
 
 const pause = () => {
-  if (window.asteroidGame?.state === 'playing') {
+  if (!window.voyager?.isNetworkMode?.() && window.asteroidGame?.state === 'playing') {
     window.asteroidGame.handleAction('pause');
     window.asteroidDraw?.();
   }

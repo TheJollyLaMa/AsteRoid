@@ -44,8 +44,10 @@ const MANIFEST = {
     'supporter-71': 'supporter-71.jpg',
     'supporter-75': 'supporter-75.jpg',
     'supporter-76': 'supporter-76.jpg',
+    'supporter-77': 'supporter-77.jpg',
     'supporter-78': 'supporter-78.jpg',
-    'supporter-79': 'supporter-79.jpg'
+    'supporter-79': 'supporter-79.jpg',
+    'supporter-80': 'supporter-80.jpg'
 };
 
 const images = {};

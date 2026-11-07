@@ -270,13 +270,25 @@ function drawBreathe(ctx, x, y, radius, time, alpha = 1) {
 function drawPickup(ctx, pickup, x, y, radius, time, alpha = 1) {
     if (pickup.type === 'life') {
         const lotus = getImage('white-lotus');
-        drawGlow(ctx, x, y, radius * 2.3, '#e8f6ff', alpha * 0.5);
+        const pulse = 1 + Math.sin(time * 4) * 0.12;
+        drawGlow(ctx, x, y, radius * 3.2 * pulse, '#7dff8c', alpha * 0.65);
+        ctx.save();
+        ctx.globalAlpha *= alpha;
+        ctx.strokeStyle = '#fff4c8';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 5]);
+        ctx.lineDashOffset = -time * 20;
+        ctx.beginPath(); ctx.arc(x, y, radius * 1.7, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
         if (lotus) {
-            const size = radius * 2.8;
+            const size = radius * 2.8 * pulse;
             ctx.save();
             ctx.globalAlpha *= alpha;
+            ctx.translate(x, y + Math.sin(time * 2) * radius * 0.15);
+            ctx.rotate(Math.sin(time * 1.5) * 0.2);
+            ctx.scale(0.8 + Math.cos(time * 2) * 0.2, 1);
             const height = size * lotus.naturalHeight / lotus.naturalWidth;
-            ctx.drawImage(lotus, x - size / 2, y - height / 2, size, height);
+            ctx.drawImage(lotus, -size / 2, -height / 2, size, height);
             ctx.restore();
         }
         pixelText(ctx, '+1 LIFE', x, y + radius * 1.8, { size: 14, color: '#ffffff', align: 'center', alpha, crisp: true });

@@ -2,6 +2,7 @@ const { drawGlow, drawAsteroid } = require('./shapes');
 const { getImage, supporterImageKey } = require('./assets');
 const { pixelText } = require('./font');
 const { VIEW } = require('./projection');
+const { supporterDetails } = require('../supporter-catalog');
 
 const alive = (guard) => guard && guard.alive !== false && guard.hp !== 0 && !guard.destroyed;
 const guardList = (game, vault) => (Array.isArray(vault && vault.guards) ? vault.guards : (Array.isArray(game && game.guards) ? game.guards : [])).filter(alive);
@@ -40,10 +41,20 @@ function drawVaultGlyph(ctx, x, y, radius, time, vault, guards = []) {
     ctx.fillStyle = color;
     ctx.fillRect(-radius * 0.2, -radius * 0.22, radius * 0.4, radius * 0.44);
     ctx.restore();
+    const tokenId = vault.prize?.tokenId;
+    if (tokenId !== undefined) {
+        ctx.save();
+        ctx.translate(x, y + Math.sin(time * 2) * radius * 0.12);
+        ctx.scale(0.78 + 0.22 * Math.cos(time * 1.6), 1);
+        drawSupporterToken(ctx, tokenId, 0, 0, radius * 2.2);
+        ctx.restore();
+    }
+    const details = supporterDetails(tokenId);
+    if (details) pixelText(ctx, details.label, x, y - radius * 2.8, { size: 13, align: 'center', color: '#ffffff' });
     if (active) {
-        pixelText(ctx, 'SHIELDED', x, y - radius * 2.15, { size: 10, align: 'center', color: '#ff8ac4' });
+        pixelText(ctx, 'DESTROY ALL GUARDS', x, y - radius * 2.15, { size: 13, align: 'center', color: '#ff8ac4' });
     } else {
-        pixelText(ctx, 'SUPPORTER VAULT', x, y - radius * 2.15, { size: 10, align: 'center', color: '#ffe65c' });
+        pixelText(ctx, 'UNLOCKED - FLY THROUGH!', x, y - radius * 2.15, { size: 13, align: 'center', color: '#ffe65c' });
     }
 }
 
@@ -110,10 +121,10 @@ function drawSupporterToken(ctx, tokenId, x, y, size) {
     const image = key && getImage(key);
     if (image) {
         ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.shadowColor = '#fff4c8';
-        ctx.shadowBlur = 20;
-        ctx.drawImage(image, x - size / 2, y - size / 2, size, size);
+        const ratio = Math.min(size / image.naturalWidth, size / image.naturalHeight);
+        const width = image.naturalWidth * ratio, height = image.naturalHeight * ratio;
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(image, x - width / 2, y - height / 2, width, height);
         ctx.restore();
         return true;
     }

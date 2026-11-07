@@ -103,6 +103,7 @@ export function createRunTicketManager({
   function runStarted(runId) {
     if (runId && runId === lastRunId) return;
     lastRunId = runId || `run-${now()}`;
+    report('');
     if (appliedId || ticket) { ticket = null; appliedId = null; }
     if (pilot.isPilot) void ensureTicket();
   }
