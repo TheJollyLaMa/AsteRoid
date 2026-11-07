@@ -20,8 +20,12 @@ app-title{padding-top:0!important}
 @media(max-width:600px){header{padding:6px 6px 8px!important}}`;
   header.append(slim);
 }
-quiet('wallet-connect', '#mobile,#status,.identity-note{display:none!important}');
+quiet('wallet-connect', `.identity-note{display:none!important}
+.orb[data-state="connected"] #connect{background:radial-gradient(circle at 32% 28%,#baffce55,#124f28 72%);--glow:#7dff8c;box-shadow:0 0 0 3px #7dff8c,0 0 30px #7dff8c77}
+#status{max-width:150px;font-size:11px}
+@media(max-width:600px){#status{max-width:100px;font-size:10px}}`);
 quiet('ipfs-status', '#label{display:none!important}');
+await import('./launch-reminder.mjs');
 
 // Put the Mandelblum disc between "Decent" and "Voyager" instead of before the whole name.
 const centreDisc = () => {
@@ -46,9 +50,9 @@ const slimRadio = () => {
   const root = document.getElementById('dbusk-radio')?.shadowRoot;
   if (!root || root.querySelector('style[data-voyager]')) return;
   const style = document.createElement('style'); style.dataset.voyager = '';
-  style.textContent = `.radio{display:flex;align-items:center;gap:8px;min-width:0}.controls{flex-wrap:nowrap;flex:none}
+  style.textContent = `.radio{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}.controls{flex-wrap:nowrap;flex:none}
 button,select{padding:1px 6px}.now{flex:1;min-width:0;padding:0;font-size:11px;opacity:.8;text-overflow:ellipsis;overflow:hidden}
-.status:empty{display:none}.status{font-size:10px;white-space:nowrap}`;
+.status:empty{display:none}.status{flex:1 0 100%;font-size:10px;white-space:normal;overflow-wrap:anywhere;min-width:0}`;
   root.append(style);
 };
 const mountRadio = () => {
