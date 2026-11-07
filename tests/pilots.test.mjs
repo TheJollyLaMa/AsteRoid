@@ -25,6 +25,26 @@ test('signed run outbox retries failed sends and removes successful deliveries',
   assert.equal(outbox.read().length, 0); assert.equal(attempts, 2);
 });
 
+test('an older-ruleset rejection preserves original signed evidence across reload and retry', async () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
+  const item = { address, runHash: 'original-hash', signature: 'original-signature',
+    run: { ruleset: 'voyager-1.3-mini-emblem', seed: 44, ticket: { ticket: { ruleset: 'voyager-1.3-mini-emblem', seed: 44 }, mac: 'original-mac' }, result: { captures: [{ tier: 1, prize: { tokenId: 70 } }] } } };
+  const outbox = createRunOutbox({ storage, baseUrl: () => 'https://referee.example',
+    fetchImpl: async () => ({ ok: false, status: 422, json: async () => ({ error: 'Flight uses an older game ruleset.' }) }) });
+  const pending = await outbox.enqueue(item);
+  assert.equal(pending.length, 1);
+  assert.match(pending[0].lastError, /older game ruleset/);
+  const restored = createRunOutbox({ storage, baseUrl: () => 'https://referee.example',
+    fetchImpl: async (_url, init) => {
+      const sent = JSON.parse(init.body);
+      for (const key of ['run', 'runHash', 'signature', 'address']) assert.deepEqual(sent[key], item[key]);
+      return { ok: true, json: async () => ({ vouchers: [{ kind: 'prize', tokenId: '70' }] }) };
+    } });
+  assert.deepEqual(await restored.retry(), { sent: true, pending: 0 });
+  assert.equal(restored.read().length, 0);
+});
+
 test('pilot loader prefers raw main then falls back to the local public list', async () => {
   let calls = 0;
   const list = await loadPilots(async () => ++calls === 1 ? { ok: false, status: 404 } : { ok: true, json: async () => ({ contributors: [{ walletAddress: address }] }) });

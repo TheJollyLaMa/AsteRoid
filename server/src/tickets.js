@@ -4,6 +4,7 @@ const { createHmac, randomBytes, randomUUID, timingSafeEqual } = require('node:c
 const { getAddress } = require('ethers');
 const { stableJson } = require('./run-verifier');
 const RULESET = require('../../src/js/ruleset');
+const { gameForRuleset } = require('./replay-rulesets');
 
 const TICKET_TTL_MS = 6 * 60 * 60 * 1000;
 const UINT32_MAX = 0xffffffff;
@@ -36,9 +37,8 @@ function createTicketService({ secret, now = () => Date.now(), ttlMs = TICKET_TT
       throw new Error('A server-issued flight ticket is required.');
     }
     const ticket = claim.ticket;
-    if (ticket.ruleset !== RULESET || run.ruleset !== RULESET) {
-      throw new Error('Flight uses an older game ruleset. Reload Voyager and start a new flight; existing claim vouchers remain valid.');
-    }
+    gameForRuleset(run.ruleset);
+    if (ticket.ruleset !== run.ruleset) throw new Error('Flight ticket ruleset does not match the run ruleset.');
     if (!ticket || typeof ticket !== 'object' || typeof ticket.id !== 'string' || ticket.id.length > 100 || !Number.isInteger(ticket.seed) || ticket.seed < 0 || ticket.seed > UINT32_MAX || typeof ticket.issuedAt !== 'string' || typeof ticket.expiresAt !== 'string') {
       throw new Error('Flight ticket is invalid.');
     }

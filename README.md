@@ -52,8 +52,16 @@ Guarded Supporter pickups and marathon/Perfect awards are unchanged.
 Previously signed vouchers remain claimable; new referee issuance and admin
 requests enforce level 20. The ruleset is `voyager-1.4-open-sector`; deploy the
 referee before the matching frontend and start a new flight after updating.
-Old unsent flight logs are rejected with the existing ruleset-mismatch message,
-not replayed against changed game rules.
+The immediately previous `voyager-1.3-mini-emblem` flights are verified using the
+exact archived simulation from merge `3fe3375`, not today's campaign rules.
+Ticket and run rulesets must match, and the original ticket MAC, signing wallet,
+seed, six-hour expiry, replay and funded-stock checks still apply. New tickets
+and online arenas use the current ruleset. Unknown older versions remain rejected.
+Signed flights already in this browser's outbox retry automatically when an
+eligible wallet connects, or with **Retry signed flight logs**. Keep the browser
+data until verification succeeds. Signing records evidence; claim the verified
+Supporter reward separately on Base. Expired tickets cannot be renewed for an
+old run. Archive provenance is in [server/legacy](server/legacy/README.md).
 
 Crowded-level safeguards include ordered spatial collision queries, capped
 cosmetic debris/fireworks and a maximum 3-million-pixel / 2x-DPR canvas. A long
