@@ -99,6 +99,9 @@ test('static shell preserves bundle/canvas and host-module ordering for relative
   assert.match(html, /Decent Voyager/);
   assert.match(html, /href="https:\/\/thejollylama.github.io\/DecentCanopy\/" target="_blank" rel="noopener noreferrer">Decent ecosystem/);
   assert.doesNotMatch(html, /id="flight-diagnostics"|class="credit"|Your wallet\. Your flight/);
+  const footer=html.slice(html.indexOf('<footer>'),html.indexOf('</footer>'));
+  assert.doesNotMatch(footer, /<button|reward-dock/);
+  assert.ok(html.indexOf('class="flight-actions"') > html.indexOf('</main>'));
   const reports=readFileSync(new URL('../src/js/shell/flight-reports.mjs',import.meta.url),'utf8');
   assert.match(reports, /createDialog\('Flight reports', 'flight-diagnostics'\)/);
   assert.match(reports, /id: 'diagnostic-download'/);

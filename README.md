@@ -63,8 +63,8 @@ data until verification succeeds. Signing records evidence; claim the verified
 Supporter reward separately on Base. Expired tickets cannot be renewed for an
 old run. Archive provenance is in [server/legacy](server/legacy/README.md).
 
-**Captured rewards** is available directly on the start screen and below the
-game, as well as through the right profile menu's **Rewards waiting** entry.
+**Captured rewards** is available directly on the start screen and through the
+right profile menu's **Captured rewards** entry.
 This redemption desk loads past verified vouchers for the connected eligible
 wallet, displays metadata-derived Supporter names/art, shows voucher expiry and
 provides **Claim on Base**. Claiming is a separate wallet transaction, not a
@@ -80,10 +80,15 @@ catalog. No new reward storage or service, no changed eligibility or transfers,
 and no vendor/Canopy edits. The existing local outbox is pending evidence;
 persisted referee vouchers are the cross-visit redemption source.
 
-The footer keeps project links and the rewards shortcut, without a diagnostics
+The footer keeps project links, without rewards buttons, a diagnostics
 block or tagline. **Flight reports** in the right profile menu opens the local
 report/download/recovery dialog; active fault banners also link to it.
 The **Decent ecosystem** Pages link opens in a separate tab to preserve the game.
+The header stacks above the contained game canvas; while an ankh menu is open,
+its tools also stack above the radio. Both ankh targets stay at least 44px on
+mobile. These host styles preserve the bundled DecentHead vendor files.
+Flight signing, retry and status controls use a separate row below the canvas,
+not an overlay that can intercept start-screen buttons.
 
 Crowded-level safeguards include ordered spatial collision queries, capped
 cosmetic debris/fireworks and a maximum 3-million-pixel / 2x-DPR canvas. A long
