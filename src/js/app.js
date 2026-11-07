@@ -32,7 +32,7 @@ const storage = safeStorage();
 const game = new Game({ storage });
 const handleGameAction = game.handleAction.bind(game);
 game.handleAction = action => {
-    if (document.getElementById('supporter-briefing')?.open) return;
+    if (document.getElementById('supporter-briefing')?.open || document.getElementById('voyager-rewards')?.open) return;
     if (action === 'confirm' && ['title', 'gameOver'].includes(game.state)) {
         const state = game.state;
         const request = new CustomEvent('voyager:launch-request', {

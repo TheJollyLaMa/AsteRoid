@@ -91,6 +91,8 @@ button,a,input,canvas { touch-action:manipulation; }
 #dbusk-radio::part(play) { color:var(--cyan); border-color:#56edff70; }
 #dbusk-radio::part(volume) { width:58px; }
 footer { padding:0 16px 24px; margin:0 auto; text-align:center; color:#adbdd7; font-size:11px; }
+.reward-dock { margin:18px auto; padding:18px; max-width:640px; border:1px solid #ffe65c55; border-radius:14px; background:#091320; font:14px/1.6 system-ui,sans-serif; }
+.reward-dock button { min-height:44px; }
 footer p { margin:9px 0; } footer nav { display:flex; flex-wrap:wrap; justify-content:center; gap:20px; }
 .progress-dialog { width:min(590px,calc(100vw - 24px)); max-height:calc(100dvh - 32px); overflow:auto; padding:0 24px 24px; border:1px solid #56edff70; border-radius:18px; background:#080d20; color:#e8f2ff; font:14px/1.65 system-ui,sans-serif; box-shadow:0 24px 100px #0009; }
 .progress-dialog::backdrop { background:#000b; backdrop-filter:blur(4px); }
