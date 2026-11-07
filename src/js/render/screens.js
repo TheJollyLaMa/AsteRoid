@@ -1,7 +1,7 @@
 // Full-screen overlays: title, intro, pause, level clear celebration,
 // victory finale and game over.
 const { VIEW } = require('./projection');
-const { LEVEL_COUNT, TOTAL_LEVEL_COUNT, getLevel } = require('../levels');
+const { LEVEL_COUNT, TOTAL_LEVEL_COUNT, getLevel, getCampaignLevelCount } = require('../levels');
 const { getImage, ROCK_KEYS } = require('./assets');
 const { pixelText } = require('./font');
 const { drawGlow, drawBreathe, pixelSprite, SHIP_TOP, SHIP_PALETTE } = require('./shapes');
@@ -9,9 +9,9 @@ const { panelBox, difficultyColor, difficultyName } = require('./hud');
 const { drawElephantVision } = require('./elephant');
 
 const DIFFICULTY_OPTIONS = [
-    { id: 'cadet', label: 'CADET', tagline: 'ORIGINAL TUNING' },
-    { id: 'pilot', label: 'PILOT', tagline: 'FASTER + MEANER' },
-    { id: 'ace', label: 'ACE', tagline: 'NEAR IMPOSSIBLE' }
+    { id: 'cadet', label: 'CADET', tagline: '10 LEVELS' },
+    { id: 'pilot', label: 'PILOT', tagline: '20 LEVELS' },
+    { id: 'ace', label: 'ACE', tagline: '20 LEVELS - EXTREME' }
 ];
 const RAINBOW = ['#7fd7ff', '#bfeaff', '#e8eef5', '#9ff3ff', '#7dff8c'];
 
@@ -117,7 +117,7 @@ function drawTitle(ctx, game) {
     const level = getLevel(game.selectedLevel || 1);
     const progress = game.progress || { unlocked: 1, highScore: 0 };
     titleText(`LEVEL ${level.number}: ${level.name.toUpperCase()}`, cx, 284, { size: 24, align: 'center' });
-    titleText(`${difficultyName(game, true).toUpperCase()} UNLOCKED ${progress.unlocked}/${progress.sector2Unlocked ? TOTAL_LEVEL_COUNT : LEVEL_COUNT}   HI ${progress.highScore || 0}`, cx, 309, {
+    titleText(`${difficultyName(game, true).toUpperCase()} UNLOCKED ${progress.unlocked}/${getCampaignLevelCount(selected)}   HI ${progress.highScore || 0}`, cx, 309, {
         size: 16, align: 'center', color: '#c9d6e3'
     });
     titleText('PRESS ENTER TO LAUNCH', cx, 344, { size: 24, align: 'center', color: '#7dff8c' });
@@ -227,7 +227,7 @@ function drawLevelClear(ctx, game, fx) {
         drawGlow(ctx, cx, 234 + boxH + 26, 150, '#ffe65c', 0.25 * pulse);
         pixelText(ctx, '* VICTORY STAMP READY *', cx, 240 + boxH + 30, { size: 16, align: 'center', color: '#ffe65c', alpha: 0.75 + 0.25 * pulse });
     }
-    const next = game.level.number < LEVEL_COUNT ? getLevel(game.level.number + 1).name.toUpperCase() : '';
+    const next = game.level.number < getCampaignLevelCount(game.difficulty) ? getLevel(game.level.number + 1).name.toUpperCase() : '';
     if (next) pixelText(ctx, `NEXT: ${next}   ENTER TO JUMP`, cx, VIEW.height - 40, { size: 13, align: 'center', color: '#c9d6e3' });
 }
 

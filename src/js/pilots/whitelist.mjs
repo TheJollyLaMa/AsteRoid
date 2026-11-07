@@ -63,7 +63,7 @@ export function mountPilots({ fetchImpl = globalThis.fetch, readOnChain = contra
     }
     if (request !== generation) throw new Error('Wallet changed during Pilot verification. Please retry.');
     dispatchPilot(address, allowed);
-    if (note) { note.hidden = allowed; note.textContent = 'This wallet is not on the Decent Pilots list yet. Ask in the DecentAgency Discord. Levels 1–10 are free to fly.'; }
+    if (note) { note.hidden = allowed; note.textContent = 'This wallet is not on the Decent Pilots list yet. Ask in the DecentAgency Discord. Cadet has 10 free levels; Pilot and Ace have 20. NFT rewards require an eligible wallet.'; }
     return { address, isPilot: allowed };
   };
   const refreshWallet = () => {

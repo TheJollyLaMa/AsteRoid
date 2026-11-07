@@ -137,7 +137,7 @@ test('special force-releases charge or grants a short shield', () => {
     assert.ok(game.drainEvents().some((event) => event.type === 'specialUsed'));
 });
 
-test('vaults require a whitelisted Pilot or Ace and guard destruction unlocks Sector II', () => {
+test('vaults require a whitelisted Pilot or Ace; capture refills power without gating Sector II', () => {
     const unauthorized = activeGame('ace', false, 44);
     unauthorized.startLevel(9);
     assert.equal(unauthorized.vault, null);
@@ -149,7 +149,7 @@ test('vaults require a whitelisted Pilot or Ace and guard destruction unlocks Se
     pilot.startLevel(9);
     pilot.vault.shielded = false;
     pilot.captureVault();
-    assert.equal(pilot.save.progress.byDifficulty.pilot.sector2Unlocked, true);
+    assert.equal(pilot.save.progress.byDifficulty.pilot.sector2Unlocked, false);
     const game = activeGame('ace', true, 44);
     game.sector2Level = 9;
     game.startLevel(9);
@@ -164,20 +164,21 @@ test('vaults require a whitelisted Pilot or Ace and guard destruction unlocks Se
     assert.equal(game.runCaptures.length, 1);
     assert.equal(game.runCaptures[0].tier, 1);
     assert.equal(game.ship.power, game.ship.maxPower);
-    assert.equal(game.save.progress.byDifficulty.ace.sector2Unlocked, true);
-    assert.equal(game.save.progress.byDifficulty.ace.unlocked, 11);
+    assert.equal(game.save.progress.byDifficulty.ace.sector2Unlocked, false);
+    assert.equal(game.save.progress.byDifficulty.ace.unlocked, 1);
     assert.equal(game.summary().captures.length, 1);
     const events = game.drainEvents();
     assert.ok(events.some((event) => event.type === 'supporterCaptured'));
-    assert.ok(events.some((event) => event.type === 'sectorUnlocked'));
+    assert.equal(events.some((event) => event.type === 'sectorUnlocked'), false);
     game.scrollY = game.level.length;
     game.completeLevel();
     assert.equal(game.getWinRecords().at(-1).captures[0].tier, 1);
     const exported = game.exportSave();
     const restored = new Game();
     restored.importSave(exported);
-    assert.equal(restored.getProgress('ace').sector2Unlocked, true);
-    assert.throws(() => unauthorized.startCampaign(11, 'ace'), /locked/);
+    assert.equal(restored.getProgress('ace').sector2Unlocked, false);
+    assert.doesNotThrow(() => unauthorized.startCampaign(11, 'ace'));
+    assert.throws(() => cadet.startCampaign(11, 'cadet'), /Cadet campaigns end at level 10/);
 });
 
 test('sector II has twenty harder levels and unlocks through warp', () => {
@@ -185,7 +186,6 @@ test('sector II has twenty harder levels and unlocks through warp', () => {
     assert.ok(getLevel(11).scrollSpeed > getLevel(10).scrollSpeed);
     assert.equal(getLevel(18).futureSector, true);
     const game = activeGame('ace', true, 2);
-    game.save.progress.byDifficulty.ace.sector2Unlocked = true;
     game.startLevel(10);
     game.asteroids = [];
     game.scrollY = game.level.length;
@@ -195,6 +195,79 @@ test('sector II has twenty harder levels and unlocks through warp', () => {
     for (let i = 0; i < 140; i++) game.step([{}]);
     assert.equal(game.level.number, 11);
     assert.ok(game.drainEvents().some((event) => event.type === 'warpEnd'));
+});
+
+test('Pilot and Ace reach level 20 with no wallet, no captures and old locked progress', () => {
+    for (const difficulty of ['pilot', 'ace']) {
+        for (const isPilot of [false, true]) {
+            const game = activeGame(difficulty, isPilot, 44);
+            const saved = game.exportSave();
+            saved.progress.byDifficulty[difficulty].unlocked = 10;
+            saved.progress.byDifficulty[difficulty].sector2Unlocked = false;
+            game.importSave(saved);
+            for (let level = 1; level <= 20; level++) {
+                assert.equal(game.level.number, level);
+                assert.equal(game.state, 'playing');
+                game.asteroids = [];
+                game.pickups = [];
+                game.enemyBullets = [];
+                game.scrollY = game.level.length;
+                game.step([{}]);
+                if (level === 20) {
+                    assert.equal(game.state, 'victory');
+                    break;
+                }
+                assert.equal(game.state, level === 10 ? 'warping' : 'levelComplete');
+                if (level === 10) {
+                    assert.equal(game.getProgress(difficulty).sector2Unlocked, true);
+                    assert.equal(game.getProgress(difficulty).unlocked, 11);
+                    const restored = new Game();
+                    restored.importSave(game.exportSave());
+                    assert.equal(restored.getProgress(difficulty).unlocked, 11);
+                    assert.doesNotThrow(() => restored.startCampaign(11, difficulty));
+                }
+                for (let frame = 0; game.state !== 'playing' && frame < 220; frame++) game.step([{}]);
+            }
+            assert.equal(game.getWinRecords().length, 20);
+            assert.equal(game.runStats.victories, 1);
+            assert.equal(game.runCaptures.some(capture => !capture.kind), false);
+            assert.equal(game.runCaptures.some(capture => capture.kind?.startsWith('perfect-')), false);
+            if (!isPilot) {
+                assert.equal(game.runCaptures.length, 0);
+                assert.equal(game.lastRecord.marathon, undefined);
+            }
+            const restored = new Game();
+            restored.importSave(game.exportSave());
+            assert.equal(restored.getProgress(difficulty).unlocked, 20);
+        }
+    }
+});
+
+test('Cadet ends at 10 even with a legacy Sector II flag; guest Sector II replay stays deterministic', () => {
+    const cadet = activeGame('cadet', true);
+    cadet.save.progress.byDifficulty.cadet.sector2Unlocked = true;
+    cadet.startLevel(10);
+    cadet.completeLevel();
+    assert.equal(cadet.state, 'victory');
+    assert.equal(cadet.drainEvents().some(event => event.type === 'warpStart'), false);
+    assert.throws(() => cadet.startCampaign(11, 'cadet'), /Cadet campaigns end at level 10/);
+    for (const difficulty of ['pilot', 'ace']) {
+        const game = activeGame(difficulty);
+        game.startCampaign(11, difficulty, 44);
+        for (let frame = 0; frame < 120; frame++) game.step([{ fire: true }]);
+        assert.deepEqual(Game.replay(game.getRunLog()), game.summary());
+    }
+});
+
+test('a guest retry clears the previous eligible run encounter schedule', () => {
+    const game = activeGame('pilot', true);
+    assert.ok(game.sector2VaultLevel >= 19);
+    game.setPilot({ address: null, isPilot: false });
+    game.startCampaign(1, 'pilot');
+    assert.equal(game.sector2Level, null);
+    assert.equal(game.sector2VaultLevel, null);
+    game.startLevel(19);
+    assert.equal(game.vault, null);
 });
 
 test('multiplayer scaling, grouping, and score rules support co-op and versus', () => {

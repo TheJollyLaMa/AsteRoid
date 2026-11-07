@@ -1181,7 +1181,7 @@ const checkCollision = require('./collision');
 const Spaceship = require('./spaceship');
 const Bullet = require('./bullet');
 const { createRng, range } = require('./rng');
-const { getLevel, LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('./levels');
+const { getLevel, LEVEL_COUNT, TOTAL_LEVEL_COUNT, getCampaignLevelCount } = require('./levels');
 const { populateLevel } = require('./levelLayout');
 const { WEAPONS, applyWeaponPickup, downgradeWeapon, fireWeapon } = require('./weapons');
 const { DIFFICULTY_IDS, isDifficulty, getDifficulty, stepDifficulty } = require('./difficulty');
@@ -1354,7 +1354,7 @@ class Game {
     startCampaign(levelNumber = 1, difficulty = this.selectedDifficulty, seed) {
         getLevel(levelNumber, difficulty);
         const difficultyId = getDifficulty(difficulty).id;
-        if (levelNumber > LEVEL_COUNT && (difficultyId === 'cadet' || !this.pilot.isPilot || !this.save.progress.byDifficulty[difficultyId].sector2Unlocked)) throw new Error('Sector II is locked for this difficulty or pilot.');
+        if (levelNumber > getCampaignLevelCount(difficultyId)) throw new Error('Cadet campaigns end at level 10. Choose Pilot or Ace for levels 11–20.');
         this.finishAttempt('abandoned');
         this.difficulty = difficultyId;
         this.selectedDifficulty = this.difficulty;
@@ -1392,6 +1392,7 @@ class Game {
         this.runRecords = [];
         this.vaultTiersSpawned = [];
         this.sector2Level = null;
+        this.sector2VaultLevel = null;
         this.score = 0;
         this.runStats = createTotals();
         this.runStats.campaignsStarted = 1;
@@ -1924,12 +1925,6 @@ class Game {
         this.runCaptures.push(capture);
         for (const ship of this.ships) ship.power = ship.maxPower;
         this.emit('supporterCaptured', { ...capture, player: playerIndex });
-        if (capture.tier === 1) {
-            this.save.progress.byDifficulty[this.difficulty].sector2Unlocked = true;
-            this.save.progress.byDifficulty[this.difficulty].unlocked = Math.max(this.save.progress.byDifficulty[this.difficulty].unlocked, 11);
-            this.emit('sectorUnlocked', { sector: 2, difficulty: this.difficulty });
-            this.saveProgress();
-        }
         return true;
     }
 
@@ -2099,7 +2094,7 @@ class Game {
         if (this.save.wins.length > MAX_WINS) this.save.wins.splice(0, this.save.wins.length - MAX_WINS);
         this.emit('levelRecord', { record: clone(record) });
         const next = this.level.number + 1;
-        if (next > TOTAL_LEVEL_COUNT || (this.level.number === LEVEL_COUNT && !progress.sector2Unlocked)) {
+        if (next > getCampaignLevelCount(this.difficulty)) {
             this.state = 'victory';
             this.runStats.victories += 1;
             this.save.lifetime.victories += 1;
@@ -2107,11 +2102,13 @@ class Game {
             this.emit('victory');
             return;
         }
-        if (next <= LEVEL_COUNT || progress.sector2Unlocked) progress.unlocked = Math.max(progress.unlocked, next);
+        progress.unlocked = Math.max(progress.unlocked, next);
+        if (next > LEVEL_COUNT) progress.sector2Unlocked = true;
         this.saveProgress();
-        if (this.level.number === LEVEL_COUNT && progress.sector2Unlocked && this.difficulty !== 'cadet' && this.pilot.isPilot) {
+        if (this.level.number === LEVEL_COUNT) {
             this.state = 'warping';
             this.stateTimer = WARP_TIME;
+            this.emit('sectorUnlocked', { sector: 2, difficulty: this.difficulty });
             this.emit('warpStart', { from: 10, to: 11 });
         } else {
             this.state = 'levelComplete';
@@ -2688,10 +2685,14 @@ function populateLevel(level, rng) {
 module.exports = { populateLevel, PICKUP_TYPES, FUTURE_PICKUPS, EXTRA_LIFE_LEVELS, MINI_EMBLEM_LEVELS, SAFE_START };
 
 },{"./asteroid":2,"./rng":32}],12:[function(require,module,exports){
-const { applyDifficulty } = require('./difficulty');
+const { applyDifficulty, getDifficulty } = require('./difficulty');
 
 const LEVEL_COUNT = 10;
 const TOTAL_LEVEL_COUNT = 20;
+
+function getCampaignLevelCount(difficulty = 'cadet') {
+    return getDifficulty(difficulty).id === 'cadet' ? LEVEL_COUNT : TOTAL_LEVEL_COUNT;
+}
 
 const LEVEL_NAMES = [
     'Drydock Drift',
@@ -2752,7 +2753,7 @@ function getLevel(number, difficulty = 'cadet') {
     return applyDifficulty(getBaseLevel(number), difficulty);
 }
 
-module.exports = { LEVEL_COUNT, TOTAL_LEVEL_COUNT, LEVEL_NAMES, getLevel, getBaseLevel };
+module.exports = { LEVEL_COUNT, TOTAL_LEVEL_COUNT, LEVEL_NAMES, getLevel, getBaseLevel, getCampaignLevelCount };
 
 },{"./difficulty":7}],13:[function(require,module,exports){
 const MAX_PLAYERS = 5;
@@ -4542,7 +4543,7 @@ module.exports = { createFx, MAX_WORLD_PARTICLES, MAX_SCREEN_PARTICLES };
 },{"./assets":15,"./elephant":19,"./events":20,"./font":21,"./projection":28,"./shapes":30,"./vault":31}],23:[function(require,module,exports){
 const { VIEW } = require('./projection');
 const { WEAPONS, MAX_TIER } = require('../weapons');
-const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('../levels');
+const { getCampaignLevelCount } = require('../levels');
 const { PICKUP_STYLE, SHIP_TOP, SHIP_PALETTE, pixelSprite, drawBreathe, drawGlow } = require('./shapes');
 const { pixelText, measurePixelText, pixelTextMetrics } = require('./font');
 const { getPlayers, versusMode } = require('./players');
@@ -4645,7 +4646,7 @@ function createHud() {
 
     function footerText(game, step, opts) {
         const sector = game.level.number >= 11 ? 'II · ' : '';
-        const total = game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT;
+        const total = getCampaignLevelCount(game.difficulty);
         const name = step.name ? ` ${String(game.level.name || '').toUpperCase()}` : '';
         const flags = step.flags ? `${opts.muted ? 'M:OFF ' : ''}${opts.crt ? 'CRT ' : ''}[V] ${game.view === 'pov' ? 'POV' : 'MAP'}` : `${opts.muted ? 'M:OFF ' : ''}${game.view === 'pov' ? 'POV' : 'MAP'}`;
         return { label: `${sector}LV ${game.level.number}/${total}${name}`, flags };
@@ -5330,7 +5331,7 @@ module.exports = { VIEW, setViewWidth, WORLD_VIEW_WIDTH, MAX_VIEW_WIDTH, OVERVIE
 // Full-screen overlays: title, intro, pause, level clear celebration,
 // victory finale and game over.
 const { VIEW } = require('./projection');
-const { LEVEL_COUNT, TOTAL_LEVEL_COUNT, getLevel } = require('../levels');
+const { LEVEL_COUNT, TOTAL_LEVEL_COUNT, getLevel, getCampaignLevelCount } = require('../levels');
 const { getImage, ROCK_KEYS } = require('./assets');
 const { pixelText } = require('./font');
 const { drawGlow, drawBreathe, pixelSprite, SHIP_TOP, SHIP_PALETTE } = require('./shapes');
@@ -5338,9 +5339,9 @@ const { panelBox, difficultyColor, difficultyName } = require('./hud');
 const { drawElephantVision } = require('./elephant');
 
 const DIFFICULTY_OPTIONS = [
-    { id: 'cadet', label: 'CADET', tagline: 'ORIGINAL TUNING' },
-    { id: 'pilot', label: 'PILOT', tagline: 'FASTER + MEANER' },
-    { id: 'ace', label: 'ACE', tagline: 'NEAR IMPOSSIBLE' }
+    { id: 'cadet', label: 'CADET', tagline: '10 LEVELS' },
+    { id: 'pilot', label: 'PILOT', tagline: '20 LEVELS' },
+    { id: 'ace', label: 'ACE', tagline: '20 LEVELS - EXTREME' }
 ];
 const RAINBOW = ['#7fd7ff', '#bfeaff', '#e8eef5', '#9ff3ff', '#7dff8c'];
 
@@ -5446,7 +5447,7 @@ function drawTitle(ctx, game) {
     const level = getLevel(game.selectedLevel || 1);
     const progress = game.progress || { unlocked: 1, highScore: 0 };
     titleText(`LEVEL ${level.number}: ${level.name.toUpperCase()}`, cx, 284, { size: 24, align: 'center' });
-    titleText(`${difficultyName(game, true).toUpperCase()} UNLOCKED ${progress.unlocked}/${progress.sector2Unlocked ? TOTAL_LEVEL_COUNT : LEVEL_COUNT}   HI ${progress.highScore || 0}`, cx, 309, {
+    titleText(`${difficultyName(game, true).toUpperCase()} UNLOCKED ${progress.unlocked}/${getCampaignLevelCount(selected)}   HI ${progress.highScore || 0}`, cx, 309, {
         size: 16, align: 'center', color: '#c9d6e3'
     });
     titleText('PRESS ENTER TO LAUNCH', cx, 344, { size: 24, align: 'center', color: '#7dff8c' });
@@ -5556,7 +5557,7 @@ function drawLevelClear(ctx, game, fx) {
         drawGlow(ctx, cx, 234 + boxH + 26, 150, '#ffe65c', 0.25 * pulse);
         pixelText(ctx, '* VICTORY STAMP READY *', cx, 240 + boxH + 30, { size: 16, align: 'center', color: '#ffe65c', alpha: 0.75 + 0.25 * pulse });
     }
-    const next = game.level.number < LEVEL_COUNT ? getLevel(game.level.number + 1).name.toUpperCase() : '';
+    const next = game.level.number < getCampaignLevelCount(game.difficulty) ? getLevel(game.level.number + 1).name.toUpperCase() : '';
     if (next) pixelText(ctx, `NEXT: ${next}   ENTER TO JUMP`, cx, VIEW.height - 40, { size: 13, align: 'center', color: '#c9d6e3' });
 }
 
@@ -6585,7 +6586,7 @@ function pick(rng, items) {
 module.exports = { createRng, range, pick };
 
 },{}],33:[function(require,module,exports){
-module.exports = 'voyager-1.3-mini-emblem';
+module.exports = 'voyager-1.4-open-sector';
 
 },{}],34:[function(require,module,exports){
 // Save format, validation, legacy migration and quota-tolerant persistence.

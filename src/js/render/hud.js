@@ -1,6 +1,6 @@
 const { VIEW } = require('./projection');
 const { WEAPONS, MAX_TIER } = require('../weapons');
-const { LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('../levels');
+const { getCampaignLevelCount } = require('../levels');
 const { PICKUP_STYLE, SHIP_TOP, SHIP_PALETTE, pixelSprite, drawBreathe, drawGlow } = require('./shapes');
 const { pixelText, measurePixelText, pixelTextMetrics } = require('./font');
 const { getPlayers, versusMode } = require('./players');
@@ -103,7 +103,7 @@ function createHud() {
 
     function footerText(game, step, opts) {
         const sector = game.level.number >= 11 ? 'II · ' : '';
-        const total = game.level.number > LEVEL_COUNT ? TOTAL_LEVEL_COUNT : LEVEL_COUNT;
+        const total = getCampaignLevelCount(game.difficulty);
         const name = step.name ? ` ${String(game.level.name || '').toUpperCase()}` : '';
         const flags = step.flags ? `${opts.muted ? 'M:OFF ' : ''}${opts.crt ? 'CRT ' : ''}[V] ${game.view === 'pov' ? 'POV' : 'MAP'}` : `${opts.muted ? 'M:OFF ' : ''}${game.view === 'pov' ? 'POV' : 'MAP'}`;
         return { label: `${sector}LV ${game.level.number}/${total}${name}`, flags };
