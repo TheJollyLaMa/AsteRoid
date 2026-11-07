@@ -25,6 +25,15 @@ quiet('wallet-connect', `.identity-note{display:none!important}
 #status{max-width:150px;font-size:11px}
 @media(max-width:600px){#status{max-width:100px;font-size:10px}}`);
 quiet('ipfs-status', '#label{display:none!important}');
+for (const side of ['left', 'right']) {
+  quiet(`ankh-menu[side="${side}"]`, `.options{z-index:1;max-width:calc(100vw - 32px);box-sizing:border-box}
+summary{min-width:44px;min-height:44px}
+button{min-height:44px}`);
+  header.querySelector(`ankh-menu[side="${side}"]`)?.shadowRoot?.querySelector('details')?.addEventListener('toggle', () => {
+    const open = [...header.querySelectorAll('ankh-menu')].some(menu => menu.shadowRoot?.querySelector('details')?.open);
+    document.querySelector('.site-header').classList.toggle('menu-open', open);
+  });
+}
 await import('./launch-reminder.mjs');
 
 // Put the Mandelblum disc between "Decent" and "Voyager" instead of before the whole name.

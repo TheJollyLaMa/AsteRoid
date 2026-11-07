@@ -2,7 +2,7 @@
 const counts = { vault: 0, rewards: 0 };
 const ENTRIES = [
   { id: 'vault', label: count => `🏆 Victory Vault${count ? ` · ${count}` : ''}`, event: 'voyager:open-vault' },
-  { id: 'rewards', label: count => `✦ Rewards waiting${count ? ` · ${count}` : ''}`, event: 'voyager:open-rewards' },
+  { id: 'rewards', label: count => `✦ Captured rewards${count ? ` · ${count}` : ''}`, event: 'voyager:open-rewards' },
   { id: 'manual', label: () => 'ⓘ Flight manual', about: true },
   { id: 'reports', label: () => 'Flight reports', event: 'voyager:open-reports' },
 ];
