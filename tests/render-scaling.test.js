@@ -54,6 +54,7 @@ function fixture(width, height, pixelRatio = 1, resizeObserver = true) {
         },
         './audio': { createAudio: () => ({ setSector2: noop }) },
         './diagnostics': { createDiagnostics: () => ({ record: (...args) => records.push(args), report: () => ({ entries: records }) }) },
+        './supporter-catalog': { supporterDetails: noop },
         './render/overview': { createOverviewRenderer: () => renderer },
         './render/pov': { createPovRenderer: () => renderer },
         './render/hud': { createHud: () => ({ drawHud: noop, setToast: message => toasts.push(message) }) },

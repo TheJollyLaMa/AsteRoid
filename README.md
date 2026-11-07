@@ -69,6 +69,29 @@ pause is deliberately retained rather than claiming all stalls are eliminated.
 
 ### Mini emblem, elephant escort and readable 8-bit text
 
+Supporter encounters display the actual metadata-derived NFT artwork and a
+hovering project/version/token name, with a slow card spin and bounded glow
+passes. Destroying the last guard emits a presentation-only `vaultUnlocked`
+event with an original laser/fanfare and expanding rings. Capturing the token
+adds a linked project briefing: local play pauses until Continue voyage, while
+online play explicitly warns that the referee continues. The briefing includes
+metadata, Base token and filtered agency-Canopy links, and distinguishes a
+recorded capture from an on-chain transfer. Sign the flight log at victory or
+game over, then claim the verified, funded reward. Missing artwork is reported
+explicitly. Original capture and White Lotus fanfares use WebAudio synthesis;
+no copyrighted game audio is sampled or modified. White Lotus pickups spin,
+pulse and glow; collection adds bounded fireworks/rings and a 2.2-second banner.
+
+The ticket-ready status expires after five seconds and clears immediately on
+launch. Errors and claim instructions are not timed out. No reward mechanics,
+collision shapes or replay inputs change in this presentation update.
+
+Reuse: adapted this app's metadata-derived Supporter image cache,
+`drawSupporterToken`, FX budgets, WebAudio synthesis and native-dialog patterns.
+The Canopy shared-view query contract provides project-filter links. Artwork
+provenance is in [CREDITS](src/assets/game/CREDITS.md); public metadata supplies
+the missing Calendar and corrected Voyager images. No Canopy files were edited.
+
 A spinning **Mini emblem** (the Mandelblum Compos token) appears once in levels
 **5, 9, 14 and 18**. In range it drifts down toward the ship and weaves side to
 side. Collecting it halves the ship's drawn size and hitbox for the next **five

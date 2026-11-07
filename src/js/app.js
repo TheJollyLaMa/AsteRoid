@@ -14,6 +14,7 @@ const { setGlowBudget, getShapeResources, clearShapeResources } = require('./ren
 const { getFontResources, clearFontResources } = require('./render/font');
 const { createInput } = require('./input');
 const { createDiagnostics } = require('./diagnostics');
+const { supporterDetails } = require('./supporter-catalog');
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -31,6 +32,7 @@ const storage = safeStorage();
 const game = new Game({ storage });
 const handleGameAction = game.handleAction.bind(game);
 game.handleAction = action => {
+    if (document.getElementById('supporter-briefing')?.open) return;
     if (action === 'confirm' && ['title', 'gameOver'].includes(game.state)) {
         const state = game.state;
         const request = new CustomEvent('voyager:launch-request', {
@@ -455,7 +457,7 @@ document.addEventListener('visibilitychange', () => {
 window.asteroidGame = game;
 window.asteroidDraw = draw;
 window.asteroidStep = step;
-window.AsteroidRender = { renderBattleCard, previewBattleCard, sampleRecord, loadAssets };
+window.AsteroidRender = { renderBattleCard, previewBattleCard, sampleRecord, loadAssets, supporterDetails };
 function setNetworkMode(options = null) {
     if (!options) {
         networkMode = null;
@@ -471,6 +473,7 @@ window.voyager = {
     render: window.AsteroidRender,
     input,
     setNetworkMode,
+    isNetworkMode: () => Boolean(networkMode),
     onInput(fn) {
         if (!networkMode) networkMode = {};
         networkMode.onInput = typeof fn === 'function' ? fn : null;

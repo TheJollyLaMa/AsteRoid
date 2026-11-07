@@ -18,7 +18,15 @@ export function mountFlightLog({ getGame = () => window.voyager?.game || window.
   const action = document.getElementById('flight-sign');
   const retryAction = document.getElementById('flight-retry');
   const status = document.getElementById('flight-status');
-  const notify = text => { if (status) status.textContent = text; onStatus(text); };
+  let statusTimer = null;
+  const notify = text => {
+    clearTimeout(statusTimer);
+    if (status) status.textContent = text;
+    onStatus(text);
+    if (text === 'Referee flight ticket ready for your next launch.') {
+      statusTimer = setTimeout(() => { if (status?.textContent === text) status.textContent = ''; onStatus(''); }, 5000);
+    }
+  };
   const tickets = createRunTicketManager({ fetchImpl, getGame, onStatus: notify });
   const refreshOutbox = () => { if (retryAction) retryAction.hidden = !pilot.isPilot || !outbox.read().length; }
   retryAction?.addEventListener('click', async () => { try { if (!pilot.isPilot) throw new Error('Retry is for Decent Pilots.'); const result = await outbox.retry(); notify(result.pending ? `${result.pending} signed run(s) remain queued for retry.` : 'Signed flight-log outbox is clear.'); refreshOutbox(); } catch (error) { notify(error.message); } });

@@ -64,6 +64,7 @@ test('pilot flight tickets use the referee seed and MAC without prompting', asyn
 
   game.state = 'playing';
   manager.runStarted('run-1');
+  assert.equal(states.at(-1), '', 'ticket-ready notice clears at launch');
   await manager.ensureTicket();
   assert.equal(calls.length, 2, 'a new ticket is prefetched after the flight starts');
   assert.equal(applied.length, 1, 'a ticket fetched during play waits for the title screen');

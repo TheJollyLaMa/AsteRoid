@@ -678,7 +678,13 @@ class Game {
 
     destroyAsteroid(asteroid, awardPoints = true, byPlayerShot = false) {
         asteroid.hp = 0;
-        if (asteroid.vaultGuard && markGuardDestroyed(this.vault, asteroid)) this.emit('guardDestroyed', { tier: asteroid.vaultTier, kind: asteroid.kind, x: asteroid.x, y: asteroid.y });
+        if (asteroid.vaultGuard) {
+            const wasShielded = this.vault?.shielded;
+            if (markGuardDestroyed(this.vault, asteroid)) this.emit('guardDestroyed', { tier: asteroid.vaultTier, kind: asteroid.kind, x: asteroid.x, y: asteroid.y });
+            if (wasShielded && !this.vault.shielded) {
+                this.emit('vaultUnlocked', { tier: this.vault.tier, prize: { ...this.vault.prize }, x: this.vault.x, y: this.vault.y });
+            }
+        }
         if (awardPoints) {
             const base = asteroid.shooter ? 150 : 50 + asteroid.maxHp * 25;
             const points = Math.round(base * (1 + (this.level.number - 1) * 0.1) * this.scoreMultiplier);

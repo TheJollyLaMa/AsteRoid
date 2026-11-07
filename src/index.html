@@ -97,6 +97,23 @@
     <p data-wallet-launch-status role="status" aria-live="polite"></p>
   </dialog>
   <script src="bundle.js"></script>
+  <dialog id="supporter-briefing" aria-labelledby="capture-title" aria-describedby="capture-next">
+    <button type="button" data-capture-dismiss aria-label="Close briefing and continue voyage">×</button>
+    <div class="capture-kicker">✦ SUPPORTER DNFT CAPTURED ✦</div>
+    <h2 id="capture-title" data-capture-name></h2>
+    <div class="capture-art"><img data-capture-image alt="" hidden><p data-capture-image-status role="status"></p></div>
+    <p data-capture-description></p>
+    <nav class="capture-links" aria-label="Captured reward links">
+      <a data-capture-link="project" target="_blank" rel="noopener noreferrer">Explore project ↗</a>
+      <a data-capture-link="canopy" target="_blank" rel="noopener noreferrer">Its place in Decent Canopy ↗</a>
+      <a data-capture-link="metadata" target="_blank" rel="noopener noreferrer">NFT metadata ↗</a>
+      <a data-capture-link="token" target="_blank" rel="noopener noreferrer">Token on Base ↗</a>
+    </nav>
+    <p id="capture-next" data-capture-next></p>
+    <p data-capture-pause-note></p>
+    <button type="button" data-capture-resume>Continue voyage</button>
+  </dialog>
+  <script type="module" src="./js/shell/capture-briefing.mjs"></script>
   <script type="module" src="./js/shell/flight-reports.mjs"></script>
   <script type="module" src="./js/shell/main.mjs"></script>
   <script type="module" src="./js/pilots/whitelist.mjs"></script>

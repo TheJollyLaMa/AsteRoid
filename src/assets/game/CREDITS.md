@@ -45,6 +45,8 @@ was fetched through IPFS gateways, converted to JPEG at 256px/quality 72 with
 | supporter-76.jpg | BigNuten_Vanilla v3.3.0 #76 metadata (`QmSrAwCU5p1ga3RzpuDHZxezsNjob76ZSFpRzCuG15yYqU`) | IPFS image `QmUxzh27UCCjWS4no76P2rHm6mTA4wK2YrhQz3avR3eBWb`, 256px JPEG |
 | supporter-78.jpg | DecentPilgrimages v0.1.1 #78 metadata (`QmNe9SYSyrZYV66X29Wp4hBLbCDpQDjnJsAJLDdAytALEN`) | IPFS image `QmYtVkkDitdTnEabaZxPG8oquuenpWdVSzQ6b9VqbNrrVf`, 256px JPEG |
 | supporter-79.jpg | DecentCanopy v0.1.0 #79 metadata (`QmQqQtuSeab78F3pdBcMbvSopYZLa51zJ4JxcodQ2ugy9d`) | IPFS image `QmSrWH6EcmXsPfjfTa99G3D2xCqgXWSyLK6o5B1m7Smu3A`, 256px JPEG |
+| supporter-77.jpg | DecentCalendar v0.1.0 #77 metadata (`QmPqCy2g53t4BaffprtfjfM4L5imACB1nWZK63HyN9o3Tj`) | IPFS image `QmTaSEext8djzyBK2Wip22UQusL3aRpgNWbFiKrvjmSuWX`, 512px maximum, JPEG q78 |
+| supporter-80.jpg | Corrected Decent Voyager v1.0.0 #80 metadata (`QmYyFwg2BXcz63uVRSFF6L2crxe1Avhb234fzXdkwYCQaU`) | IPFS image `QmRBdBUg73Cd3y1aAzTT6jVgcRaVbw3roPpb4KaCrVqxce`, 512px maximum, JPEG q78 |
 | future-rock-1.jpg | BlenderBender/Mandelblum/mandelblum_toroid1.png | 256px PNG with black keyed to alpha (ffmpeg colorkey) |
 | future-rock-2.jpg | BlenderBender/Mandelblum/mandelblum_toroid4.png | 256px PNG with black keyed to alpha (ffmpeg colorkey) |
 | future-rock-3.jpg | BlenderBender/Mandelblum/mandelblum_toroid6.png | 256px PNG with black keyed to alpha (ffmpeg colorkey) |
@@ -53,3 +55,9 @@ was fetched through IPFS gateways, converted to JPEG at 256px/quality 72 with
 | bg-sector2-mars.jpg | BlenderBender/Mandelblum/Mandelblums_Mars_Domicile_2.png | 960px JPEG, quality 65 |
 | bg-sector2-top.jpg | BlenderBender/Mandelblum/mandelblum2_top.png | 960px JPEG, quality 65 |
 | gate-sector2.jpg | BlenderBender/Mandelblum/mandelblum_gate2.png | 256px PNG with black keyed to alpha (ffmpeg colorkey) |
+
+The Supporter catalog uses these metadata-derived local artwork copies, not
+invented token art. Its project descriptions are short editorial summaries;
+the metadata link exposes the original description and release provenance.
+Original extra-life, vault-unlock and capture fanfares are synthesized in code;
+no third-party game recording was sampled or modified.
