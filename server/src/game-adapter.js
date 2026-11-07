@@ -1,6 +1,7 @@
 'use strict';
 
 const Game = require('../../src/js/game.js');
+const { gameForRuleset } = require('./replay-rulesets');
 let inputLog = null;
 try { inputLog = require('../../src/js/inputlog.js'); } catch { /* Core RLE helper has not landed; direct frame arrays remain testable. */ }
 
@@ -38,13 +39,14 @@ function normalizeFrames(frames) {
 }
 
 function replayRun(run) {
-  if (typeof Game.replay !== 'function') {
+  const ReplayGame = gameForRuleset(run.ruleset);
+  if (typeof ReplayGame.replay !== 'function') {
     throw new Error('Core replay API is unavailable: Game.replay has not landed yet.');
   }
   const players = typeof run.players === 'object'
     ? { ...run.players, mode: run.players.mode || run.mode || 'coop' }
     : { count: run.players, mode: run.mode || 'coop' };
-  return Game.replay({
+  return ReplayGame.replay({
     seed: run.seed,
     difficulty: run.difficulty,
     startLevel: run.startLevel,
