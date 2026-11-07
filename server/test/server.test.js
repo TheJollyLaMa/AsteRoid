@@ -37,6 +37,26 @@ function sampleResult() {
   };
 }
 
+test('authoritative Pilot/Ace arenas warp beyond level 10 without a captured token', () => {
+  for (const difficulty of ['pilot', 'ace']) {
+    for (const mode of ['coop', 'versus']) {
+      const game = createArenaGame({ players: 2, mode, difficulty, seed: 44 });
+      game.startLevel(10);
+      game.completeLevel();
+      assert.equal(game.state, 'warping');
+      assert.equal(game.runCaptures.length, 0);
+      for (let frame = 0; frame < 140; frame++) game.step([{}, {}]);
+      assert.equal(game.state, 'playing');
+      assert.equal(game.level.number, 11);
+      assert.equal(game.getProgress(difficulty).unlocked, 11);
+    }
+  }
+  const cadet = createArenaGame({ players: 2, difficulty: 'cadet', seed: 44 });
+  cadet.startLevel(10);
+  cadet.completeLevel();
+  assert.equal(cadet.state, 'victory');
+});
+
 test('voucher signature recovers the referee address and EIP-712 digest matches ethers', async () => {
   const referee = Wallet.createRandom();
   const vouchers = makeVoucherService({

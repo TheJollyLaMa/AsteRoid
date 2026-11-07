@@ -1,7 +1,11 @@
-const { applyDifficulty } = require('./difficulty');
+const { applyDifficulty, getDifficulty } = require('./difficulty');
 
 const LEVEL_COUNT = 10;
 const TOTAL_LEVEL_COUNT = 20;
+
+function getCampaignLevelCount(difficulty = 'cadet') {
+    return getDifficulty(difficulty).id === 'cadet' ? LEVEL_COUNT : TOTAL_LEVEL_COUNT;
+}
 
 const LEVEL_NAMES = [
     'Drydock Drift',
@@ -62,4 +66,4 @@ function getLevel(number, difficulty = 'cadet') {
     return applyDifficulty(getBaseLevel(number), difficulty);
 }
 
-module.exports = { LEVEL_COUNT, TOTAL_LEVEL_COUNT, LEVEL_NAMES, getLevel, getBaseLevel };
+module.exports = { LEVEL_COUNT, TOTAL_LEVEL_COUNT, LEVEL_NAMES, getLevel, getBaseLevel, getCampaignLevelCount };

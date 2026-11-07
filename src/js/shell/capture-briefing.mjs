@@ -37,7 +37,7 @@ export function mountCaptureBriefing({
       if (pausedByUs) game.handleAction('pause');
       dialog.showModal();
     }
-    next.textContent = `${capture.tier === 1 ? 'Sector II unlocked for this difficulty and team power refilled. ' : capture.tier === 2 ? 'Team power refilled. ' : ''}This is a recorded capture, not a confirmed NFT transfer. At victory or game over, choose Sign flight log. The referee verifies the run; then claim the funded reward from the rewards panel. If you leave now, the current unsent run may be lost.`;
+    next.textContent = `${capture.kind ? '' : 'Team power refilled. '}${capture.tier === 1 ? 'Pilot and Ace continue into Sector II after level 10, even without capturing a token. ' : ''}This is a recorded capture, not a confirmed NFT transfer. At victory or game over, choose Sign flight log. The referee verifies the run; then claim the funded reward from the rewards panel. If you leave now, the current unsent run may be lost.`;
     dialog.querySelector('[data-capture-pause-note]').textContent = online
       ? 'Online battle continues on the referee. Close this briefing promptly to keep flying.'
       : 'Your local battle is paused while you inspect the reward.';

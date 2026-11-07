@@ -1,1 +1,1 @@
-module.exports = 'voyager-1.3-mini-emblem';
+module.exports = 'voyager-1.4-open-sector';

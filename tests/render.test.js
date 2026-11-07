@@ -43,7 +43,15 @@ test('starter instructions stay visible and use readable full-resolution text', 
         drawOverlay(ctx, { state: 'title', time, selectedLevel: 1 }, {});
         assert.equal(calls.filter(call => call.value === 'PRESS ENTER TO LAUNCH').length, 1);
         assert.match(calls.find(call => call.value === 'FIRE (HOLD)').font, /16px/);
-        assert.match(calls.find(call => call.value === 'ORIGINAL TUNING').font, /14px/);
+        assert.match(calls.find(call => call.value === '10 LEVELS').font, /14px/);
+        assert.ok(calls.some(call => call.value === '20 LEVELS'));
+        assert.ok(calls.some(call => call.value === '20 LEVELS - EXTREME'));
+    }
+    for (const selectedDifficulty of ['cadet', 'pilot', 'ace']) {
+        calls.length = 0;
+        drawOverlay(ctx, { state: 'title', selectedDifficulty, selectedLevel: 1, progress: { unlocked: 1, sector2Unlocked: false } }, {});
+        const total = selectedDifficulty === 'cadet' ? 10 : 20;
+        assert.ok(calls.some(call => call.value.includes(`UNLOCKED 1/${total}`)));
     }
 });
 

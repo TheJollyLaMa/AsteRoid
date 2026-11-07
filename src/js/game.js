@@ -2,7 +2,7 @@ const checkCollision = require('./collision');
 const Spaceship = require('./spaceship');
 const Bullet = require('./bullet');
 const { createRng, range } = require('./rng');
-const { getLevel, LEVEL_COUNT, TOTAL_LEVEL_COUNT } = require('./levels');
+const { getLevel, LEVEL_COUNT, TOTAL_LEVEL_COUNT, getCampaignLevelCount } = require('./levels');
 const { populateLevel } = require('./levelLayout');
 const { WEAPONS, applyWeaponPickup, downgradeWeapon, fireWeapon } = require('./weapons');
 const { DIFFICULTY_IDS, isDifficulty, getDifficulty, stepDifficulty } = require('./difficulty');
@@ -175,7 +175,7 @@ class Game {
     startCampaign(levelNumber = 1, difficulty = this.selectedDifficulty, seed) {
         getLevel(levelNumber, difficulty);
         const difficultyId = getDifficulty(difficulty).id;
-        if (levelNumber > LEVEL_COUNT && (difficultyId === 'cadet' || !this.pilot.isPilot || !this.save.progress.byDifficulty[difficultyId].sector2Unlocked)) throw new Error('Sector II is locked for this difficulty or pilot.');
+        if (levelNumber > getCampaignLevelCount(difficultyId)) throw new Error('Cadet campaigns end at level 10. Choose Pilot or Ace for levels 11–20.');
         this.finishAttempt('abandoned');
         this.difficulty = difficultyId;
         this.selectedDifficulty = this.difficulty;
@@ -213,6 +213,7 @@ class Game {
         this.runRecords = [];
         this.vaultTiersSpawned = [];
         this.sector2Level = null;
+        this.sector2VaultLevel = null;
         this.score = 0;
         this.runStats = createTotals();
         this.runStats.campaignsStarted = 1;
@@ -745,12 +746,6 @@ class Game {
         this.runCaptures.push(capture);
         for (const ship of this.ships) ship.power = ship.maxPower;
         this.emit('supporterCaptured', { ...capture, player: playerIndex });
-        if (capture.tier === 1) {
-            this.save.progress.byDifficulty[this.difficulty].sector2Unlocked = true;
-            this.save.progress.byDifficulty[this.difficulty].unlocked = Math.max(this.save.progress.byDifficulty[this.difficulty].unlocked, 11);
-            this.emit('sectorUnlocked', { sector: 2, difficulty: this.difficulty });
-            this.saveProgress();
-        }
         return true;
     }
 
@@ -920,7 +915,7 @@ class Game {
         if (this.save.wins.length > MAX_WINS) this.save.wins.splice(0, this.save.wins.length - MAX_WINS);
         this.emit('levelRecord', { record: clone(record) });
         const next = this.level.number + 1;
-        if (next > TOTAL_LEVEL_COUNT || (this.level.number === LEVEL_COUNT && !progress.sector2Unlocked)) {
+        if (next > getCampaignLevelCount(this.difficulty)) {
             this.state = 'victory';
             this.runStats.victories += 1;
             this.save.lifetime.victories += 1;
@@ -928,11 +923,13 @@ class Game {
             this.emit('victory');
             return;
         }
-        if (next <= LEVEL_COUNT || progress.sector2Unlocked) progress.unlocked = Math.max(progress.unlocked, next);
+        progress.unlocked = Math.max(progress.unlocked, next);
+        if (next > LEVEL_COUNT) progress.sector2Unlocked = true;
         this.saveProgress();
-        if (this.level.number === LEVEL_COUNT && progress.sector2Unlocked && this.difficulty !== 'cadet' && this.pilot.isPilot) {
+        if (this.level.number === LEVEL_COUNT) {
             this.state = 'warping';
             this.stateTimer = WARP_TIME;
+            this.emit('sectorUnlocked', { sector: 2, difficulty: this.difficulty });
             this.emit('warpStart', { from: 10, to: 11 });
         } else {
             this.state = 'levelComplete';

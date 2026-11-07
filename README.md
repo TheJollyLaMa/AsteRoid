@@ -2,8 +2,10 @@
 
 A scrolling space shooter for the browser (CommonJS bundled with browserify) that plays
 like Galaga: fly a corridor of Mandelblum rocks, blast through gauntlets, dodge return fire and reach the jump gate.
-**Sector I** (levels 1–10) is free for everyone with no wallet. **Decent Pilots** (the DecentAgency whitelist) can
-unlock **Sector II** (levels 11–20), win Supporter DNFTs, earn on-chain victory stamps and join paid arena rounds.
+**Cadet** ends at level 10. **Pilot and Ace** automatically continue into **Sector II**
+(levels 11–20), with no wallet or Supporter capture required. Local play is free.
+**Decent Pilots** (the DecentAgency whitelist) can win Supporter DNFTs, earn
+on-chain victory stamps and join paid arena rounds.
 
 ### Connect before launch
 
@@ -17,9 +19,17 @@ Pilot **difficulty** and Decent Pilot **wallet eligibility** are separate. A
 reward-enabled Pilot/Ace launch waits for the contributor/registry check and a
 referee flight ticket. Failed connection, eligibility or ticket checks stay
 visible in the popup with retry, practice and back choices; they do not silently
-start a reward flight. Without wallet eligibility, the voyage has only 10 levels
-and no Supporter encounters. With eligibility, one guarded encounter is scheduled
-in level 9 or 10; capturing it unlocks Sector II for that difficulty.
+start a reward flight. Without wallet eligibility, Pilot/Ace still have 20 levels
+but no Supporter encounters or NFT rewards. With eligibility, one guarded encounter
+is scheduled in level 9 or 10 and another in 19 or 20. Missing either token does
+not end the voyage early; both captures remain required for Perfect rewards.
+
+Reuse: adapted Voyager's existing `completeLevel`/warp and save-progress paths,
+with `getCampaignLevelCount` shared by launch validation, campaign completion,
+title and HUD. No external donor is needed for this campaign rule. Existing
+`sector2Unlocked` saves remain compatible: clearing level 10 now records access,
+independent of wallet eligibility. Tests cover guest, eligible, missed-token and
+old-save flights through level 20, plus Cadet's level-10 ending.
 
 Reuse: adapted the bundled DecentHead `WalletSession.connect`/wallet state, the
 existing Pilot whitelist and flight-ticket manager, and Voyager's launch routes.
@@ -40,7 +50,7 @@ Only completing **level 20** on Pilot/Ace earns a new achievement NFT.
 Intermediate battle records remain available locally and in IPFS progress saves.
 Guarded Supporter pickups and marathon/Perfect awards are unchanged.
 Previously signed vouchers remain claimable; new referee issuance and admin
-requests enforce level 20. The ruleset is `voyager-1.3-mini-emblem`; deploy the
+requests enforce level 20. The ruleset is `voyager-1.4-open-sector`; deploy the
 referee before the matching frontend and start a new flight after updating.
 Old unsent flight logs are rejected with the existing ruleset-mismatch message,
 not replayed against changed game rules.
@@ -100,7 +110,8 @@ costs power, losing a life ends Mini mode, and it otherwise carries into the nex
 level. A pink aura with one pip per remaining hit and the footer's MINI pips show
 the countdown. `pickupsCollected.mini` and `miniHitsAbsorbed` are recorded with the
 other battle stats and pinned to level-20 achievement metadata. Emblem movement
-is deterministic, so the ruleset was bumped to `voyager-1.3-mini-emblem`.
+is deterministic; its original ruleset was `voyager-1.3-mini-emblem`. The current
+ruleset also includes automatic Pilot/Ace continuation beyond level 10.
 
 Clearing level 10 or 20 opens a framed **elephant escort** transmission playing
 the Mandelblum flying-elephant animation on the Victory finale, on the level-10
@@ -284,7 +295,7 @@ stats and win records are saved per difficulty in `localStorage`, and can be bac
 
 ## Gameplay
 
-- **10 levels** with rising scroll speed, density, rock movement and enemy fire. Levels 1–3 are fully stationary;
+- **10 Cadet levels; 20 on Pilot/Ace**, with rising scroll speed, density, rock movement and enemy fire. Levels 1–3 are fully stationary;
   drifting and charging rocks arrive from level 4.
 - **Orange-core rocks shoot back** at the ship with more accurate, faster and more frequent fire in later levels.
 - **Gauntlets**: walls (gapped only in levels 1–2), charging rushes and shooter chevrons. Shoot through or lose power.
@@ -294,8 +305,9 @@ stats and win records are saved per difficulty in `localStorage`, and can be bac
 - **Charge weapons**: the **Nova Charger** (and, in Sector II, the **Prism Lance** and **Singularity**) charge while
   fire is held and release a bigger blast. The HUD shows the charge meter.
 - **Guarded Supporter pickups (whitelisted Pilot or Ace)**: a heavily guarded pickup appears on level 9 or 10. Destroy
-  its guards and fly into it to capture a Supporter DNFT (DecentHead or DecentMarket), refill power and unlock
-  **Sector II** for that difficulty. A second pickup on level 19 or 20 holds DecentCalendar, DecentCanopy or DecentPilgrimages.
+  its guards and fly into it to capture a Supporter DNFT (DecentHead or DecentMarket) and refill power.
+  **Sector II** follows level 10 automatically on Pilot/Ace, even if the token is missed.
+  A second pickup on level 19 or 20 holds DecentCalendar, DecentCanopy or DecentPilgrimages.
   Captures become independently claimable only after referee verification and a funded-stock reservation.
 - **Solo marathon receipts**: a single uninterrupted level-1-to-20 Pilot or Ace run records every level's stats,
   full-run totals and ordered award references in its level-20 receipt. Starting at a later unlocked level is
