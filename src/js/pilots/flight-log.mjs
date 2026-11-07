@@ -2,7 +2,9 @@ import { createRunOutbox } from './run-outbox.mjs';
 import { createRunTicketManager } from './ticket.mjs';
 const pilot = { address: null, isPilot: false };
 let records = [], captures = [], runId = null, promptedRun = null;
-const outbox = createRunOutbox();
+const outbox = createRunOutbox({ onChange: () => {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('voyager:flight-outbox-changed'));
+} });
 
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;

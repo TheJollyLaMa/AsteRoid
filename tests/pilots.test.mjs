@@ -16,13 +16,14 @@ test('wallet actions require pilot state, non-pilots receive a friendly failure'
   assert.throws(() => requirePilot({ isPilot: false }, 'Claim'), /Decent Pilots/);
 });
 test('signed run outbox retries failed sends and removes successful deliveries', async () => {
-  const values = new Map(); let fail = true, attempts = 0;
+  const values = new Map(); let fail = true, attempts = 0, changes = 0;
   const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
-  const outbox = createRunOutbox({ storage, baseUrl: () => 'https://referee.example', fetchImpl: async (url, init) => { attempts++; assert.equal(url, 'https://referee.example/runs'); assert.equal(init.method, 'POST'); return fail ? { ok: false, status: 503 } : { ok: true, json: async () => ({ accepted: true }) }; } });
+  const outbox = createRunOutbox({ storage, onChange: () => { changes++; }, baseUrl: () => 'https://referee.example', fetchImpl: async (url, init) => { attempts++; assert.equal(url, 'https://referee.example/runs'); assert.equal(init.method, 'POST'); return fail ? { ok: false, status: 503 } : { ok: true, json: async () => ({ accepted: true }) }; } });
   assert.equal((await outbox.enqueue({ runHash: '0x1', address })).length, 1);
   assert.equal(JSON.parse(values.get(OUTBOX_KEY)).length, 1);
   fail = false; assert.deepEqual(await outbox.retry(), { sent: true, pending: 0 });
   assert.equal(outbox.read().length, 0); assert.equal(attempts, 2);
+  assert.equal(changes, 3, 'enqueue, failed retry and successful retry notify rewards');
 });
 
 test('an older-ruleset rejection preserves original signed evidence across reload and retry', async () => {
@@ -43,6 +44,24 @@ test('an older-ruleset rejection preserves original signed evidence across reloa
     } });
   assert.deepEqual(await restored.retry(), { sent: true, pending: 0 });
   assert.equal(restored.read().length, 0);
+});
+
+test('concurrent refresh retries share one submission and preserve newly queued flights', async () => {
+  let release, calls = 0;
+  const waiting = new Promise(resolve => { release = resolve; });
+  const outbox = createRunOutbox({ storage: null, baseUrl: () => 'https://referee.example',
+    fetchImpl: async () => { calls++; await waiting; return { ok: true, json: async () => ({ accepted: true }) }; } });
+  const first = outbox.enqueue({ address, runHash: 'first' });
+  const shared = outbox.retry();
+  assert.strictEqual(outbox.retry(), shared);
+  const second = outbox.enqueue({ address, runHash: 'second' });
+  release();
+  await Promise.all([first, shared, second]);
+  assert.equal(calls, 1);
+  assert.deepEqual(outbox.read().map(item => item.runHash), ['second']);
+  await outbox.retry();
+  assert.equal(calls, 2);
+  assert.equal(outbox.read().length, 0);
 });
 
 test('pilot loader prefers raw main then falls back to the local public list', async () => {

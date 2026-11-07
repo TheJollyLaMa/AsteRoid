@@ -63,6 +63,23 @@ data until verification succeeds. Signing records evidence; claim the verified
 Supporter reward separately on Base. Expired tickets cannot be renewed for an
 old run. Archive provenance is in [server/legacy](server/legacy/README.md).
 
+**Captured rewards** is available directly on the start screen and below the
+game, as well as through the right profile menu's **Rewards waiting** entry.
+This redemption desk loads past verified vouchers for the connected eligible
+wallet, displays metadata-derived Supporter names/art, shows voucher expiry and
+provides **Claim on Base**. Claiming is a separate wallet transaction, not a
+consequence of signing the flight log. Expired vouchers are shown but disabled.
+Signed flights awaiting verification are listed separately with their exact
+referee errors and a **Retry verification** control. **Refresh rewards** reloads
+the referee; outbox changes automatically refresh counts and claimable entries.
+Disconnected, ineligible, unavailable and empty states remain explicit.
+
+Reuse: the new visible controls dispatch the existing `voyager:open-rewards`
+event and use the existing claim dialog, profile badge, outbox and metadata
+catalog. No new reward storage or service, no changed eligibility or transfers,
+and no vendor/Canopy edits. The existing local outbox is pending evidence;
+persisted referee vouchers are the cross-visit redemption source.
+
 Crowded-level safeguards include ordered spatial collision queries, capped
 cosmetic debris/fireworks and a maximum 3-million-pixel / 2x-DPR canvas. A long
 stall (over 250ms) or eight consecutive frames over 50ms freezes solo/local play,
