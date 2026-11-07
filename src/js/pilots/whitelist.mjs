@@ -41,27 +41,40 @@ async function contractPilot(address) {
 }
 
 export function mountPilots({ fetchImpl = globalThis.fetch, readOnChain = contractPilot } = {}) {
-  let pilots = [], started = false;
+  let pilots = [], loading = null, generation = 0, currentAddress = null;
   const note = document.getElementById('pilot-note');
+  const load = () => loading ||= loadPilots(fetchImpl).then(entries => { pilots = entries; });
   const update = async state => {
     const address = state?.connected ? state.address : null;
-    if (!address) { dispatchPilot(null, false); if (note) note.hidden = true; return; }
+    if (address?.toLowerCase() !== currentAddress?.toLowerCase()) { currentAddress = address; generation++; }
+    const request = generation;
+    if (!address) { dispatchPilot(null, false); if (note) note.hidden = true; return { address: null, isPilot: false }; }
+    try { await load(); } catch (error) {
+      if (request === generation) {
+        loading = null;
+        dispatchPilot(address, false);
+        if (note) { note.hidden = false; note.textContent = error.message; }
+      }
+      throw error;
+    }
     let allowed = isWhitelisted(address, pilots);
     if (allowed) {
       try { const chainResult = await readOnChain(address); if (chainResult !== null) allowed = !!chainResult; } catch { /* The local contributor list remains the fallback if the optional registry is unavailable. */ }
     }
+    if (request !== generation) throw new Error('Wallet changed during Pilot verification. Please retry.');
     dispatchPilot(address, allowed);
     if (note) { note.hidden = allowed; note.textContent = 'This wallet is not on the Decent Pilots list yet. Ask in the DecentAgency Discord. Levels 1–10 are free to fly.'; }
+    return { address, isPilot: allowed };
   };
-  const start = async () => {
-    if (started) return; started = true;
-    try { pilots = await loadPilots(fetchImpl); } catch { pilots = []; }
-    await update(window.DecentHead?.getWallet?.()?.snapshot?.());
+  const refreshWallet = () => {
+    void update(window.DecentHead?.getWallet?.()?.snapshot?.()).catch(error => {
+      console.warn('[Voyager Pilots]', error.message);
+    });
   };
-  window.addEventListener('decenthead:ready', () => void start());
-  window.addEventListener('decenthead:wallet', event => { if (!started) void start(); else void update(event.detail); });
-  if (window.DecentHead) void start();
+  window.addEventListener('decenthead:ready', refreshWallet);
+  window.addEventListener('decenthead:wallet', refreshWallet);
+  if (window.DecentHead) refreshWallet();
   return { refresh: update, entries: () => pilots };
 }
 
-if (typeof window !== 'undefined' && typeof document !== 'undefined') mountPilots();
+export const pilotController = typeof window !== 'undefined' && typeof document !== 'undefined' ? mountPilots() : null;

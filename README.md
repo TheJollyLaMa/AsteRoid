@@ -5,6 +5,27 @@ like Galaga: fly a corridor of Mandelblum rocks, blast through gauntlets, dodge 
 **Sector I** (levels 1–10) is free for everyone with no wallet. **Decent Pilots** (the DecentAgency whitelist) can
 unlock **Sector II** (levels 11–20), win Supporter DNFTs, earn on-chain victory stamps and join paid arena rounds.
 
+### Connect before launch
+
+Enter, Solo voyage, couch launch, mobile launch and gamepad launch share a wallet
+reminder before a new voyage or game-over retry. Connect with the popup or choose
+to play without a wallet. Local stats still save either way; IPFS backup remains
+an explicit action in the enlarged left header orb. The enlarged wallet orb
+turns green only when connected, not as proof of reward eligibility.
+
+Pilot **difficulty** and Decent Pilot **wallet eligibility** are separate. A
+reward-enabled Pilot/Ace launch waits for the contributor/registry check and a
+referee flight ticket. Failed connection, eligibility or ticket checks stay
+visible in the popup with retry, practice and back choices; they do not silently
+start a reward flight. Without wallet eligibility, the voyage has only 10 levels
+and no Supporter encounters. With eligibility, one guarded encounter is scheduled
+in level 9 or 10; capturing it unlocks Sector II for that difficulty.
+
+Reuse: adapted the bundled DecentHead `WalletSession.connect`/wallet state, the
+existing Pilot whitelist and flight-ticket manager, and Voyager's launch routes.
+No vendor files or reward rules were changed. The Canopy inventory was consulted
+for header prior art; the installed DecentHead APIs are the compatible donor.
+
 ### Lotus marathon rules
 
 New voyages and game-over retries start at **level 1**, with a fresh score,

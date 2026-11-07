@@ -85,6 +85,17 @@
     </section>
     <p class="credit">Mandelblum art · TheJollyLaMa <span aria-hidden="true">✦</span> Your wallet. Your flight. Your choice.</p>
   </footer>
+  <dialog id="wallet-launch" aria-labelledby="wallet-launch-title" aria-describedby="wallet-launch-help">
+    <h2 id="wallet-launch-title">Connect your wallet to keep stats and win awards?</h2>
+    <p id="wallet-launch-help">Stats are saved on this device even without a wallet. Connect a whitelisted Decent Pilot wallet <strong>before launch</strong> for Supporter DNFT encounters on Pilot or Ace. Capture the Sector I token to unlock levels 11–20. Cadet is practice, without awards.</p>
+    <p>Use the larger IPFS orb in the header to back up or restore your progress. Connecting a wallet does not automatically pin your stats.</p>
+    <div class="wallet-launch-actions">
+      <button type="button" data-wallet-launch-connect>Connect wallet &amp; play</button>
+      <button type="button" data-wallet-launch-guest>Play without wallet</button>
+      <button type="button" data-wallet-launch-cancel>Back</button>
+    </div>
+    <p data-wallet-launch-status role="status" aria-live="polite"></p>
+  </dialog>
   <script src="bundle.js"></script>
   <script type="module" src="./js/shell/flight-reports.mjs"></script>
   <script type="module" src="./js/shell/main.mjs"></script>

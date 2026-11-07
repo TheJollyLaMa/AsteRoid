@@ -65,4 +65,4 @@ export function mountFlightLog({ getGame = () => window.voyager?.game || window.
   }
   return { signFlight, outbox, tickets, records: () => [...records], captures: () => [...captures] };
 }
-if (typeof window !== 'undefined' && typeof document !== 'undefined') mountFlightLog();
+export const flightLog = typeof window !== 'undefined' && typeof document !== 'undefined' ? mountFlightLog() : null;
